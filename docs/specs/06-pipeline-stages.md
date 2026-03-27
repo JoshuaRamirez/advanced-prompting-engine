@@ -206,6 +206,14 @@ Each active construct entry:
 
 Calls `compute_tensions()` from Spec 05 (Section 6).
 
+Additionally for spectrum oppositions, retrieves the spectrum's `question` property (from Spec 03a Q37-Q55) if it exists:
+```
+for each spectrum opposition in tensions.spectrum:
+    edge_data = G.edges[active_id, opposite_id]
+    spectrum_question = edge_data.get("question", None)
+    opposition.spectrum_question = spectrum_question  # may be None for spectrums without authored questions
+```
+
 Additionally collects resolution paths:
 ```
 for each tension:
@@ -318,10 +326,15 @@ for each branch:
     spoke = state.spokes[branch]
     tensions_here = [t for t in state.tensions if branch in t]
 
+    spectrum_edge = get_spectrum_edge(active[0], opposite, G) if opposite else None
+    spectrum_question = spectrum_edge.get("question") if spectrum_edge else None
+
     output["construction_questions"][branch] = {
         "template": template,
         "active_question": active[0].question,
+        "active_question_revisited": active[0].get("question_revisited"),
         "opposite_question": opposite.question if opposite else None,
+        "spectrum_question": spectrum_question,
         "classification": active[0].classification,
         "potency": active[0].potency,
         "spoke_profile": spoke.classification,

@@ -45,7 +45,8 @@ Represents one observation point on a branch's 10x10 grid.
 | `y` | int | yes | Grid y-coordinate (0-9) |
 | `classification` | string | yes | One of: `"corner"`, `"midpoint"`, `"edge"`, `"center"` |
 | `potency` | float | yes | Position-derived: 1.0, 0.95, 0.85, or 0.5 |
-| `question` | string | yes | The epistemic question for this grid position, parameterized by branch |
+| `question` | string | yes | The epistemic question for this grid position, parameterized by branch (from Spec 03a) |
+| `question_revisited` | string | no | A second epistemic question for positions that are revisited in the source (Q87 for (4,4), Q100 for (9,9)). Null for all other positions. |
 | `description` | string | yes | Expanded description combining positional role with branch domain |
 | `tags` | list[str] | yes | Keywords extracted from the question for TF-IDF matching |
 | `spectrum_ids` | list[str] | yes | IDs of spectrums this point participates in (0 for center, 1-2 for edge) |
@@ -144,10 +145,11 @@ Geometric opposition between two edge points on the same branch. Auto-generated 
 | `directionality` | string | `"symmetric"` |
 | `spectrum_id` | string | Unique spectrum identifier: `"{branch}.spectrum_{n}"` |
 | `strength` | float | Always `0.6` (geometric, not authored) |
+| `question` | string or null | Epistemic question describing this spectrum's opposition (from Spec 03a Q37-Q55, parameterized by branch). Null for spectrums not covered by source questions. |
 | `source` | string | `"geometric"` |
 | `provenance` | string | `"canonical"` |
 
-**Count:** 200 (20 per branch × 10 branches)
+**Count:** ~180 (18 unique edge↔edge reflection pairs per branch × 10 branches; see Spec 02 for precise algorithm)
 
 **Constraint:** Both endpoints must be edge-classified constructs (corner, midpoint, or edge) on the same branch.
 
