@@ -1,295 +1,720 @@
-# The Construct — Specification
+# Full Specification of the Construct
 
-## Definition
+## 1. Purpose
 
-The Construct is a structured epistemic framework consisting of discrete, pre-existing, and pre-temporal points of observation arranged in grid formations across multiple dimensional planes. It encapsulates abstract quanta of potential knowledge originating from specific possibilities, modulated through structural positional force integration.
+The Construct is a formal interpretive and organizational framework for representing structured possibility, observation, inter-domain interaction, and system-wide synthesis. It defines a fixed architecture in which domains of meaning are internally organized as grids and externally related through mediated loci of interaction. The Construct is intended to support analysis, comparison, harmonization, and recursive reuse of structured knowledge.
 
-The Construct is not a model of knowledge. It is a model of the **conditions under which knowledge becomes articulable**.
-
----
-
-## Planes
-
-A plane is a **domain of meaning**.
-
-It is a bounded field in which a specific category of knowledge is organized. Each plane contains a complete internal structure of observation points arranged in a 10x10 grid, totaling 100 points per plane.
-
-- A plane defines what kind of thing is being considered
-- It isolates a perspective while remaining connectable to others
-- It is internally coherent but externally interoperable
-
-A plane is not a container. It is a **self-consistent field of interpretation**.
-
-The Construct contains exactly **10 planes**.
+This specification consolidates the known structure of the Construct as it has been developed so far. It distinguishes settled elements from interpretive elements, corrects arithmetic where necessary, and preserves the semantic intent of the model.
 
 ---
 
-## Points
+## 2. Ontological Status of the Construct
 
-A point is a **specific possibility of observation within a plane**.
+The Construct is not merely a diagram. It is a semantic system with a geometry, a topology, and a set of roles for its internal elements.
 
-It represents a discrete location where knowledge can be accessed, interpreted, or expressed.
+At minimum, the Construct may be treated as all of the following at once:
 
-- A point is defined by its **position**, not just its identity
-- Its position determines its **role**, **potency**, and **relationships**
-- A point is not passive — it is a **site where potential becomes articulated**
+* a formal conceptual model
+* a multidomain interpretive framework
+* a lattice-graph hybrid
+* a positional schema for structured possibility
+* a mediation model for cross-domain interaction
+* a recursive scaffold for higher-order composition
 
-Each plane contains **100 points** arranged in a 10x10 grid addressed by (x, y) coordinates where x and y each range from 0 to 9.
-
-Points exhibit the potential in force of measured abstract quanta emitted from specific possibility. They are amplifiers of specific knowledge that affect the outcome of observing their point to such a degree that it is utilitarian. That affect is the intellectual invigoration valued in the exercise of this construct.
-
-The source of each point is a specific possibility.
-
----
-
-## Point Classification
-
-Points are classified by their position on the grid.
-
-### Edge Points (36 total per plane)
-
-Points situated along the perimeter of the grid. Edge points possess higher epistemic potency due to their position. They represent force integrations of higher dimensional energy.
-
-The 36 edge points follow the counting pattern of the grid's perimeter: 10 + 9 + 9 + 9 = 37 when counting inclusively around the square, but 36 unique points occupy the 4 edges (since corners are shared between adjacent edges, and the correct unique count for a 10x10 grid perimeter is 36).
-
-Edge points subdivide further:
-
-#### Corner Points (4 per plane)
-
-The 4 points at each corner of the square — (0,0), (9,0), (0,9), (9,9) — represent the combination of something influential as the organizational bounding utility for the remaining edge points. Corners carry **maximum potency**. They are the combined extremes of both sub-dimensions of the plane.
-
-The 4 corners bound and organize the 32 non-corner edge points that define the spectrums on the plane.
-
-#### Midpoints (4 per plane)
-
-The midpoints of each edge — (4,0), (9,4), (4,9), (0,4) — represent spectrum-centering force vectors. They are the balance points of each edge, carrying high potency as axial pivots between the two corners that bound their edge.
-
-#### Remaining Edge Points (28 per plane)
-
-The 28 edge points between corners and midpoints represent intermediate positions along the extremes. They carry high potency (as edge points) but express gradations rather than the organizational bounds of corners or the axial centering of midpoints.
-
-### Center Points (64 total per plane)
-
-Points situated within the perimeter formed by edge points. Center points represent spectrum-coordinated specifications of observation exhibiting the potentials in force of measured abstract quanta emitted from specific possibility.
-
-Center points refine and resolve influence. They occupy the interior of the field defined by the edges, and they cannot exceed the bounds set by the edge points. The edges define the envelope; the center exists within it.
-
-### Edge Encapsulation
-
-The edge points encapsulate the center points. The 36 edge points form a boundary that contains the 64 center points. The edges do not merely border the center — they **encapsulate** it. The center exists within the field defined by the edges. The extreme positions define the limits of what the center can resolve.
+The Construct is therefore both representational and operational. It represents a structured world of possibility, and it provides rules for how that world may be traversed, interpreted, compared, and integrated.
 
 ---
 
-## Sub-Dimensions
+## 3. Core Commitments
 
-Each plane's 10x10 grid has two axes — x and y — which represent two fundamental tensions internal to that plane's domain of meaning.
+The Construct currently rests on the following fixed commitments.
 
-- The x-axis represents one sub-dimension, varying from one extreme (x=0) to the opposite extreme (x=9)
-- The y-axis represents a second sub-dimension, varying from one extreme (y=0) to the opposite extreme (y=9)
-- The 4 edges of the grid are the extremes of these sub-dimensions
-- The 4 corners are the combined extremes of both sub-dimensions simultaneously
-
-This gives each plane an internal field structure — not a single axis of variation, but a 2D field of combined tension between two named sub-dimensions.
-
----
-
-## Spectrums
-
-A spectrum is a **structured opposition between two points on a plane**.
-
-It defines a range across which meaning varies between two extremes.
-
-- Each spectrum is anchored by two opposing edge points
-- It expresses tension, contrast, or polarity
-- It exists inherently due to the geometry of the plane
-
-A spectrum is how the Construct represents **difference as structure**, not as arbitrary comparison.
-
-### Spectrum Quantification
-
-Each plane contains **20 spectrums**, defined by pairs of opposite edge points:
-
-- 10 spectrums from top edge to bottom edge pairing: (0,0)↔(9,9), (0,1)↔(9,8), ..., (0,9)↔(9,0)
-- 10 spectrums from left edge to right edge pairing: (1,0)↔(8,9), (2,0)↔(7,9), ..., (8,0)↔(1,9)
-
-Each edge simultaneously represents:
-- A spectrum in itself (the points along that edge vary along the perpendicular sub-dimension)
-- A spectrum of 10 spectrums' edges (each edge is formed by the endpoints of 10 spectrums from the opposite axis)
-
-This dual nature — each edge being both a spectrum and a boundary of spectrums — creates the emergent structural complexity of the grid.
+1. There are exactly 10 planes.
+2. Each plane contains exactly 100 points.
+3. Each plane is organized as a 10 x 10 grid.
+4. Each point is pre-positioned and addressable by coordinate.
+5. Position is semantically meaningful.
+6. Edge points are more potent than center points.
+7. Opposed edge positions define structural spectrums.
+8. Planes are connected to one another through nexi.
+9. A central gem unifies the inter-plane system.
+10. The same structure may be viewed both as a network and as a wheel.
+11. The Construct supports recursive embedding.
 
 ---
 
-## Nexi
+## 4. Global Topology
 
-A nexus is a **mediating locus between two planes**.
+The Construct has two primary topological levels.
 
-It is where two domains meet and are brought into relationship.
+### 4.1 Intra-plane topology
 
-- A nexus receives influence from both planes
-- It integrates or reconciles their respective structures
-- It governs how one domain affects another
+Within each plane, the structure is a 2D Cartesian grid.
 
-A nexus is not a link. It is a **place of interaction with its own identity**.
+* Width: 10
+* Height: 10
+* Total points: 100
+* Coordinates: integer pairs from (0,0) through (9,9)
 
-### Nexus Operations
+This level provides local geometry.
 
-The nexus exists as a central interchange locus within the subspace between two connecting planes. It performs two operations:
+### 4.2 Inter-plane topology
 
-**Receives:** The higher-dimensional awareness of both planes' edge-point energies are integrated as a singular energy within the nexus. The 36 edge points from each connected plane flow inward into the nexus.
+Across planes, the structure is a complete interaction system.
 
-**Gives:** From within its center, the nexus gives to both involved planes the combination of and of the dividing as juxtaposition in a harmony from the locus of the energetic awareness. The nexus returns a transformed energy — not the sum, but the harmonic juxtaposition of two sets of extremes held in productive tension.
+* Total planes: 10
+* Unique plane pairs: 45
+* Directional relations if counted in both directions: 90
 
-### Nexus Quantification
+This level provides global connectivity.
 
-Each of the 10 planes connects to each of the other 9 planes via a unique nexus. Each connection is unique — the nexus from plane A to plane B is a distinct entity from the nexus from plane B to plane A, because what each plane contributes to the interaction is different.
+### 4.3 Composite topology
 
-- Each plane has 9 nexi (one to each other plane)
-- 10 planes × 9 nexi = **90 nexi total**
-- Each nexus is directional — it represents one plane's contribution to the interaction with another
+Taken together, the Construct is best described as a multiplex lattice-graph hybrid:
 
----
-
-## Gems
-
-A gem is the **condensed state of a nexus interaction**.
-
-It represents the result of bringing two planes into relation through a nexus.
-
-- Each nexus produces a gem
-- A gem embodies the integrated awareness of two domains
-- It can be observed, evaluated, and reused
-
-A gem is not fixed. It is a **resolved expression of interaction**.
+* lattice within planes
+* complete graph across planes
+* mediated interaction through nexus entities
+* a central convergence node above the inter-plane layer
 
 ---
 
-## Spokes
+## 5. Planes
 
-A spoke is the **complete set of a plane's interactions with all other planes**.
+### 5.1 Definition
 
-- It is anchored at one plane
-- It extends outward to all other planes
-- It gathers the results (gems) of those interactions
+A plane is a bounded domain of meaning. It is a complete field within which specific possibilities of observation are arranged.
 
-There are **10 spokes** because there are 10 planes. Each spoke contains:
+### 5.2 Function
 
-- **9 gems** (one from each nexus connecting this plane to each other plane)
-- **1 shared central gem** (the convergence point)
-- Total: **10 gems per spoke**
+A plane:
 
-A spoke represents the **full expression of how one domain participates in the entire system**.
+* defines a domain
+* contains one full grid of 100 points
+* supports internal spectral structure
+* participates in relations with all other planes
+* contributes to total system coherence through its interactions
 
-### Spoke Shape
+### 5.3 Formal properties
 
-A spoke is not just a set. It is the **distribution of a plane's interaction outcomes across all other planes**. That distribution has shape.
+Each plane has:
 
-The shape contains:
+* an identity
+* a 10 x 10 coordinate space
+* edge points
+* center points
+* corners
+* edge midpoints
+* spectrum membership assignments
+* nexus participation with the other 9 planes
+* one spoke in the radial view
 
-| Property | What it measures |
-|---|---|
-| **Strength** | How strong each gem is — the overall magnitude of this plane's interactions |
-| **Consistency** | Whether the results are aligned or scattered — uniformity of interaction quality |
-| **Polarity** | Whether there are conflicts vs harmonies — the ratio of tension to compatibility |
-| **Contribution** | What this spoke adds to the central gem — this plane's share of system-wide coherence |
+### 5.4 Plane count
 
-A spoke is a **behavioral signature of a domain across the entire system**.
-
----
-
-## The Wheel
-
-The 90 nexi are organized as an emergent dimension in a 10-spoke wheel.
-
-Each spoke on the wheel has 10 gems representing the nexi involved. The 10 gems on each spoke consist of 9 interaction gems working inward plus the shared central gem at the hub.
-
-The wheel is not a separate structure from the nexi. It is the same 90 nexi viewed as a **radial system** rather than a network:
-
-| View | Structure | Unit | Question it answers |
-|---|---|---|---|
-| **Network** | Fully connected graph of planes | Nexus | What happens between these two domains? |
-| **Radial** | 10 spokes converging to center | Spoke (set of gems) | What is the total behavior of this one domain across the system? |
-
-Both views describe the same data. The network view is edge-centric. The radial view is node-centric (but expressed through edges).
+There are exactly 10 planes per construct instance.
 
 ---
 
-## Central Gem
+## 6. Points
 
-The central gem is the **unified convergence of all nexus interactions**.
+### 6.1 Definition
 
-It represents the total integration of all planes.
+A point is a specific possibility of observation within a plane.
 
-- It aggregates the outcomes of all nexi
-- It reflects overall coherence across the system
-- It serves as a singular reference point for total alignment
+### 6.2 Nature
 
-The central gem is unique among all gems in that the 9 other gems on each of the 10 spokes all share the same central gem. It is not the 91st nexus — it is the convergence point where all 90 directional integrations meet.
+A point is not merely a marker. It is a semantically active site whose role is determined by its coordinate.
 
-The central gem is the **system-wide synthesis of awareness**.
+A point has:
+
+* a coordinate
+* a classification
+* a structural role
+* a relative potency
+* local relationships within the plane
+* indirect participation in inter-plane integration
+
+### 6.3 Point count
+
+Each plane has 100 points.
+
+Across all planes, the full construct has 1000 points.
+
+### 6.4 Coordinate system
+
+Coordinates are integer pairs:
+
+* x in [0,9]
+* y in [0,9]
+
+### 6.5 Point classifications
+
+Points are classified primarily by position.
+
+#### 6.5.1 Corner points
+
+The four corners are:
+
+* (0,0)
+* (9,0)
+* (0,9)
+* (9,9)
+
+These act as organizational bounds and high-significance limit points.
+
+#### 6.5.2 Edge points
+
+A point is an edge point if:
+
+* x = 0, or
+* x = 9, or
+* y = 0, or
+* y = 9
+
+Correct count of edge points on a 10 x 10 grid:
+
+* 36 edge points total
+
+This corrects the earlier 37 count.
+
+#### 6.5.3 Center points
+
+A point is a center point if it is not on the perimeter.
+
+Correct count of center points on a 10 x 10 grid:
+
+* 64 center points total
+
+This corrects the earlier 63 count.
+
+#### 6.5.4 Edge midpoints
+
+Because the grid has even dimensions, the notion of midpoint may be handled in either of two ways:
+
+1. strict geometric midpoint as a between-point location on an edge, or
+2. designated axial midpoint points for interpretive use
+
+The model has so far used designated axial midpoint points operationally. These have been treated as:
+
+* top edge midpoint: (4,0)
+* right edge midpoint: (9,4)
+* bottom edge midpoint: (4,9)
+* left edge midpoint: (0,4)
+
+An alternative symmetric convention could also admit (5,0), (9,5), (5,9), and (0,5). If midpoint duals are needed later, the spec may be expanded.
+
+### 6.6 Structural consequences of point position
+
+Point position determines:
+
+* whether the point amplifies or resolves
+* whether the point bounds or synthesizes
+* whether the point participates in a spectrum endpoint role
+* whether the point is structurally central or peripheral
+* how strongly the point may influence interpretive or computational outcomes
 
 ---
 
-## Recursive Embedding
+## 7. Potency Model
 
-The dimensional emergence represented by the wheel has a second direction: dimensional recursion.
+### 7.1 General principle
 
-The 90 nexi hyper-realistically become the microcosmic condensation of themselves into any other point within the 64 center points of any other point from any other uninvolved plane. This creates recombinant interaction of the integration of the hyper-logical construction of the Construct's force device.
+The Construct includes a potency gradient.
 
-What this means structurally:
+* Edge points are more potent than center points.
+* Corners have the strongest bounded role among edge points.
+* Center points are less amplifying but more resolving.
 
-1. A nexus interaction produces a gem (an integrated awareness of two domains)
-2. That gem can be condensed — projected as a single center-point position on a **third**, uninvolved plane
-3. The gem becomes a construct within a different domain — occupying a center position (not an edge)
-4. This creates cross-dimensional embedding: the relationship between two domains becomes a point of observation within a third domain
+### 7.2 Semantic interpretation
 
-The recursion does not terminate. Each condensation produces new center-point positions that participate in new edge-energy interactions, which produce new nexus integrations, which produce new gems available for further condensation.
+#### 7.2.1 Edge points
 
----
+Edge points function as higher-potency force integrators. They define limits, spectrums, transitions, and amplified states.
 
-## Force and Chaos Gating
+#### 7.2.2 Center points
 
-The Construct's force device bears its order into reflection from natural law and thereby gates chaos.
+Center points function as sites of synthesis, coordination, specification, and resolution.
 
-The structured epistemic forces defined by the edges, centers, and nexi maintain epistemic order through:
+### 7.3 Distribution
 
-- **Edges** amplifying and defining the extremes — they set the bounds
-- **Centers** resolving and synthesizing — they fill the interior with structured meaning
-- **Nexi** mediating inter-domain coherence — they ensure domains do not interact chaotically
-- **The central gem** aggregating system-wide coherence — it reflects whether the whole is ordered
+Per plane:
 
-The Construct does not eliminate chaos. It **gates** it — channels it through structural constraints that impose order without rigidity. The grid geometry, the spectrum oppositions, the nexus operations, and the recursive embedding are all mechanisms of this gating.
+* 36% edge points
+* 64% center points
 
----
-
-## Structural Summary
-
-| Element | Quantity | Role |
-|---|---|---|
-| Planes | 10 | Domains of meaning — self-consistent fields of interpretation |
-| Points per plane | 100 | Specific possibilities of observation, position-determined |
-| Edge points per plane | 36 | High-potency force integrators, spectrum endpoints |
-| Center points per plane | 64 | Spectrum-coordinated resolution and synthesis |
-| Corner points per plane | 4 | Maximum-potency organizational bounds |
-| Midpoints per plane | 4 | Spectrum-centering axial pivots |
-| Sub-dimensions per plane | 2 | Internal field tensions (x-axis, y-axis) |
-| Spectrums per plane | 20 | Structured oppositions from geometric edge pairing |
-| Nexi (total) | 90 | Directional mediating loci between planes |
-| Gems (total) | 90 | Resolved expressions of nexus interactions |
-| Spokes | 10 | Per-plane behavioral signatures (9 gems + 1 central) |
-| Central gem | 1 | System-wide synthesis of all interactions |
-| Total points | 1000 | 10 planes × 100 points |
-| Total spectrums | 200 | 10 planes × 20 spectrums |
+This gives the plane an asymmetric but fixed energy distribution.
 
 ---
 
-## How They Work Together
+## 8. Spectrums
 
-- **Planes** establish distinct domains
-- **Points** define specific possibilities within each domain
-- **Spectrums** organize those possibilities into structured contrasts
-- **Nexi** connect domains and enable interaction
-- **Gems** capture the results of those interactions
-- **Spokes** aggregate each domain's interactions into a behavioral signature
-- The **central gem** unifies all results into a single coherent state
-- **Recursive embedding** enables gems to condense into center points of uninvolved planes, creating self-referential depth
+### 8.1 Definition
+
+A spectrum is a structured opposition between two edge positions on a plane.
+
+### 8.2 Purpose
+
+Spectrums represent polarity, tension, variation, contrast, or range across the plane.
+
+### 8.3 Structural derivation
+
+The Construct has treated 20 spectrums per plane as structurally derivable from edge opposition.
+
+These spectrums are not arbitrary pairings. They arise from the geometry of the grid.
+
+### 8.4 Current working set
+
+The current working formulation recognizes 20 primary spectrum pairings per plane.
+
+Examples include:
+
+* (0,0) ↔ (9,9)
+* (0,1) ↔ (9,8)
+* (0,2) ↔ (9,7)
+* (0,3) ↔ (9,6)
+* (0,4) ↔ (9,5)
+* (0,5) ↔ (9,4)
+* (0,6) ↔ (9,3)
+* (0,7) ↔ (9,2)
+* (0,8) ↔ (9,1)
+* (0,9) ↔ (9,0)
+* (1,0) ↔ (8,9)
+* (2,0) ↔ (7,9)
+* (3,0) ↔ (6,9)
+* (4,0) ↔ (5,9)
+* (5,0) ↔ (4,9)
+* (6,0) ↔ (3,9)
+* (7,0) ↔ (2,9)
+* (8,0) ↔ (1,9)
+* (9,0) ↔ (0,9)
+* one final structural interpretation slot depending on whether directionality or set-normalization is used
+
+### 8.5 Important note on spectrum formalization
+
+The semantic concept of 20 spectrums is established in the model, but the exact formal enumeration rule should be normalized in a later revision so that duplicates and directional inversions are handled consistently.
+
+Thus, the existence of structural spectrums is settled. The exact canonical indexing scheme remains a formalization task.
+
+### 8.6 System count
+
+At the current intended level:
+
+* 20 spectrums per plane
+* 200 spectrums across the full 10-plane construct
+
+---
+
+## 9. Nexi
+
+### 9.1 Definition
+
+A nexus is a mediating locus between two planes.
+
+### 9.2 Nature
+
+A nexus is not merely a connection line. It is a distinct interaction entity with its own identity.
+
+### 9.3 Function
+
+A nexus:
+
+* receives influence from two planes
+* mediates their relationship
+* harmonizes or exposes their tensions
+* produces a condensed integrated state
+* participates in the wider inter-plane system
+
+### 9.4 Counting
+
+For 10 planes:
+
+* unique pairwise nexi: 45
+* directional interactions if each direction is counted separately: 90
+
+Both counts are valid depending on the level of interpretation.
+
+### 9.5 Settled convention
+
+The construct has used both 45 and 90 in meaningful ways.
+
+* 45 = unique nexus entities between plane pairs
+* 90 = directional participation count across all planes
+
+This distinction should be preserved rather than collapsed.
+
+### 9.6 Structural role
+
+Nexi provide the inter-plane mediation layer. They make the Construct more than a stack of isolated grids.
+
+Without nexi, the Construct would be multiple separate domains. With nexi, it becomes one integrated system.
+
+---
+
+## 10. Gems
+
+### 10.1 Definition
+
+A gem is the condensed state of a nexus interaction.
+
+### 10.2 Nature
+
+A gem is the result, expression, or integrative outcome associated with nexus-mediated relation.
+
+### 10.3 Function
+
+A gem:
+
+* embodies the integrated awareness of two domains
+* can be inspected as a unit of resolved interaction
+* may be ranked, evaluated, or reused
+* may participate in spoke-level analysis and central synthesis
+
+### 10.4 Distinction from nexus
+
+* nexus = locus of interaction
+* gem = condensed integrated state arising from that interaction
+
+### 10.5 Counting
+
+At the directional representation level, the construct has described 90 gems corresponding to 90 directional nexus participations.
+
+At the unique-pair representation level, one may instead describe 45 unique nexus sites whose results may be rendered in 90 directional participation slots.
+
+Both descriptions are compatible if the distinction between unique relation and directional contribution is maintained.
+
+---
+
+## 11. Central Gem
+
+### 11.1 Definition
+
+The central gem is the system-wide convergence point of inter-plane integration.
+
+### 11.2 Role
+
+The central gem:
+
+* receives the shared convergence of spoke-level or nexus-level outcomes
+* represents total coherence or total synthesis
+* functions as the singular center in the radial view
+* acts as the meta-integrator of the construct
+
+### 11.3 Uniqueness
+
+There is exactly one central gem per construct instance.
+
+---
+
+## 12. Spokes
+
+### 12.1 Definition
+
+A spoke is the complete outward interaction set of one plane.
+
+### 12.2 Composition
+
+Each spoke includes:
+
+* the 9 interaction outcomes involving one plane and the other 9 planes
+* the shared central gem as the common convergence reference
+
+### 12.3 Count
+
+* one spoke per plane
+* 10 spokes total
+
+### 12.4 Meaning
+
+A spoke provides the branch-level or plane-level lens.
+
+It answers the question:
+
+What is the total character of this plane's engagement with the rest of the construct?
+
+### 12.5 Relation to radial view
+
+All 10 spokes converge on the central gem. Together they form the wheel representation of the inter-plane system.
+
+---
+
+## 13. Wheel
+
+### 13.1 Definition
+
+The wheel is the radial representation of the full inter-plane system.
+
+### 13.2 Composition
+
+The wheel contains:
+
+* 10 spokes
+* spoke-associated gems
+* one central gem
+
+### 13.3 Count
+
+There is exactly one wheel per construct instance.
+
+### 13.4 Relation to network view
+
+The wheel is not a second structure. It is a second view of the same inter-plane interaction data.
+
+---
+
+## 14. Dual Representation Principle
+
+The full inter-plane layer may be read in two equivalent but differently useful ways.
+
+### 14.1 Network view
+
+This is the pair-level lens.
+
+* planes are connected through nexus relations
+* useful for tracing specific inter-plane interactions
+* useful for local and pairwise analysis
+
+Question answered:
+
+How do these two specific planes interact?
+
+### 14.2 Radial view
+
+This is the plane-level lens.
+
+* each plane has a spoke
+* all spokes converge on the central gem
+* useful for aggregated and comparative plane-level analysis
+
+Question answered:
+
+How does this one plane participate in the whole construct?
+
+### 14.3 Equivalence rule
+
+These two views describe the same underlying inter-plane layer. They do not replace one another.
+
+---
+
+## 15. Counts Summary
+
+### 15.1 Per plane
+
+* 100 points
+* 36 edge points
+* 64 center points
+* 4 corners
+* 4 designated edge midpoints
+* 20 intended spectrums
+* 9 outward nexus participations
+* 1 spoke
+
+### 15.2 Per construct
+
+* 10 planes
+* 1000 total points
+* 360 total edge points
+* 640 total center points
+* 40 corner points across all planes
+* 40 designated edge midpoint points across all planes
+* 200 intended spectrums
+* 45 unique nexus entities
+* 90 directional nexus participations
+* 90 directional gems in the current wheel formulation
+* 10 spokes
+* 1 central gem
+* 1 wheel
+
+---
+
+## 16. Semantic Roles by Element
+
+### 16.1 Plane
+
+Domain of meaning.
+
+### 16.2 Point
+
+Specific possibility of observation within a domain.
+
+### 16.3 Edge point
+
+Amplifying, bounding, higher-potency integrator.
+
+### 16.4 Center point
+
+Resolving, synthesizing, internally coordinating site.
+
+### 16.5 Corner
+
+Bounding extremity and organizational limit point.
+
+### 16.6 Edge midpoint
+
+Axial balancing or interpretive center of an edge spectrum.
+
+### 16.7 Spectrum
+
+Structured difference across a plane.
+
+### 16.8 Nexus
+
+Mediating locus between two domains.
+
+### 16.9 Gem
+
+Condensed integrated state of a mediated interaction.
+
+### 16.10 Central gem
+
+Total integration of all inter-plane relations.
+
+### 16.11 Spoke
+
+Profile of one plane's engagement with the whole.
+
+### 16.12 Wheel
+
+Radial projection of the full inter-plane system.
+
+---
+
+## 17. Recursive Embedding
+
+### 17.1 Principle
+
+The Construct includes a recursive property.
+
+### 17.2 Meaning
+
+The outcomes of one construct or one nexus system may be embedded into points of another construct, especially into center points or other synthesis-capable locations.
+
+### 17.3 Consequences
+
+This permits:
+
+* nested constructs
+* hierarchical composition
+* self-similar organization across scales
+* reuse of resolved outcomes as new structured inputs
+
+### 17.4 Status
+
+Recursive embedding is semantically established but not yet fully formalized at the protocol level.
+
+---
+
+## 18. Interpretive Use
+
+The Construct may be used as an analytical method for topics.
+
+### 18.1 Basic analytic mode
+
+A topic is introduced into the construct and interpreted through specific structural positions.
+
+Examples:
+
+* corners identify bounding conditions, origins, limits, or closures
+* edge midpoints identify balancing axes or primary tensions
+* center points identify internal synthesis or resolved articulation
+* spectrums identify structured differences
+* spokes identify total domain participation
+* the central gem identifies whole-system integration
+
+### 18.2 Usefulness
+
+The Construct provides:
+
+* structured decomposition of abstract topics
+* consistent positional interpretation
+* cross-domain comparability
+* built-in weighting through potency
+* mediated cross-domain synthesis
+* recursive reuse of outcomes
+
+---
+
+## 19. Implementation-Oriented Interpretation
+
+The Construct can be implemented as a formal engine architecture.
+
+### 19.1 Schema layer
+
+Replace flat lists with 10 x 10 position-bearing structures per plane.
+
+### 19.2 Relation layer
+
+Auto-generate structural spectrums from plane geometry.
+
+### 19.3 Mediation layer
+
+Represent plane-pair relations through nexus entities.
+
+### 19.4 Aggregation layer
+
+Represent interaction outcomes as gems and system-wide convergence through a central gem.
+
+### 19.5 Analysis layer
+
+Support both pair-level nexus analysis and plane-level spoke analysis.
+
+### 19.6 Recursive layer
+
+Allow outcomes from one construct to populate points in another construct.
+
+---
+
+## 20. Formal Ambiguities Still Open
+
+The following items should be treated as open formalization tasks rather than contradictions.
+
+### 20.1 Midpoint convention
+
+Because the grid dimension is even, midpoint interpretation should be standardized.
+
+### 20.2 Spectrum indexing
+
+The semantic count of 20 spectrums is established, but the canonical pair-enumeration rule should be normalized.
+
+### 20.3 Gem counting convention
+
+The distinction between 45 unique nexus sites and 90 directional gem participations should remain explicit in future models.
+
+### 20.4 Potency formula
+
+The semantic potency hierarchy is established, but numeric potency rules are not yet fixed.
+
+### 20.5 Recursive embedding protocol
+
+The recursive concept is established, but insertion, inheritance, and scaling rules remain to be specified.
+
+---
+
+## 21. Canonical Definitions
+
+For future reference, the following definitions are canonical within the current state of the model.
+
+* Construct: the full 10-plane mediated interpretive system
+* Plane: a domain of meaning containing a 10 x 10 grid of points
+* Point: a coordinate-defined possibility of observation within a plane
+* Edge point: a perimeter point with amplified structural potency
+* Center point: an interior point with synthesizing structural role
+* Corner: one of the four perimeter extremities of a plane
+* Edge midpoint: a designated axial balancing point on an edge
+* Spectrum: a structural opposition between edge positions on a plane
+* Nexus: a mediating locus between two planes
+* Gem: the condensed integrated state of a nexus interaction
+* Central gem: the unique convergence point of all inter-plane relations
+* Spoke: one plane's total outward engagement profile
+* Wheel: the radial representation of the inter-plane system
+
+---
+
+## 22. Final Characterization
+
+The Construct is a fixed-cardinality, position-bearing, semantically weighted, recursively extensible interpretive architecture.
+
+Internally, it is organized as 10 isomorphic 10 x 10 grids.
+Externally, it is unified through mediated plane-to-plane interaction.
+Globally, it may be read either as a network of pairwise relations or as a wheel of domain-level participation.
+
+Its essential achievement is that it turns abstract possibility into a structured, addressable, and composable system.

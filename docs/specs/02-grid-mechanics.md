@@ -55,6 +55,10 @@ C = corner, M = midpoint, E = edge, · = center
 | Center | 64 | All interior positions (x ∈ 1..8, y ∈ 1..8) |
 | **Total** | **100** | |
 
+### Midpoint Dual Convention
+
+Per the Full Specification (CONSTRUCT.md §6.5.4): because the grid has even dimensions (10), the notion of midpoint admits two conventions. The current implementation uses designated axial midpoint points: (4,0), (9,4), (4,9), (0,4). An alternative symmetric convention could also admit (5,0), (9,5), (5,9), (0,5) as dual midpoints. If midpoint duals are needed in a future revision, the classification function and potency model should be expanded to accommodate 8 midpoints per plane instead of 4.
+
 ### The Counting Pattern
 
 The perimeter is traversed as: 10 (top) + 9 (right, excluding shared corner) + 9 (bottom, excluding shared corner) + 9 (left, excluding shared corner) = 37 traversal steps covering 36 unique points.
@@ -66,6 +70,9 @@ The 36 edge points encapsulate the 64 center points.
 ## Potency Function
 
 ```python
+# Working values — the Full Specification (CONSTRUCT.md §20.4) notes that
+# the semantic potency hierarchy is established but numeric rules are not
+# yet fixed. These values are implementation defaults subject to calibration.
 POTENCY = {
     "corner": 1.0,
     "midpoint": 0.95,
@@ -173,7 +180,9 @@ def generate_spectrums_precise(branch: str) -> list:
 
 **Pre-computed result:** With the classification map above, the precise count of edge↔edge reflection pairs is **18** per branch, producing **180** total spectrums across 10 branches.
 
-(The original estimate of 20/200 was approximate. The precise algorithm yields 18/180. The Construct's structural claim of "20 spectrums" per plane refers to the broader concept including the 4 edge-as-spectrum structures. For implementation, use the precise algorithm above and accept the count it produces.)
+**Alignment with the Full Specification:** The Construct (CONSTRUCT.md §8) establishes 20 intended spectrums per plane (200 total) as the semantic count, while noting (§8.5) that the exact canonical indexing scheme remains an open formalization task — specifically how duplicates and directional inversions are handled. The precise algorithm above yields 18 when using center-reflection pairing with the constraint that both endpoints must be edge-classified. The difference of 2 per plane relates to the 19th listed spectrum pair in the source questions (§8.4's "one final structural interpretation slot") and whether the (0,9)↔(9,0) / (9,0)↔(0,9) inversion counts as one or two.
+
+**For implementation:** Use the precise algorithm above (18 per branch, 180 total). The 19 source-authored spectrum questions (Spec 03a Q37-Q55) map to these 18 pairs plus 1 directional restatement. The semantic intent of 20 per plane is preserved as an upper bound; the computed 18 is the implementation floor.
 
 ---
 

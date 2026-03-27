@@ -71,9 +71,9 @@ Represents a mediating locus between two branches. A place of interaction with i
 | `provenance` | string | yes | Always `"canonical"` |
 | `mutable` | bool | yes | Always `false` |
 
-**Count:** 90 (10 branches × 9 outward connections each)
+**Count:** 90 directional nexus nodes (10 branches × 9 outward connections each). These correspond to 45 unique plane pairs, each represented by 2 directional nexi. Per the Full Specification (CONSTRUCT.md §9.5), the distinction between 45 unique nexus entities and 90 directional participations should be preserved rather than collapsed.
 
-**ID Format:** `nexus.{source_branch}.{target_branch}` — directional. `nexus.epistemology.methodology` ≠ `nexus.methodology.epistemology`
+**ID Format:** `nexus.{source_branch}.{target_branch}` — directional. `nexus.epistemology.methodology` ≠ `nexus.methodology.epistemology`. The pair shares a unique nexus site, but each directional participation is a separate node because each branch contributes differently.
 
 ### 4. Central Gem Node
 

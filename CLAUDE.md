@@ -168,13 +168,21 @@ advanced-prompting-engine/
 
 ## Key Terminology
 
+Canonical definitions from CONSTRUCT.md §21:
+
 | Term | Definition |
 |---|---|
-| Plane | A domain of meaning — maps to an axiom branch |
-| Point | A specific possibility of observation — maps to a Level 2 construct at grid position (x,y) |
-| Spectrum | A structured opposition between two edge points — auto-generated from grid geometry |
-| Nexus | A mediating locus between two branches — a place of interaction with its own identity |
-| Gem | The condensed state of a nexus interaction — a resolved expression, storable and reusable |
-| Spoke | The complete set of a branch's interactions with all other branches — a behavioral signature |
-| Central Gem | The unified convergence of all nexus interactions — system-wide synthesis |
-| Potency | Position-derived weight: corner=1.0, midpoint=0.95, edge=0.85, center=0.5 |
+| Construct | The full 10-plane mediated interpretive system |
+| Plane | A domain of meaning containing a 10 x 10 grid of points |
+| Point | A coordinate-defined possibility of observation within a plane |
+| Edge point | A perimeter point with amplified structural potency |
+| Center point | An interior point with synthesizing structural role |
+| Corner | One of the four perimeter extremities of a plane |
+| Edge midpoint | A designated axial balancing point on an edge |
+| Spectrum | A structural opposition between edge positions on a plane |
+| Nexus | A mediating locus between two planes (45 unique sites, 90 directional participations) |
+| Gem | The condensed integrated state of a nexus interaction |
+| Central gem | The unique convergence point of all inter-plane relations |
+| Spoke | One plane's total outward engagement profile |
+| Wheel | The radial representation of the inter-plane system |
+| Potency | Position-derived weight hierarchy (semantic; numeric values are implementation defaults, see CONSTRUCT.md §20.4) |
