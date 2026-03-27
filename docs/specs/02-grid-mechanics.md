@@ -12,8 +12,8 @@ Defines the algorithms that derive classification, potency, spectrum membership,
 def classify(x: int, y: int) -> str:
     """Determine structural classification from grid position."""
     is_corner = (x in (0, 9)) and (y in (0, 9))
-    is_x_midpoint = (x == 4 or x == 5) and (y in (0, 9))  # see note
-    is_y_midpoint = (x in (0, 9)) and (y == 4 or y == 5)   # see note
+    is_x_midpoint = (x in (4, 5)) and (y in (0, 9))
+    is_y_midpoint = (x in (0, 9)) and (y in (4, 5))
     is_edge = (x in (0, 9)) or (y in (0, 9))
 
     if is_corner:
@@ -25,7 +25,7 @@ def classify(x: int, y: int) -> str:
     return "center"
 ```
 
-**Note on midpoints:** The Construct specifies midpoints at (4,0), (9,4), (4,9), (0,4). In a 0-indexed 10-point grid, position 4 is the 5th point — the nearest to center on the edge. This is used consistently.
+**Dual midpoint model:** Per CONSTRUCT.md §6.5.4 and open item resolution, both positions 4 and 5 are recognized as midpoints on each edge. This gives 8 midpoints per plane: (4,0), (5,0), (9,4), (9,5), (4,9), (5,9), (0,4), (0,5). Symmetry demands both — ignoring one creates bias.
 
 ### Classification Map (10x10)
 
@@ -33,16 +33,16 @@ def classify(x: int, y: int) -> str:
 C = corner, M = midpoint, E = edge, · = center
 
   0 1 2 3 4 5 6 7 8 9
-0 C E E E M E E E E C
+0 C E E E M M E E E C
 1 E · · · · · · · · E
 2 E · · · · · · · · E
 3 E · · · · · · · · E
 4 M · · · · · · · · M
-5 E · · · · · · · · E
+5 M · · · · · · · · M
 6 E · · · · · · · · E
 7 E · · · · · · · · E
 8 E · · · · · · · · E
-9 C E E E M E E E E C
+9 C E E E M M E E E C
 ```
 
 ### Counts
@@ -50,14 +50,10 @@ C = corner, M = midpoint, E = edge, · = center
 | Classification | Count | Positions |
 |---|---|---|
 | Corner | 4 | (0,0), (9,0), (0,9), (9,9) |
-| Midpoint | 4 | (4,0), (9,4), (4,9), (0,4) |
-| Edge (remaining) | 28 | All other perimeter positions |
+| Midpoint | 8 | (4,0), (5,0), (9,4), (9,5), (4,9), (5,9), (0,4), (0,5) |
+| Edge (remaining) | 24 | All other perimeter positions |
 | Center | 64 | All interior positions (x ∈ 1..8, y ∈ 1..8) |
 | **Total** | **100** | |
-
-### Midpoint Dual Convention
-
-Per the Full Specification (CONSTRUCT.md §6.5.4): because the grid has even dimensions (10), the notion of midpoint admits two conventions. The current implementation uses designated axial midpoint points: (4,0), (9,4), (4,9), (0,4). An alternative symmetric convention could also admit (5,0), (9,5), (5,9), (0,5) as dual midpoints. If midpoint duals are needed in a future revision, the classification function and potency model should be expanded to accommodate 8 midpoints per plane instead of 4.
 
 ### The Counting Pattern
 
@@ -70,14 +66,14 @@ The 36 edge points encapsulate the 64 center points.
 ## Potency Function
 
 ```python
-# Working values — the Full Specification (CONSTRUCT.md §20.4) notes that
-# the semantic potency hierarchy is established but numeric rules are not
-# yet fixed. These values are implementation defaults subject to calibration.
+# Resolved values — adjusted from initial defaults to ensure center points
+# remain meaningfully influential. Subject to future continuous-function
+# calibration based on real output analysis.
 POTENCY = {
     "corner": 1.0,
-    "midpoint": 0.95,
-    "edge": 0.85,
-    "center": 0.5,
+    "midpoint": 0.9,
+    "edge": 0.8,
+    "center": 0.6,
 }
 
 def potency(x: int, y: int) -> float:
@@ -90,9 +86,9 @@ def potency(x: int, y: int) -> float:
 | Classification | Potency | Meaning |
 |---|---|---|
 | Corner | 1.0 | Combined extreme of both sub-dimensions. Maximum organizational force. |
-| Midpoint | 0.95 | Axial balance point at one edge extreme. Maximum centering force. |
-| Edge | 0.85 | Intermediate position along one extreme. High directional force. |
-| Center | 0.5 | Balanced interior position. Resolution and synthesis. |
+| Midpoint | 0.9 | Axial balance point at one edge extreme. High centering force. |
+| Edge | 0.8 | Intermediate position along one extreme. High directional force. |
+| Center | 0.6 | Balanced interior position. Resolution and synthesis. Still meaningfully influential. |
 
 Potency is used as a multiplier in tension computation, gem magnitude computation, and spoke aggregation. Higher potency amplifies; lower potency dampens.
 
@@ -180,9 +176,9 @@ def generate_spectrums_precise(branch: str) -> list:
 
 **Pre-computed result:** With the classification map above, the precise count of edge↔edge reflection pairs is **18** per branch, producing **180** total spectrums across 10 branches.
 
-**Alignment with the Full Specification:** The Construct (CONSTRUCT.md §8) establishes 20 intended spectrums per plane (200 total) as the semantic count, while noting (§8.5) that the exact canonical indexing scheme remains an open formalization task — specifically how duplicates and directional inversions are handled. The precise algorithm above yields 18 when using center-reflection pairing with the constraint that both endpoints must be edge-classified. The difference of 2 per plane relates to the 19th listed spectrum pair in the source questions (§8.4's "one final structural interpretation slot") and whether the (0,9)↔(9,0) / (9,0)↔(0,9) inversion counts as one or two.
+**Resolved:** The open item on spectrum indexing (CONSTRUCT.md §20.2) has been decided: **18 canonical spectrums per plane, 180 total.** Structural purity over symbolic count — a spectrum is defined as opposition between edge positions, and relaxing this to include edge↔center pairs would break symmetry, geometric meaning, and interpretive consistency. Directional duplicates are views of the same spectrum, not new spectrums. The Construct's "20" is treated as a conceptual approximation, not a strict structural truth.
 
-**For implementation:** Use the precise algorithm above (18 per branch, 180 total). The 19 source-authored spectrum questions (Spec 03a Q37-Q55) map to these 18 pairs plus 1 directional restatement. The semantic intent of 20 per plane is preserved as an upper bound; the computed 18 is the implementation floor.
+The 19 source-authored spectrum questions (Spec 03a Q37-Q55) map to these 18 pairs: Q46 and Q55 describe the same (0,9)↔(9,0) spectrum from opposite perspectives. Both are retained as content on that spectrum edge.
 
 ---
 
@@ -244,15 +240,15 @@ def is_encapsulated_by(center_x, center_y, edge_points):
 
 ## Corner Bounding
 
-The 4 corners organize the 32 non-corner edge points. Each edge of the grid is bounded by two corners:
+The 4 corners organize the 32 non-corner, non-midpoint edge points. Each edge of the grid is bounded by two corners:
 
-| Edge | Start corner | End corner | Non-corner points |
-|---|---|---|---|
-| Top (y=0) | (0,0) | (9,0) | (1,0) through (8,0) = 8 points |
-| Right (x=9) | (9,0) | (9,9) | (9,1) through (9,8) = 8 points |
-| Bottom (y=9) | (0,9) | (9,9) | (1,9) through (8,9) = 8 points |
-| Left (x=0) | (0,0) | (0,9) | (0,1) through (0,8) = 8 points |
+| Edge | Start corner | End corner | Midpoints on this edge | Remaining edge points |
+|---|---|---|---|---|
+| Top (y=0) | (0,0) | (9,0) | (4,0), (5,0) | (1,0), (2,0), (3,0), (6,0), (7,0), (8,0) = 6 |
+| Right (x=9) | (9,0) | (9,9) | (9,4), (9,5) | (9,1), (9,2), (9,3), (9,6), (9,7), (9,8) = 6 |
+| Bottom (y=9) | (0,9) | (9,9) | (4,9), (5,9) | (1,9), (2,9), (3,9), (6,9), (7,9), (8,9) = 6 |
+| Left (x=0) | (0,0) | (0,9) | (0,4), (0,5) | (0,1), (0,2), (0,3), (0,6), (0,7), (0,8) = 6 |
 
-Total non-corner edge points: 32 (8 per side × 4 sides). With 4 corners: 36 total edge points.
+Total: 4 corners + 8 midpoints + 24 remaining edge = 36 total edge-classified points. 64 center points.
 
 The corners are the **organizational bounds** — each non-corner edge point sits on a gradient between two corners, representing an intermediate position between the corners' combined extremes.

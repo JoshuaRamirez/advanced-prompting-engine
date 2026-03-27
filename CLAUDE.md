@@ -17,7 +17,7 @@ The engine does not generate prompts. It measures intent across 10 philosophical
   2. Pipeline (8 stages — single forward pass)
   3. Graph Query Layer + Graph Mutation Layer (structured graph access)
   4. Embedding Cache + TF-IDF Cache (lifecycle-managed, auto-invalidate on graph mutation)
-  5. NetworkX (compute, 1101 nodes, ~1459 edges) + SQLite (persist, canonical/user tables)
+  5. NetworkX (compute, 1101 nodes, 1459 edges) + SQLite (persist, canonical/user tables)
 
 ## Key Documents
 

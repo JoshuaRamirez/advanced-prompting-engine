@@ -89,9 +89,9 @@ Now: The Schema Layer ships with 1000 constructs (100 per branch × 10 branches)
 | Construct classification | Engine mapping | Potency |
 |---|---|---|
 | Corner (4 per plane) | Maximum-potency organizational bounds | 1.0 |
-| Midpoint (4 per plane) | Spectrum-centering axial pivots | 0.95 |
-| Edge — remaining (28 per plane) | High-potency force integrators | 0.85 |
-| Center (64 per plane) | Resolution and synthesis nodes | 0.5 |
+| Midpoint (8 per plane — dual model) | Spectrum-centering axial pivots | 0.9 |
+| Edge — remaining (24 per plane) | High-potency force integrators | 0.8 |
+| Center (64 per plane) | Resolution and synthesis nodes | 0.6 |
 
 **What changes in DESIGN.md:**
 
@@ -112,7 +112,7 @@ Now: The pipeline's Tension Analyzer, Nexus/Gem Analyzer, and Construction Bridg
 
 Previously: All tensions were manually declared TENSIONS_WITH edges or inferred via transitive closure.
 
-Now: ~180 spectrum edges are auto-generated from grid geometry at graph initialization (18 per branch; see Spec 02). These coexist with manually-declared edges. A new edge type `SPECTRUM_OPPOSITION` distinguishes geometric from authored tensions.
+Now: 180 spectrum edges are auto-generated from grid geometry at graph initialization (18 per branch; see Spec 02). These coexist with manually-declared edges. A new edge type `SPECTRUM_OPPOSITION` distinguishes geometric from authored tensions.
 
 Relation types table gains:
 
@@ -341,10 +341,10 @@ Every section of DESIGN.md and its required change:
 |---|---|---|
 | HAS_CONSTRUCT (branch → construct) | 1000 | Canonical |
 | PRECEDES (branch → branch) | 9 | Canonical |
-| SPECTRUM_OPPOSITION (construct ↔ construct) | ~180 | Auto-generated from grid geometry (18 per branch) |
+| SPECTRUM_OPPOSITION (construct ↔ construct) | 180 | Auto-generated from grid geometry (18 per branch) |
 | NEXUS_SOURCE (nexus → source branch) | 90 | Canonical |
 | NEXUS_TARGET (nexus → target branch) | 90 | Canonical |
 | CENTRAL_GEM_LINK (central gem → nexus) | 90 | Canonical |
-| **Total edges** | **~1459** | |
+| **Total edges** | **1459** | |
 
 User extensions add to this via the Graph Mutation Layer with provenance tagging. Canonical data remains immutable.

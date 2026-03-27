@@ -184,24 +184,43 @@ Recursive gem condensation. Takes a completed construction basis, selects gems f
 
 ### Algorithm
 
-```python
-def deepen(basis: dict, pipeline: PipelineRunner, targets: list = None) -> dict:
-    if targets is None:
-        targets = auto_select_condensation_targets(basis)
+Key rules (from open item resolution):
+- **Overlay, not replace** — base construct is never destroyed
+- **Semantic similarity for target selection** — gem placed where it best fits
+- **Metadata retention** — source planes, nexus, generation tracked
+- **No overwrite of active intent** — if target is already active in coordinate, append to condensed_gems without replacing
 
-    # Build modified coordinate from condensation
-    new_coordinate = dict(basis["coordinate"])
+```python
+def deepen(basis: dict, pipeline: PipelineRunner, G: nx.Graph,
+           tfidf_cache, targets: list = None) -> dict:
+    if targets is None:
+        targets = auto_select_condensation_targets(basis, G, tfidf_cache)
+
+    # Overlay gems onto target center points (do NOT replace base constructs)
     for target in targets:
         gem = target["gem"]
+        dest_id = f"{target['destination_branch']}.{target['dest_x']}_{target['dest_y']}"
+        node = G.nodes[dest_id]
+
+        # Append to condensed_gems list (overlay)
+        if "condensed_gems" not in node:
+            node["condensed_gems"] = []
+        node["condensed_gems"].append({
+            "source_nexus": gem["nexus"],
+            "magnitude": gem["magnitude"],
+            "source_planes": [gem["nexus"].split(".")[1], gem["nexus"].split(".")[2]],
+            "generation": basis.get("depth", 0) + 1,
+        })
+
+    # Build coordinate targeting the condensed positions
+    new_coordinate = dict(basis["coordinate"])
+    for target in targets:
         dest_branch = target["destination_branch"]
-        # Map gem magnitude to a center-point position
-        # Higher magnitude → closer to grid center (4,4)/(5,5)
-        # Lower magnitude → closer to grid periphery (but still center-class)
-        cx, cy = magnitude_to_center_position(gem["magnitude"])
+        # Gem magnitude becomes weight; coordinate points to the condensed position
         new_coordinate[dest_branch] = {
-            "x": cx,
-            "y": cy,
-            "weight": gem["magnitude"],  # gem magnitude becomes the weight
+            "x": target["dest_x"],
+            "y": target["dest_y"],
+            "weight": target["gem"]["magnitude"],
         }
 
     # Run pipeline with modified coordinate
@@ -211,45 +230,70 @@ def deepen(basis: dict, pipeline: PipelineRunner, targets: list = None) -> dict:
 
     return deeper_basis
 
-def auto_select_condensation_targets(basis: dict) -> list:
-    """Select top gems and map them to uninvolved branches."""
+def auto_select_condensation_targets(basis: dict, G: nx.Graph, tfidf_cache) -> list:
+    """Select top gems and place them via semantic similarity."""
     gems = sorted(basis.get("gems", []), key=lambda g: g["magnitude"], reverse=True)
     targets = []
     used_branches = set()
+    used_positions = set()
 
     for gem in gems[:3]:  # top 3 gems
-        nexus_parts = gem["nexus"].split(".")  # "nexus.source.target"
-        source = nexus_parts[1]
-        target = nexus_parts[2]
-        # Find an uninvolved branch (not source, not target, not already used)
+        nexus_parts = gem["nexus"].split(".")
+        source_branch = nexus_parts[1]
+        target_branch = nexus_parts[2]
+
+        # Find an uninvolved branch
         for branch in ALL_BRANCHES:
-            if branch not in (source, target) and branch not in used_branches:
+            if branch in (source_branch, target_branch) or branch in used_branches:
+                continue
+
+            # Find the center point whose question is most semantically similar
+            # to the nexus interaction content
+            nexus_content = G.nodes[gem["nexus"]].get("content", "")
+            best_pos = None
+            best_sim = -1
+
+            center_constructs = [
+                (n, G.nodes[n])
+                for n in G.nodes()
+                if G.nodes[n].get("branch") == branch
+                and G.nodes[n].get("classification") == "center"
+            ]
+
+            for node_id, data in center_constructs:
+                pos_key = (data["x"], data["y"])
+                if pos_key in used_positions:
+                    continue
+                sim = tfidf_cache.similarity(nexus_content, data.get("question", ""))
+                if sim > best_sim:
+                    best_sim = sim
+                    best_pos = (data["x"], data["y"], node_id)
+
+            if best_pos:
                 targets.append({
                     "gem": gem,
                     "destination_branch": branch,
+                    "dest_x": best_pos[0],
+                    "dest_y": best_pos[1],
+                    "semantic_similarity": best_sim,
                 })
                 used_branches.add(branch)
+                used_positions.add((best_pos[0], best_pos[1]))
                 break
 
     return targets
-
-def magnitude_to_center_position(magnitude: float) -> tuple[int, int]:
-    """Map gem magnitude [0,1] to a center grid position.
-
-    Higher magnitude → closer to (5,5) (true center)
-    Lower magnitude → closer to (2,2) or (7,7) (near edges but still center-class)
-    """
-    # Scale magnitude to offset from center
-    # magnitude 1.0 → (5, 5)
-    # magnitude 0.5 → (3, 3) or (6, 6)
-    # magnitude 0.0 → (1, 1) or (8, 8)
-    offset = int(round((1 - magnitude) * 4))  # 0-4
-    # Alternate between upper-left and lower-right quadrants
-    if magnitude >= 0.5:
-        return (5 - offset, 5 - offset)  # approaches center from upper-left
-    else:
-        return (4 + offset, 4 + offset)  # approaches center from lower-right
 ```
+
+### Potency of Condensed Positions
+
+When a center point receives a condensed gem, its effective potency for pipeline computation becomes:
+
+```python
+effective_potency = base_center_potency + (gem_magnitude * 0.2)
+# Example: 0.6 + (0.8 * 0.2) = 0.76
+```
+
+The center point gains elevated influence but remains below edge-class potency. The base construct's question and properties are preserved — the gem is additive.
 
 ### Output
 

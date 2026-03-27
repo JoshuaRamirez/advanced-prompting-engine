@@ -44,9 +44,10 @@ Represents one observation point on a branch's 10x10 grid.
 | `x` | int | yes | Grid x-coordinate (0-9) |
 | `y` | int | yes | Grid y-coordinate (0-9) |
 | `classification` | string | yes | One of: `"corner"`, `"midpoint"`, `"edge"`, `"center"` |
-| `potency` | float | yes | Position-derived: 1.0, 0.95, 0.85, or 0.5 |
+| `potency` | float | yes | Position-derived: corner=1.0, midpoint=0.9, edge=0.8, center=0.6 |
 | `question` | string | yes | The epistemic question for this grid position, parameterized by branch (from Spec 03a) |
 | `question_revisited` | string | no | A second epistemic question for positions that are revisited in the source (Q87 for (4,4), Q100 for (9,9)). Null for all other positions. |
+| `condensed_gems` | list[dict] | no | Gems condensed into this point via recursive embedding (deepen operation). Each entry: `{source_nexus, magnitude, source_planes, generation}`. Empty list by default. Overlay, never replace — base construct is preserved. |
 | `description` | string | yes | Expanded description combining positional role with branch domain |
 | `tags` | list[str] | yes | Keywords extracted from the question for TF-IDF matching |
 | `spectrum_ids` | list[str] | yes | IDs of spectrums this point participates in (0 for center, 1-2 for edge) |
@@ -149,7 +150,7 @@ Geometric opposition between two edge points on the same branch. Auto-generated 
 | `source` | string | `"geometric"` |
 | `provenance` | string | `"canonical"` |
 
-**Count:** ~180 (18 unique edge↔edge reflection pairs per branch × 10 branches; see Spec 02 for precise algorithm)
+**Count:** 180 (18 unique edge↔edge reflection pairs per branch × 10 branches; see Spec 02 for precise algorithm)
 
 **Constraint:** Both endpoints must be edge-classified constructs (corner, midpoint, or edge) on the same branch.
 
@@ -304,7 +305,7 @@ Declared resolution — one construct mediates a known tension between two other
 |---|---|---|
 | HAS_CONSTRUCT | 1000 | Structural |
 | PRECEDES | 9 | Structural |
-| SPECTRUM_OPPOSITION | ~180 | Geometric (18 per branch × 10; see Spec 02) |
+| SPECTRUM_OPPOSITION | 180 | Geometric (18 per branch × 10; see Spec 02) |
 | NEXUS_SOURCE | 90 | Structural |
 | NEXUS_TARGET | 90 | Structural |
 | CENTRAL_GEM_LINK | 90 | Structural |
@@ -314,7 +315,7 @@ Declared resolution — one construct mediates a known tension between two other
 | EXCLUDES | Variable | Authored |
 | GENERATES | Variable | Authored |
 | RESOLVES | Variable | Authored |
-| **Fixed total** | **~1459** | (1000 + 9 + ~180 + 90 + 90 + 90) |
+| **Fixed total** | **1459** | (1000 + 9 + 180 + 90 + 90 + 90) |
 | **Authored total** | **TBD** | |
 
 ---

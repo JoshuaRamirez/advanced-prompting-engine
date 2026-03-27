@@ -195,8 +195,8 @@ Each branch contains exactly **100 constructs** arranged in a 10x10 grid address
 | Classification | Positions | Count per branch | Potency |
 |---|---|---|---|
 | Corner | (0,0), (9,0), (0,9), (9,9) | 4 | 1.0 |
-| Midpoint | (4,0), (9,4), (4,9), (0,4) | 4 | 0.95 |
-| Edge (remaining) | All other perimeter positions | 28 | 0.85 |
+| Midpoint | (4,0), (5,0), (9,4), (9,5), (4,9), (5,9), (0,4), (0,5) | 8 | 0.9 |
+| Edge (remaining) | All other perimeter positions | 24 | 0.8 |
 | Center | All interior positions | 64 | 0.5 |
 
 The 36 edge points (corners + midpoints + remaining edge) encapsulate the 64 center points. Edge points define the field boundary; center points exist within it.
@@ -214,7 +214,7 @@ Properties on a Level 2 node:
 | `x` | int (0-9) | Grid x-coordinate (position on first sub-dimension) |
 | `y` | int (0-9) | Grid y-coordinate (position on second sub-dimension) |
 | `classification` | string | `corner`, `midpoint`, `edge`, or `center` |
-| `potency` | float | Position-derived: 1.0, 0.95, 0.85, or 0.5 |
+| `potency` | float | Position-derived: corner=1.0, midpoint=0.9, edge=0.8, center=0.6 |
 | `question` | string | The Construct's epistemic question for this grid position, parameterized by branch |
 | `description` | string | Expanded description combining positional role with branch domain |
 | `tags` | list[str] | Keywords for TF-IDF intent matching |
@@ -240,7 +240,7 @@ Each branch contains **20 spectrums** auto-generated from grid geometry — stru
 - 10 spectrums from diagonal pairings: (0,0)↔(9,9), (0,1)↔(9,8), ..., (0,9)↔(9,0)
 - 10 spectrums from cross-diagonal pairings: (1,0)↔(8,9), (2,0)↔(7,9), ..., (8,0)↔(1,9)
 
-Total: **~180 spectrums** across all 10 branches (18 computed edge↔edge reflection pairs per branch; the Construct's semantic count of 20 per plane remains the intended upper bound, see CONSTRUCT.md §8.5). These exist by virtue of grid geometry — no manual authoring required.
+Total: **180 spectrums** across all 10 branches (18 computed edge↔edge reflection pairs per branch; the Construct's semantic count of 20 per plane remains the intended upper bound, see CONSTRUCT.md §8.5). These exist by virtue of grid geometry — no manual authoring required.
 
 ### Level 3 — Coordinate Layer
 
@@ -424,7 +424,7 @@ EXTERNAL (3 tools + 4 prompts + 3 resources)
 │  managed, auto-invalidate   vectors, pre-computed     │
 ├───────────────────────────────────────────────────────┤
 │  NetworkX (compute)         SQLite (persist)           │
-│  1101 nodes, ~1459 edges    canonical | user tables    │
+│  1101 nodes, 1459 edges    canonical | user tables    │
 └───────────────────────────────────────────────────────┘
 ```
 
@@ -901,7 +901,7 @@ The `create_prompt_basis` tool returns:
       {
         "position": [3, 0],
         "classification": "edge",
-        "potency": 0.85,
+        "potency": 0.8,
         "question": "What initiating polarity lies within..."
       }
     ]
@@ -961,7 +961,7 @@ The `create_prompt_basis` tool returns:
       "active_question": "What initiating polarity lies within...",
       "opposite_question": "What reversal of directional...",
       "classification": "edge",
-      "potency": 0.85,
+      "potency": 0.8,
       "spoke_profile": "coherent",
       "spoke_strength": 0.0
     }
@@ -1001,8 +1001,8 @@ The construction questions are the **bridge** between dimensional analysis and p
 |---|---|
 | HAS_CONSTRUCT | 1000 |
 | PRECEDES | 9 |
-| SPECTRUM_OPPOSITION | ~180 |
+| SPECTRUM_OPPOSITION | 180 |
 | NEXUS_SOURCE | 90 |
 | NEXUS_TARGET | 90 |
 | CENTRAL_GEM_LINK | 90 |
-| **Total** | **~1459** |
+| **Total** | **1459** |
