@@ -31,10 +31,11 @@ The question: should the spoke be a first-class computable output in the pipelin
 
 | Condition | Classification |
 |---|---|
+| Low strength (below LOW_STRENGTH threshold) | **Weakly integrated** — this branch has minimal system participation |
 | High strength + high consistency | **Coherent** — this branch integrates smoothly with the system |
-| High strength + low consistency | **Fragmented** — this branch is strongly engaged but unevenly |
 | High strength + high contribution | **Dominant** — this branch disproportionately drives system state |
-| Low strength overall | **Weakly integrated** — this branch has minimal system participation |
+| High strength + low consistency | **Fragmented** — this branch is strongly engaged but unevenly |
+| Above LOW_STRENGTH but below HIGH_STRENGTH | **Moderate** — this branch is present but not strongly engaged |
 
 ### Output Format
 
@@ -59,7 +60,7 @@ The question: should the spoke be a first-class computable output in the pipelin
 
 ## Rationale
 
-- A passive grouping tells you what gems exist. A behavioral signature tells you what the **distribution means** — coherent, fragmented, dominant, or weakly integrated. This is the difference between data and insight.
+- A passive grouping tells you what gems exist. A behavioral signature tells you what the **distribution means** — coherent, fragmented, dominant, moderate, or weakly integrated. This is the difference between data and insight.
 - All 4 properties are mechanically computable from gem magnitudes using basic statistics (mean, standard deviation, ratio, sum). No LLM inference required.
 - The spoke classification enables per-branch scoring that the construction basis output can include as a first-class element. A client receiving `"epistemology": { "classification": "fragmented" }` immediately knows this branch needs attention.
 - Cross-spoke comparison becomes possible because all 10 spokes have identical structure (9 gems + 1 central). Questions like "which branch contributes most?" or "which branch introduces the most tension?" are answerable by comparing spoke properties.
