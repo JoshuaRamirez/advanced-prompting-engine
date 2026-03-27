@@ -97,7 +97,7 @@ Now: The Schema Layer ships with 1000 constructs (100 per branch × 10 branches)
 
 Previously: All constructs had uniform weight. Potency was not a concept.
 
-Now: The pipeline's Tension Analyzer, Generative Analyzer, and Construction Bridge weight computations by potency. Edge constructs amplify tensions. Center constructs dampen them. Corner constructs have maximum amplification.
+Now: The pipeline's Tension Analyzer, Nexus/Gem Analyzer, and Construction Bridge weight computations by potency. Edge constructs amplify tensions. Center constructs dampen them. Corner constructs have maximum amplification.
 
 ---
 
@@ -112,7 +112,7 @@ Now: The pipeline's Tension Analyzer, Generative Analyzer, and Construction Brid
 
 Previously: All tensions were manually declared TENSIONS_WITH edges or inferred via transitive closure.
 
-Now: 200 spectrum edges are auto-generated from grid geometry at graph initialization. These coexist with manually-declared edges. A new edge type `SPECTRUM_OPPOSITION` distinguishes geometric from authored tensions.
+Now: ~180 spectrum edges are auto-generated from grid geometry at graph initialization (18 per branch; see Spec 02). These coexist with manually-declared edges. A new edge type `SPECTRUM_OPPOSITION` distinguishes geometric from authored tensions.
 
 Relation types table gains:
 
@@ -170,7 +170,7 @@ Now: Each nexus operation produces a gem — a computed value with at minimum a 
 
 Previously: No spoke concept. No per-branch system-level analysis.
 
-Now: The pipeline gains a spoke computation stage (or sub-stage within the Generative Analyzer) that aggregates nexus results into spoke profiles.
+Now: The pipeline gains a spoke computation stage (or sub-stage within the Nexus/Gem Analyzer) that aggregates nexus results into spoke profiles.
 
 Spoke shape properties — all mechanically computable:
 
@@ -307,7 +307,7 @@ Every section of DESIGN.md and its required change:
 | **Stage 3 — Position Computer** | 418 | Rewrite — embedding lookup uses grid-structured graph including nexus nodes |
 | **Stage 4 — Construct Resolver** | 428 | Rewrite — activation by embedding neighborhood, classification and potency attached |
 | **Stage 5 — Tension Analyzer** | 441 | Rewrite — add spectrum oppositions, potency-weighted tension magnitude |
-| **Stage 6 — Generative Analyzer** | 459 | **Major rewrite** — add nexus computation producing gems, spoke aggregation producing behavioral signatures, central gem computation |
+| **Stage 6 — Nexus/Gem Analyzer** | 459 | **Major rewrite** — add nexus computation producing gems, spoke aggregation producing behavioral signatures, central gem computation |
 | **Stage 7 — Construction Bridge** | 469 | Rewrite — output includes predefined questions, spectrum opposites, spoke profiles, central gem |
 | **Multi-Pass Orchestrator** | 483 | Add: `deepen` operation for recursive gem condensation |
 | Mathematical Operations | 509 | Add: spoke shape computation (mean, std dev, ratio), gem magnitude computation, central gem aggregation |
@@ -341,10 +341,10 @@ Every section of DESIGN.md and its required change:
 |---|---|---|
 | HAS_CONSTRUCT (branch → construct) | 1000 | Canonical |
 | PRECEDES (branch → branch) | 9 | Canonical |
-| SPECTRUM_OPPOSITION (construct ↔ construct) | 200 | Auto-generated from grid geometry |
+| SPECTRUM_OPPOSITION (construct ↔ construct) | ~180 | Auto-generated from grid geometry (18 per branch) |
 | NEXUS_SOURCE (nexus → source branch) | 90 | Canonical |
 | NEXUS_TARGET (nexus → target branch) | 90 | Canonical |
 | CENTRAL_GEM_LINK (central gem → nexus) | 90 | Canonical |
-| **Total edges** | **~1479** | |
+| **Total edges** | **~1459** | |
 
 User extensions add to this via the Graph Mutation Layer with provenance tagging. Canonical data remains immutable.

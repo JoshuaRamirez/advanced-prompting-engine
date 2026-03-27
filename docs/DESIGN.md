@@ -240,7 +240,7 @@ Each branch contains **20 spectrums** auto-generated from grid geometry — stru
 - 10 spectrums from diagonal pairings: (0,0)↔(9,9), (0,1)↔(9,8), ..., (0,9)↔(9,0)
 - 10 spectrums from cross-diagonal pairings: (1,0)↔(8,9), (2,0)↔(7,9), ..., (8,0)↔(1,9)
 
-Total: **200 spectrums** across all 10 branches. These exist by virtue of grid geometry — no manual authoring required.
+Total: **~180 spectrums** across all 10 branches (18 computed edge↔edge reflection pairs per branch; the Construct's semantic count of 20 per plane remains the intended upper bound, see CONSTRUCT.md §8.5). These exist by virtue of grid geometry — no manual authoring required.
 
 ### Level 3 — Coordinate Layer
 
@@ -424,7 +424,7 @@ EXTERNAL (3 tools + 4 prompts + 3 resources)
 │  managed, auto-invalidate   vectors, pre-computed     │
 ├───────────────────────────────────────────────────────┤
 │  NetworkX (compute)         SQLite (persist)           │
-│  1101 nodes, ~1479 edges    canonical | user tables    │
+│  1101 nodes, ~1459 edges    canonical | user tables    │
 └───────────────────────────────────────────────────────┘
 ```
 
@@ -1001,8 +1001,8 @@ The construction questions are the **bridge** between dimensional analysis and p
 |---|---|
 | HAS_CONSTRUCT | 1000 |
 | PRECEDES | 9 |
-| SPECTRUM_OPPOSITION | 200 |
+| SPECTRUM_OPPOSITION | ~180 |
 | NEXUS_SOURCE | 90 |
 | NEXUS_TARGET | 90 |
 | CENTRAL_GEM_LINK | 90 |
-| **Total** | **~1479** |
+| **Total** | **~1459** |

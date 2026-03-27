@@ -86,6 +86,6 @@ Both are computed and returned in the construction basis.
 - **Positive**: Central gem provides a single coherence metric for the entire coordinate
 - **Positive**: Dual view serves both micro (pair) and macro (domain) analysis needs
 - **Negative**: 90 additional nodes + 1 central gem node increase graph size and computation
-- **Negative**: The gem computation function (how to integrate two branches' edge energies into a single magnitude) is not yet formally defined — this is an open design item
+- **Resolved**: The gem computation function is now formally defined in Spec 05 §10 (harmonic mean of weighted edge energy ratios, with active constructs receiving 2x potency boost)
 - **Negative**: Spoke classification thresholds (what constitutes "coherent" vs "fragmented") must be calibrated empirically or by convention
 - **Trade-off**: Architectural richness vs. computational complexity. The additional nodes and computations are bounded (90 nexi, 10 spokes, 1 central gem) and the math is simple (means, standard deviations, ratios). The richness of output justifies the complexity.

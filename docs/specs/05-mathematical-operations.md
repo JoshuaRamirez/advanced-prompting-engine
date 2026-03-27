@@ -744,24 +744,28 @@ def compute_contributions(spokes: dict[str, dict]) -> dict[str, dict]:
 **Classification:**
 
 ```python
+# Calibrated for a 10-branch system. See Spec 08 for rationale.
 SPOKE_THRESHOLDS = {
-    "high_strength": 0.6,
-    "high_consistency": 0.7,
+    "high_strength": 0.5,
+    "high_consistency": 0.65,
     "high_contribution": 0.15,  # > 1/10 = disproportionate
+    "low_strength": 0.25,
 }
 
 def classify_spoke(spoke: dict) -> str:
-    high_s = spoke['strength'] >= SPOKE_THRESHOLDS['high_strength']
-    high_c = spoke['consistency'] >= SPOKE_THRESHOLDS['high_consistency']
-    high_contrib = spoke['contribution'] >= SPOKE_THRESHOLDS['high_contribution']
+    s = spoke['strength']
+    c = spoke['consistency']
+    p = spoke['contribution']
 
-    if high_s and high_c:
+    if s < SPOKE_THRESHOLDS['low_strength']:
+        return "weakly_integrated"
+    if s >= SPOKE_THRESHOLDS['high_strength'] and c >= SPOKE_THRESHOLDS['high_consistency']:
         return "coherent"
-    if high_s and not high_c:
-        return "fragmented"
-    if high_s and high_contrib:
+    if s >= SPOKE_THRESHOLDS['high_strength'] and p >= SPOKE_THRESHOLDS['high_contribution']:
         return "dominant"
-    return "weakly_integrated"
+    if s >= SPOKE_THRESHOLDS['high_strength'] and c < SPOKE_THRESHOLDS['high_consistency']:
+        return "fragmented"
+    return "moderate"
 ```
 
 ### Output
@@ -808,11 +812,14 @@ def compute_central_gem(spokes: dict[str, dict]) -> dict:
     }
 
 def classify_coherence(coherence: float) -> str:
-    if coherence >= 0.7:
+    # Thresholds are deliberately low — the coherence formula produces small
+    # values. With 10 spokes each contributing ~0.1, weighted by consistency,
+    # maximum coherence is ~0.1. See Spec 08 for calibration rationale.
+    if coherence >= 0.08:
         return "highly_coherent"
-    if coherence >= 0.4:
+    if coherence >= 0.05:
         return "moderately_coherent"
-    if coherence >= 0.2:
+    if coherence >= 0.02:
         return "weakly_coherent"
     return "incoherent"
 ```

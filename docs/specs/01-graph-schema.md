@@ -304,7 +304,7 @@ Declared resolution — one construct mediates a known tension between two other
 |---|---|---|
 | HAS_CONSTRUCT | 1000 | Structural |
 | PRECEDES | 9 | Structural |
-| SPECTRUM_OPPOSITION | 200 | Geometric |
+| SPECTRUM_OPPOSITION | ~180 | Geometric (18 per branch × 10; see Spec 02) |
 | NEXUS_SOURCE | 90 | Structural |
 | NEXUS_TARGET | 90 | Structural |
 | CENTRAL_GEM_LINK | 90 | Structural |
@@ -314,7 +314,7 @@ Declared resolution — one construct mediates a known tension between two other
 | EXCLUDES | Variable | Authored |
 | GENERATES | Variable | Authored |
 | RESOLVES | Variable | Authored |
-| **Fixed total** | **1479** | |
+| **Fixed total** | **~1459** | (1000 + 9 + ~180 + 90 + 90 + 90) |
 | **Authored total** | **TBD** | |
 
 ---
