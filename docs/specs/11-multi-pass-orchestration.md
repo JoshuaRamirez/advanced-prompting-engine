@@ -30,7 +30,7 @@ def stress_test(coordinate: dict, pipeline: PipelineRunner) -> dict:
     for branch in coordinate:
         bx, by = coordinate[branch]["x"], coordinate[branch]["y"]
         # Try adjacent grid positions (±1 on each axis, within bounds)
-        for dx, dy in [(-1,0), (1,0), (0,-1), (0,1), (-1,-1), (1,1)]:
+        for dx, dy in [(-1,0), (1,0), (0,-1), (0,1), (-1,-1), (1,1), (-1,1), (1,-1)]:
             nx, ny = bx + dx, by + dy
             if 0 <= nx <= 9 and 0 <= ny <= 9 and (nx, ny) != (bx, by):
                 modified = deep_copy(coordinate)
@@ -87,8 +87,8 @@ def stress_test(coordinate: dict, pipeline: PipelineRunner) -> dict:
 
 ### Computational Cost
 
-- 10 branches × ~6 adjacent positions = ~60 perturbations
-- ~60 pipeline runs × ~150ms = ~9 seconds
+- 10 branches × ~8 adjacent positions = ~80 perturbations (fewer at edges/corners)
+- ~80 pipeline runs × ~150ms = ~12 seconds
 - Bounded and predictable
 
 ---

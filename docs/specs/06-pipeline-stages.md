@@ -233,10 +233,10 @@ for each tension:
 
 | Aspect | Value |
 |---|---|
-| **Input** | `PipelineState.active_constructs` |
+| **Input** | `PipelineState.active_constructs` (from Stage 4). Does NOT consume Stage 5 tensions — gem harmony is computed independently by re-scanning graph edges. |
 | **Output** | `PipelineState.gems`, `PipelineState.nexus_details` |
 | **Precondition** | active_constructs populated |
-| **Postcondition** | gems contains one gem per branch-pair where both branches have active constructs; nexus_details has interaction metadata |
+| **Postcondition** | gems contains one gem per branch-pair where both branches have active constructs; nexus_details has interaction metadata. Tensions from Stage 5 remain in PipelineState for construction basis output but are not used by this stage. |
 
 ### Logic
 
@@ -288,8 +288,8 @@ central_gem = compute_central_gem(spokes)
 
 ### Error Handling
 
-- No gems for a branch: spoke has strength=0, consistency=1.0, polarity=0, classification="weakly_integrated"
-- No gems at all: central_gem coherence = 0.0, classification = "incoherent"
+- No gems for a branch (inactive branch): spoke has strength=0, consistency=1.0, polarity=0, classification="weakly_integrated". All 10 spokes are always present in the output regardless of branch activity — inactive branches produce empty spokes.
+- No gems at all (only 1 active branch): central_gem coherence = 0.0, classification = "incoherent"
 
 ---
 

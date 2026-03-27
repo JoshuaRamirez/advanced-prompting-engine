@@ -258,9 +258,9 @@ Sourced from Q56-Q99 of `03a-source-questions.md`.
 | (7,5) | Q98 | What final arc of central-to-boundary shift characterizes {domain} here? |
 | (8,5) | Q99 | What concluding harmonic slips from internal projection in {domain}? |
 
-### Rows y=6, y=7, y=8 — Authored to Complete (24)
+### Rows y=6, y=7, y=8 — Authored to Complete (24) [PROVISIONAL]
 
-These 24 questions complete the 64 center positions. Authored to maintain the structural and tonal patterns of the source material.
+These 24 questions complete the 64 center positions. Authored to maintain the structural and tonal patterns of the source material. **These are not from Spec 03a (the authoritative source).** They are implementation-authored to fill the gap left by the source material ending at row y=5. They should be reviewed against the Construct's epistemic framework and may be revised.
 
 ### Row y=6 (8)
 
@@ -436,6 +436,6 @@ Each pair produces 2 directional nexi (A→B and B→A). The content below descr
 
 ## Spectrum Semantic Annotations
 
-Beyond the 19 source-authored spectrum questions, the remaining spectrums (from Spec 02's precise geometry algorithm) have semantic content derived mechanically: retrieve both endpoint point-questions and present them as a contrasting pair. The spectrum meaning is the structured difference between its two endpoint questions.
+Spectrums with authored questions (Q37-Q55) have their `question` property set to that authored question on the SPECTRUM_OPPOSITION edge.
 
-For spectrums that have a source-authored question (Q37-Q55), that question is stored as the `question` property on the SPECTRUM_OPPOSITION edge, providing richer content than the auto-derived contrast.
+Spectrums without authored questions have `question = null` on the edge. Their semantic content is derived at query time by the pipeline — the Construction Bridge presents the two endpoint point-questions as a contrasting pair. The spectrum meaning is the structured difference between its two endpoint questions. No synthetic question is generated; the endpoint pair IS the content.

@@ -711,6 +711,15 @@ def compute_gem(source_branch: str, target_branch: str,
 ```python
 def compute_spoke_shape(gems: list[dict]) -> dict:
     """Compute the 4 spoke properties from gem magnitudes."""
+    # Handle empty gem list (inactive branch — no nexi computed)
+    if len(gems) == 0:
+        return {
+            "strength": 0.0,
+            "consistency": 1.0,
+            "polarity": 0.0,
+            "gems": [],
+        }
+
     magnitudes = np.array([g['magnitude'] for g in gems])
 
     strength = float(np.mean(magnitudes))

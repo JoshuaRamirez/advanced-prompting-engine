@@ -102,7 +102,7 @@ def compute_central_gem(spokes: dict[str, dict]) -> dict:
 | ≥ 0.02 | weakly_coherent |
 | < 0.02 | incoherent |
 
-**Note:** These thresholds are deliberately low because the coherence formula produces small values. With 10 spokes, each contributing ~0.1, weighted by consistency, the maximum coherence is ~0.1 (all spokes perfectly consistent and equally contributing). The thresholds are calibrated to this range.
+**Note:** These thresholds are deliberately low because the coherence formula produces small values. With 10 spokes, each contributing ~0.1, weighted by consistency, the maximum coherence is ~0.1 (all spokes perfectly consistent and equally contributing). The narrow band (0.02–0.08) reflects the rarity of system-wide coherence in multi-dimensional spaces — most coordinate positions will be weakly coherent or incoherent. This is by design: true coherence across all 10 philosophical branches is a demanding condition.
 
 ---
 
