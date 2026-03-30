@@ -7,6 +7,7 @@ Bypassed entirely if input is a pre-formed coordinate dict.
 
 from __future__ import annotations
 
+from advanced_prompting_engine.graph.canonical import _stem
 from advanced_prompting_engine.graph.schema import ALL_BRANCHES, PipelineState
 
 MATCH_THRESHOLD = 0.15
@@ -123,8 +124,9 @@ class IntentParser:
         state.partial_coordinate = partial
 
     def _tokenize(self, text: str) -> set[str]:
+        """Tokenize and stem to match the stemmed tags in canonical constructs."""
         words = text.lower().replace("?", "").replace(",", "").replace("'", "").split()
-        return {w for w in words if w not in _STOP_WORDS and len(w) > 1}
+        return {_stem(w) for w in words if w not in _STOP_WORDS and len(w) > 1}
 
     def _validate_coordinate(self, coord: dict):
         for branch in ALL_BRANCHES:

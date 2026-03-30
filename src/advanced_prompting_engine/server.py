@@ -45,13 +45,17 @@ def create_server(db_path: str | None = None) -> FastMCP:
     for e in store.load_canonical_edges():
         G.add_edge(e["source_id"], e["target_id"], **e)
         if e.get("relation") in SYMMETRIC_RELATIONS:
-            G.add_edge(e["target_id"], e["source_id"], **e)
+            rev = {k: v for k, v in e.items() if k not in ("source_id", "target_id")}
+            G.add_edge(e["target_id"], e["source_id"],
+                       source_id=e["target_id"], target_id=e["source_id"], **rev)
     for n in store.load_user_nodes():
         G.add_node(n["id"], **n)
     for e in store.load_user_edges():
         G.add_edge(e["source_id"], e["target_id"], **e)
         if e.get("relation") in SYMMETRIC_RELATIONS:
-            G.add_edge(e["target_id"], e["source_id"], **e)
+            rev = {k: v for k, v in e.items() if k not in ("source_id", "target_id")}
+            G.add_edge(e["target_id"], e["source_id"],
+                       source_id=e["target_id"], target_id=e["source_id"], **rev)
 
     print(f"Graph loaded: {len(G.nodes())} nodes, {len(G.edges())} edges")
 

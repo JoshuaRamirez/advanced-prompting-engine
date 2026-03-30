@@ -28,7 +28,9 @@ def full_pipeline():
         G.add_edge(e["source_id"], e["target_id"], **e)
         # Add reverse for symmetric relations
         if e.get("relation") in SYMMETRIC_RELATIONS:
-            G.add_edge(e["target_id"], e["source_id"], **e)
+            rev = {k: v for k, v in e.items() if k not in ("source_id", "target_id")}
+            G.add_edge(e["target_id"], e["source_id"],
+                       source_id=e["target_id"], target_id=e["source_id"], **rev)
 
     query = GraphQueryLayer(G)
     emb_cache = EmbeddingCache()

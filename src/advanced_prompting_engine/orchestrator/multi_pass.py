@@ -144,20 +144,17 @@ def deepen(
     if not targets:
         return basis
 
-    # Overlay gems onto target center points (do NOT replace base constructs)
+    # Record condensation metadata (do NOT mutate the shared graph)
+    condensation_metadata = []
     for target in targets:
         gem = target["gem"]
-        dest_id = f"{target['destination_branch']}.{target['dest_x']}_{target['dest_y']}"
-        if dest_id in G.nodes:
-            node = G.nodes[dest_id]
-            if "condensed_gems" not in node:
-                node["condensed_gems"] = []
-            node["condensed_gems"].append({
-                "source_nexus": gem["nexus"],
-                "magnitude": gem["magnitude"],
-                "source_planes": [gem["nexus"].split(".")[1], gem["nexus"].split(".")[2]],
-                "generation": basis.get("depth", 0) + 1,
-            })
+        condensation_metadata.append({
+            "dest_id": f"{target['destination_branch']}.{target['dest_x']}_{target['dest_y']}",
+            "source_nexus": gem["nexus"],
+            "magnitude": gem["magnitude"],
+            "source_planes": [gem["nexus"].split(".")[1], gem["nexus"].split(".")[2]],
+            "generation": basis.get("depth", 0) + 1,
+        })
 
     # Build coordinate targeting condensed positions
     new_coordinate = copy.deepcopy(basis["coordinate"])
@@ -173,6 +170,7 @@ def deepen(
     deeper_basis = pipeline.run(new_coordinate)
     deeper_basis["depth"] = basis.get("depth", 0) + 1
     deeper_basis["condensation_source"] = targets
+    deeper_basis["condensation_metadata"] = condensation_metadata
 
     return deeper_basis
 
