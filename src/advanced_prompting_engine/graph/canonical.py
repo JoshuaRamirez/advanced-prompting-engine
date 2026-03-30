@@ -83,11 +83,11 @@ BASE_QUESTIONS: dict[tuple[int, int], str] = {
     (9, 4): "What transformation does vertical edge influence undergo at the locus of maximal lateral divergence in {domain}?",
     (4, 9): "What reflected projection completes the harmonic sequence begun from the top center of {domain}?",
     (0, 4): "What counterbalancing projection is enacted through edge-derived force reflection in {domain}?",
-    # Midpoints — dual 4 (authored for dual midpoint model)
-    (5, 0): "What secondary axial resonance extends from the horizontal center of {domain}?",
-    (9, 5): "What post-central lateral transition emerges beyond the vertical midpoint of {domain}?",
-    (5, 9): "What mirrored axial completion resolves the bottom center of {domain}?",
-    (0, 5): "What ascending medial force bridges the vertical center of {domain}?",
+    # Midpoints — dual 4 (spec source questions Q12, Q19, Q26, Q33)
+    (5, 0): "What resonant field defines transitional knowledge zones in {domain}?",
+    (9, 5): "What energetic recoil or redirection signals inversion from external to internal force in {domain}?",
+    (5, 9): "What terminal convergence mirrors the primary center of {domain}?",
+    (0, 5): "What balanced state reflects both ascending and descending tension in {domain}?",
     # Top edge y=0 (7)
     (1, 0): "What emergent polarity forms between anchoring origin and expanding vector in {domain}?",
     (2, 0): "What preliminary expression of spectrum is encoded before the midpoint of {domain} is reached?",
@@ -430,11 +430,9 @@ def generate_all_edges(constructs: list[dict] | None = None) -> list[dict]:
             bx, by = map(int, b_id.split(".")[1].split("_"))
 
             # Look up spectrum question (may be None)
+            # Keys are sorted so ((0,9),(9,0)) matches regardless of edge direction
             pair_key = tuple(sorted([(ax, ay), (bx, by)]))
-            spectrum_q = (
-                SPECTRUM_QUESTIONS.get(pair_key)
-                or SPECTRUM_QUESTIONS.get((pair_key[1], pair_key[0]))
-            )
+            spectrum_q = SPECTRUM_QUESTIONS.get(pair_key)
             question = spectrum_q.replace("{domain}", domain) if spectrum_q else None
 
             edges.append({
