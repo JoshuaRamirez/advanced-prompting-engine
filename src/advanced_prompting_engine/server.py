@@ -281,7 +281,7 @@ def create_server(db_path: str | None = None) -> FastMCP:
 def _json_default(obj):
     """Handle numpy arrays and other non-serializable types."""
     import numpy as np
-    if isinstance(np.ndarray, type) and isinstance(obj, np.ndarray):
+    if isinstance(obj, np.ndarray):
         return obj.tolist()
     if isinstance(obj, (np.floating, np.integer)):
         return obj.item()

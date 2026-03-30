@@ -62,12 +62,17 @@ def compute_tensions(active_constructs: dict, G: nx.Graph) -> dict:
                     _collect_resolutions(a_id, b_id, G, resolution_paths)
                     break  # only count once per pair
 
-    # Spectrum oppositions
+    # Spectrum oppositions (deduplicate — symmetric edges are stored both directions)
+    seen_spectrum_pairs: set[frozenset] = set()
     for c in all_active:
         c_id = c["id"]
         if c.get("classification") in ("corner", "midpoint", "edge"):
             for _, neighbor, data in G.edges(c_id, data=True):
                 if data.get("relation") == SPECTRUM_OPPOSITION:
+                    pair = frozenset([c_id, neighbor])
+                    if pair in seen_spectrum_pairs:
+                        continue
+                    seen_spectrum_pairs.add(pair)
                     opp_potency = G.nodes[neighbor].get("potency", 0.6)
                     mag = 0.6 * c["potency"] * opp_potency
                     spectrum.append({

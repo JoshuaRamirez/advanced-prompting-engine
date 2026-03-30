@@ -395,8 +395,12 @@ def generate_central_gem() -> dict:
 
 
 def generate_all_edges(constructs: list[dict] | None = None) -> list[dict]:
-    """Generate all 1459 canonical edges."""
+    """Generate all 1459 canonical edges.
+
+    If constructs is provided, populates their spectrum_ids in place.
+    """
     edges: list[dict] = []
+    construct_index = {c["id"]: c for c in constructs} if constructs else {}
 
     # 1. HAS_CONSTRUCT edges (1000)
     for branch in ALL_BRANCHES:
@@ -442,6 +446,13 @@ def generate_all_edges(constructs: list[dict] | None = None) -> list[dict]:
                 "question": question,
                 "source": "geometric",
             })
+
+            # Populate spectrum_ids on construct nodes if provided
+            if construct_index:
+                if a_id in construct_index:
+                    construct_index[a_id]["spectrum_ids"].append(sid)
+                if b_id in construct_index:
+                    construct_index[b_id]["spectrum_ids"].append(sid)
 
     # 4. NEXUS_SOURCE edges (90)
     for (branch_a, branch_b) in NEXUS_CONTENT:

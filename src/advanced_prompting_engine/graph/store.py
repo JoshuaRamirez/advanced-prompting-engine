@@ -341,9 +341,6 @@ class SqliteStore:
 
         Returns list of orphaned edges (do NOT auto-delete).
         """
-        # Find orphans before replacing canonical data
-        orphaned = self.find_orphaned_user_edges()
-
         # Replace canonical data in a transaction
         self.drop_write_protection_triggers()
         c = self.conn

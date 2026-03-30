@@ -102,7 +102,7 @@ class ConstructionBridge:
             # Tension note
             branch_tensions = [
                 t for t in tensions.get("direct", [])
-                if any(branch in b for b in t.get("between", []))
+                if any(b.split(".")[0] == branch for b in t.get("between", []))
             ]
             tension_note = (
                 f"{len(branch_tensions)} direct tension(s) involving this branch"
@@ -112,7 +112,7 @@ class ConstructionBridge:
             # Generative note
             branch_gens = [
                 g for g in generatives
-                if any(branch in c for c in g.get("constructs", []))
+                if any(c.split(".")[0] == branch for c in g.get("constructs", []))
             ]
             generative_note = (
                 f"{len(branch_gens)} generative combination(s) involving this branch"

@@ -21,7 +21,8 @@ def compute_spectral_embedding(G: nx.Graph, k: int = 20) -> dict[str, np.ndarray
 
     k = min(k, n - 1)
 
-    A = nx.to_numpy_array(G)
+    # Symmetrize for spectral methods — directed edges become undirected
+    A = nx.to_numpy_array(G.to_undirected())
     D = np.diag(A.sum(axis=1))
     L = D - A
 
