@@ -6,7 +6,24 @@ build-backend = "hatchling.build"
 name = "advanced-prompting-engine"
 version = "0.1.1"
 description = "Universal prompt creation engine — MCP server with 10-axis philosophical manifold"
+readme = "README.md"
+license = "MIT"
 requires-python = ">=3.10"
+authors = [
+    { name = "Joshua" },
+]
+keywords = ["mcp", "prompt-engineering", "philosophical-manifold", "networkx"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
 dependencies = [
     "networkx>=3.0",
     "numpy>=1.24",
