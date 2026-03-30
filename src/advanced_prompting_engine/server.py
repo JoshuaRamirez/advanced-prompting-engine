@@ -91,7 +91,7 @@ def create_server(db_path: str | None = None) -> FastMCP:
     @mcp.tool()
     def create_prompt_basis(
         intent: str | None = None,
-        coordinate: str | None = None,
+        coordinate: dict | str | None = None,
     ) -> str:
         """Measure intent across 10 philosophical dimensions and return a construction basis.
 
@@ -103,10 +103,15 @@ def create_server(db_path: str | None = None) -> FastMCP:
         """
         coord_dict = None
         if coordinate:
-            try:
-                coord_dict = json.loads(coordinate) if isinstance(coordinate, str) else coordinate
-            except json.JSONDecodeError:
-                return json.dumps({"status": "error", "message": "Invalid coordinate JSON"})
+            if isinstance(coordinate, dict):
+                coord_dict = coordinate
+            elif isinstance(coordinate, str):
+                try:
+                    coord_dict = json.loads(coordinate)
+                except json.JSONDecodeError:
+                    return json.dumps({"status": "error", "message": "Invalid coordinate JSON"})
+            else:
+                coord_dict = coordinate
 
         result = handle_create_prompt_basis(pipeline, intent=intent, coordinate=coord_dict)
         return json.dumps(result, default=_json_default)
@@ -120,9 +125,9 @@ def create_server(db_path: str | None = None) -> FastMCP:
         target_branch: str | None = None,
         target_x: int | None = None,
         target_y: int | None = None,
-        coordinate: str | None = None,
-        coordinate_a: str | None = None,
-        coordinate_b: str | None = None,
+        coordinate: dict | str | None = None,
+        coordinate_a: dict | str | None = None,
+        coordinate_b: dict | str | None = None,
         classification: str | None = None,
         provenance: str = "merged",
     ) -> str:
@@ -134,20 +139,11 @@ def create_server(db_path: str | None = None) -> FastMCP:
             "classification": classification, "provenance": provenance,
         }
         if coordinate:
-            try:
-                kwargs["coordinate"] = json.loads(coordinate)
-            except json.JSONDecodeError:
-                return json.dumps({"status": "error", "message": "Invalid coordinate JSON"})
+            kwargs["coordinate"] = json.loads(coordinate) if isinstance(coordinate, str) else coordinate
         if coordinate_a:
-            try:
-                kwargs["coordinate_a"] = json.loads(coordinate_a)
-            except json.JSONDecodeError:
-                return json.dumps({"status": "error", "message": "Invalid coordinate_a JSON"})
+            kwargs["coordinate_a"] = json.loads(coordinate_a) if isinstance(coordinate_a, str) else coordinate_a
         if coordinate_b:
-            try:
-                kwargs["coordinate_b"] = json.loads(coordinate_b)
-            except json.JSONDecodeError:
-                return json.dumps({"status": "error", "message": "Invalid coordinate_b JSON"})
+            kwargs["coordinate_b"] = json.loads(coordinate_b) if isinstance(coordinate_b, str) else coordinate_b
 
         result = handle_explore_space(query_layer, pipeline, operation, **kwargs)
         return json.dumps(result, default=_json_default)
@@ -159,7 +155,7 @@ def create_server(db_path: str | None = None) -> FastMCP:
         x: int | None = None,
         y: int | None = None,
         question: str | None = None,
-        tags: str | None = None,
+        tags: list | str | None = None,
         description: str | None = None,
         source_id: str | None = None,
         target_id: str | None = None,
@@ -173,7 +169,7 @@ def create_server(db_path: str | None = None) -> FastMCP:
         kwargs = {
             "branch": branch, "x": x, "y": y,
             "question": question,
-            "tags": json.loads(tags) if tags else None,
+            "tags": (json.loads(tags) if isinstance(tags, str) else tags) if tags else None,
             "description": description,
             "source_id": source_id, "target_id": target_id,
             "relation_type": relation_type, "strength": strength,
