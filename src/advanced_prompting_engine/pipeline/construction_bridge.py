@@ -119,6 +119,17 @@ class ConstructionBridge:
                 if branch_gens else None
             )
 
+            # Sub-dimensional interpretation (mechanically derived)
+            x_interp = None
+            y_interp = None
+            position_summary = None
+            if primary:
+                px = primary.get("x", 0)
+                py = primary.get("y", 0)
+                x_interp = _interpret_axis(px, defn["x_axis_low"], defn["x_axis_high"])
+                y_interp = _interpret_axis(py, defn["y_axis_low"], defn["y_axis_high"])
+                position_summary = f"{x_interp['label']} + {y_interp['label']}"
+
             construction_questions[branch] = {
                 "template": defn["construction_template"],
                 "active_question": primary.get("question") if primary else None,
@@ -127,6 +138,13 @@ class ConstructionBridge:
                 "spectrum_question": spectrum_question,
                 "classification": primary.get("classification") if primary else None,
                 "potency": primary.get("potency") if primary else None,
+                "x": primary.get("x") if primary else None,
+                "y": primary.get("y") if primary else None,
+                "x_axis": defn["x_axis_name"],
+                "x_interpretation": x_interp,
+                "y_axis": defn["y_axis_name"],
+                "y_interpretation": y_interp,
+                "position_summary": position_summary,
                 "spoke_profile": spoke.get("classification"),
                 "spoke_strength": spoke.get("strength", 0.0),
                 "tension_note": tension_note,
@@ -171,3 +189,41 @@ class ConstructionBridge:
             "central_gem": central_gem,
             "construction_questions": construction_questions,
         }
+
+
+def _interpret_axis(value: int, low_label: str, high_label: str) -> dict:
+    """Derive human-readable interpretation of a 0-9 axis position.
+
+    Pure arithmetic + string interpolation. No LLM inference.
+    """
+    ratio = value / 9.0
+    if ratio <= 0.15:
+        strength = "Strongly"
+        label = f"Strongly {low_label}"
+    elif ratio <= 0.35:
+        strength = "Leaning"
+        label = f"Leaning {low_label}"
+    elif ratio <= 0.45:
+        strength = "Slightly"
+        label = f"Slightly {low_label}"
+    elif ratio <= 0.55:
+        strength = "Balanced"
+        label = f"Balanced {low_label}/{high_label}"
+    elif ratio <= 0.65:
+        strength = "Slightly"
+        label = f"Slightly {high_label}"
+    elif ratio <= 0.85:
+        strength = "Leaning"
+        label = f"Leaning {high_label}"
+    else:
+        strength = "Strongly"
+        label = f"Strongly {high_label}"
+
+    return {
+        "value": value,
+        "ratio": round(ratio, 2),
+        "low_label": low_label,
+        "high_label": high_label,
+        "strength": strength,
+        "label": label,
+    }
