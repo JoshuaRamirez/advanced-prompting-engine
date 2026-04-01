@@ -30,6 +30,11 @@ dependencies = [
     "mcp>=1.0",
 ]
 
+[project.urls]
+Homepage = "https://github.com/JoshuaRamirez/advanced-prompting-engine"
+Repository = "https://github.com/JoshuaRamirez/advanced-prompting-engine"
+Issues = "https://github.com/JoshuaRamirez/advanced-prompting-engine/issues"
+
 [project.optional-dependencies]
 dev = [
     "pytest>=7.0",

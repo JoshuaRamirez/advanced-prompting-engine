@@ -1,0 +1,66 @@
+# Publish to PyPI when a GitHub Release is created.
+#
+# ---- PyPI Trusted Publisher Setup (one-time, do this BEFORE your first release) ----
+#
+# 1. Go to https://pypi.org and log in (or create an account).
+# 2. Navigate to: https://pypi.org/manage/account/publishing/
+#    (Account Settings > Publishing > Add a new pending publisher)
+# 3. Fill in:
+#      - PyPI Project Name:  advanced-prompting-engine
+#      - Owner:              JoshuaRamirez
+#      - Repository name:    advanced-prompting-engine
+#      - Workflow name:      publish.yml
+#      - Environment name:   pypi
+# 4. Click "Add".
+#
+# This grants the GitHub Actions workflow permission to publish via OIDC
+# without any API tokens or secrets. The "pypi" environment referenced
+# below must match the environment name you entered on PyPI.
+#
+# For subsequent releases, just create a GitHub Release and this workflow runs.
+# --------------------------------------------------------------------------
+
+name: Publish to PyPI
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install build tools
+        run: pip install build
+
+      - name: Build wheel and sdist
+        run: python -m build
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  publish:
+    runs-on: ubuntu-latest
+    needs: [build]
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
