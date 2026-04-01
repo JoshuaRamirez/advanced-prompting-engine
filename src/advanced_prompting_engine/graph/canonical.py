@@ -1,4 +1,4 @@
-"""Canonical graph data — generates all 1101 nodes and 1459 edges.
+"""Canonical graph data — generates all 1101 nodes and 1629 edges.
 
 Authoritative source: Spec 03 (canonical-content.md), Spec 03a (source-questions.md).
 Contains the 100 base questions, 19 spectrum questions, 45 nexus definitions,
@@ -288,6 +288,231 @@ CENTRAL_GEM_CONTENT = (
 
 
 # ---------------------------------------------------------------------------
+# Canonical cross-branch edges (197 total)
+# Derived from 45 nexus definitions × 16 corner pairings each.
+# Each edge: (source_id, target_id, relation, strength, nexus_pair, justification)
+# ---------------------------------------------------------------------------
+
+CANONICAL_CROSS_BRANCH_EDGES: list[tuple[str, str, str, float, str, str]] = [
+    # === Ontology ↔ Epistemology (6) ===
+    ("ontology.0_0", "epistemology.0_0", "COMPATIBLE_WITH", 0.8, "ontology-epistemology", "particular static entities are the natural objects of empirical certainty"),
+    ("ontology.9_0", "epistemology.9_0", "COMPATIBLE_WITH", 0.8, "ontology-epistemology", "universal static categories are the natural objects of rational certainty"),
+    ("ontology.0_9", "epistemology.9_0", "TENSIONS_WITH", 0.7, "ontology-epistemology", "changing particulars resist fixed rational categorization"),
+    ("ontology.9_9", "epistemology.0_0", "TENSIONS_WITH", 0.7, "ontology-epistemology", "evolving universal categories resist empirical certainty at a fixed point"),
+    ("ontology.0_9", "epistemology.0_9", "COMPATIBLE_WITH", 0.7, "ontology-epistemology", "changing particulars are best known through revisable empirical observation"),
+    ("ontology.9_9", "epistemology.9_9", "COMPATIBLE_WITH", 0.7, "ontology-epistemology", "evolving universals are best known through provisional rational inference"),
+    # === Ontology ↔ Axiology (4) ===
+    ("ontology.0_0", "axiology.0_0", "COMPATIBLE_WITH", 0.7, "ontology-axiology", "particular static entities are naturally valued intrinsically by individuals"),
+    ("ontology.9_0", "axiology.9_9", "COMPATIBLE_WITH", 0.7, "ontology-axiology", "fixed universal categories serve as instruments for collective organization"),
+    ("ontology.0_9", "axiology.9_9", "TENSIONS_WITH", 0.5, "ontology-axiology", "evolving particulars resist collective instrumentalization"),
+    ("ontology.9_9", "axiology.0_0", "TENSIONS_WITH", 0.5, "ontology-axiology", "evolving universals resist individual intrinsic valuation"),
+    # === Ontology ↔ Teleology (5) ===
+    ("ontology.0_0", "teleology.0_0", "COMPATIBLE_WITH", 0.7, "ontology-teleology", "particular static entities naturally serve immediate intentional purposes"),
+    ("ontology.9_9", "teleology.9_9", "COMPATIBLE_WITH", 0.8, "ontology-teleology", "evolving universals align with ultimate emergent purpose"),
+    ("ontology.0_0", "teleology.9_9", "TENSIONS_WITH", 0.7, "ontology-teleology", "fixed particulars resist bearing emergent ultimate purpose"),
+    ("ontology.9_0", "teleology.9_0", "COMPATIBLE_WITH", 0.7, "ontology-teleology", "fixed universal categories embody intentional ultimate purpose"),
+    ("ontology.0_9", "teleology.0_9", "COMPATIBLE_WITH", 0.7, "ontology-teleology", "changing particulars naturally produce immediate emergent purposes"),
+    # === Ontology ↔ Phenomenology (4) ===
+    ("ontology.0_0", "phenomenology.0_0", "COMPATIBLE_WITH", 0.8, "ontology-phenomenology", "fixed particulars naturally present as observable surface phenomena"),
+    ("ontology.9_9", "phenomenology.9_9", "COMPATIBLE_WITH", 0.7, "ontology-phenomenology", "evolving universals are constituted through deep subjective experience"),
+    ("ontology.0_0", "phenomenology.9_9", "TENSIONS_WITH", 0.6, "ontology-phenomenology", "fixed particulars resist constitution through deep subjective experience"),
+    ("ontology.9_0", "phenomenology.9_0", "TENSIONS_WITH", 0.5, "ontology-phenomenology", "universal categories resist reduction to surface subjective impression"),
+    # === Ontology ↔ Praxeology (4) ===
+    ("ontology.0_0", "praxeology.0_0", "COMPATIBLE_WITH", 0.7, "ontology-praxeology", "fixed particulars naturally elicit individual reactive response"),
+    ("ontology.9_9", "praxeology.9_9", "COMPATIBLE_WITH", 0.7, "ontology-praxeology", "evolving universals require coordinated proactive engagement"),
+    ("ontology.0_0", "praxeology.9_9", "TENSIONS_WITH", 0.6, "ontology-praxeology", "fixed particulars resist requiring coordinated proactive initiative"),
+    ("ontology.9_0", "praxeology.9_0", "COMPATIBLE_WITH", 0.5, "ontology-praxeology", "fixed universal structures enable coordinated reactive response"),
+    # === Ontology ↔ Methodology (5) ===
+    ("ontology.9_0", "methodology.0_0", "COMPATIBLE_WITH", 0.8, "ontology-methodology", "fixed universal categories are naturally analyzed through deduction"),
+    ("ontology.0_9", "methodology.9_9", "COMPATIBLE_WITH", 0.8, "ontology-methodology", "changing particulars are best understood through inductive synthesis"),
+    ("ontology.9_0", "methodology.9_9", "TENSIONS_WITH", 0.7, "ontology-methodology", "fixed universal categories resist inductive construction from cases"),
+    ("ontology.0_0", "methodology.0_0", "COMPATIBLE_WITH", 0.6, "ontology-methodology", "particular static entities yield to analytic deductive examination"),
+    ("ontology.0_9", "methodology.0_0", "TENSIONS_WITH", 0.6, "ontology-methodology", "changing particulars resist fixed analytic deductive decomposition"),
+    # === Ontology ↔ Semiotics (3) ===
+    ("ontology.0_0", "semiotics.0_0", "COMPATIBLE_WITH", 0.7, "ontology-semiotics", "fixed particulars generate explicit syntactic signs"),
+    ("ontology.9_9", "semiotics.9_9", "COMPATIBLE_WITH", 0.7, "ontology-semiotics", "evolving universals constitute recognition through implicit semantic signs"),
+    ("ontology.0_0", "semiotics.9_9", "TENSIONS_WITH", 0.5, "ontology-semiotics", "fixed particulars resist constitution through implicit semantic meaning"),
+    # === Ontology ↔ Hermeneutics (4) ===
+    ("ontology.0_0", "hermeneutics.0_0", "COMPATIBLE_WITH", 0.8, "ontology-hermeneutics", "fixed particulars are naturally interpreted literally as the author intended"),
+    ("ontology.9_9", "hermeneutics.9_9", "COMPATIBLE_WITH", 0.8, "ontology-hermeneutics", "evolving universals are reconstituted through figurative reader interpretation"),
+    ("ontology.0_0", "hermeneutics.9_9", "TENSIONS_WITH", 0.7, "ontology-hermeneutics", "fixed particulars resist figurative reader reinterpretation"),
+    ("ontology.9_0", "hermeneutics.9_0", "COMPATIBLE_WITH", 0.6, "ontology-hermeneutics", "universal categories are expressed through intentional figurative abstraction"),
+    # === Ontology ↔ Heuristics (5) ===
+    ("ontology.0_0", "heuristics.0_0", "COMPATIBLE_WITH", 0.7, "ontology-heuristics", "fixed particular entities are best addressed by systematic conservative strategy"),
+    ("ontology.9_9", "heuristics.9_9", "COMPATIBLE_WITH", 0.7, "ontology-heuristics", "evolving universals require intuitive exploratory strategy"),
+    ("ontology.0_0", "heuristics.9_9", "TENSIONS_WITH", 0.6, "ontology-heuristics", "fixed particulars resist requiring intuitive exploratory strategy"),
+    ("ontology.9_9", "heuristics.0_0", "TENSIONS_WITH", 0.6, "ontology-heuristics", "evolving universals resist systematic conservative constraints"),
+    ("ontology.0_9", "heuristics.0_9", "COMPATIBLE_WITH", 0.5, "ontology-heuristics", "changing particulars benefit from systematic exploratory strategy"),
+    # === Epistemology ↔ Axiology (4) ===
+    ("epistemology.0_0", "axiology.9_0", "COMPATIBLE_WITH", 0.7, "epistemology-axiology", "verified empirical facts naturally serve individual instrumental value"),
+    ("epistemology.9_0", "axiology.0_9", "COMPATIBLE_WITH", 0.6, "epistemology-axiology", "proven rational truths carry intrinsic collective worth"),
+    ("epistemology.0_9", "axiology.0_0", "TENSIONS_WITH", 0.5, "epistemology-axiology", "provisional empirical observations resist grounding stable intrinsic individual value"),
+    ("epistemology.9_9", "axiology.9_9", "COMPATIBLE_WITH", 0.5, "epistemology-axiology", "speculative rational inference serves collective instrumental ends"),
+    # === Epistemology ↔ Teleology (5) ===
+    ("epistemology.0_0", "teleology.0_0", "COMPATIBLE_WITH", 0.8, "epistemology-teleology", "empirical certainty directs immediate intentional purpose"),
+    ("epistemology.9_0", "teleology.9_0", "COMPATIBLE_WITH", 0.8, "epistemology-teleology", "rational certainty directs ultimate intentional purpose"),
+    ("epistemology.0_9", "teleology.0_9", "COMPATIBLE_WITH", 0.7, "epistemology-teleology", "provisional observation produces immediate emergent purpose"),
+    ("epistemology.9_9", "teleology.9_9", "COMPATIBLE_WITH", 0.7, "epistemology-teleology", "provisional rational inference aligns with ultimate emergent purpose"),
+    ("epistemology.0_0", "teleology.9_9", "TENSIONS_WITH", 0.6, "epistemology-teleology", "empirical certainty resists directing toward emergent ultimate purpose"),
+    # === Epistemology ↔ Phenomenology (4) ===
+    ("epistemology.0_0", "phenomenology.0_0", "COMPATIBLE_WITH", 0.8, "epistemology-phenomenology", "empirical certainty aligns with objective surface experience"),
+    ("epistemology.9_9", "phenomenology.9_9", "COMPATIBLE_WITH", 0.6, "epistemology-phenomenology", "provisional rational inference engages deep subjective experience"),
+    ("epistemology.0_0", "phenomenology.9_9", "TENSIONS_WITH", 0.7, "epistemology-phenomenology", "empirical certainty cannot access deep subjective experience"),
+    ("epistemology.9_0", "phenomenology.0_9", "TENSIONS_WITH", 0.5, "epistemology-phenomenology", "rational certainty tensions with objective deep pre-reflective structure"),
+    # === Epistemology ↔ Praxeology (4) ===
+    ("epistemology.0_0", "praxeology.0_0", "COMPATIBLE_WITH", 0.7, "epistemology-praxeology", "empirical certainty informs individual reactive action"),
+    ("epistemology.9_0", "praxeology.9_9", "COMPATIBLE_WITH", 0.6, "epistemology-praxeology", "rational certainty enables coordinated proactive action"),
+    ("epistemology.0_9", "praxeology.0_9", "COMPATIBLE_WITH", 0.6, "epistemology-praxeology", "provisional empirical knowledge drives individual proactive testing"),
+    ("epistemology.9_9", "praxeology.9_0", "TENSIONS_WITH", 0.5, "epistemology-praxeology", "provisional rational inference tensions with coordinated reactive demands"),
+    # === Epistemology ↔ Methodology (5) ===
+    ("epistemology.0_0", "methodology.0_0", "COMPATIBLE_WITH", 0.8, "epistemology-methodology", "empirical certainty and analytic deduction mutually validate"),
+    ("epistemology.9_0", "methodology.9_0", "COMPATIBLE_WITH", 0.7, "epistemology-methodology", "rational certainty aligns with synthetic deductive construction"),
+    ("epistemology.0_9", "methodology.0_9", "COMPATIBLE_WITH", 0.8, "epistemology-methodology", "provisional empirical knowledge aligns with analytic inductive method"),
+    ("epistemology.9_9", "methodology.9_9", "COMPATIBLE_WITH", 0.7, "epistemology-methodology", "provisional rational inference aligns with synthetic inductive method"),
+    ("epistemology.0_0", "methodology.9_9", "TENSIONS_WITH", 0.6, "epistemology-methodology", "empirical certainty resists synthetic inductive reconstruction"),
+    # === Epistemology ↔ Semiotics (3) ===
+    ("epistemology.0_0", "semiotics.0_0", "COMPATIBLE_WITH", 0.7, "epistemology-semiotics", "empirical certainty encodes naturally into explicit syntactic signs"),
+    ("epistemology.9_9", "semiotics.9_9", "COMPATIBLE_WITH", 0.6, "epistemology-semiotics", "provisional rational inference travels through implicit semantic signs"),
+    ("epistemology.0_0", "semiotics.9_9", "TENSIONS_WITH", 0.6, "epistemology-semiotics", "empirical certainty is distorted by implicit semantic encoding"),
+    # === Epistemology ↔ Hermeneutics (4) ===
+    ("epistemology.0_0", "hermeneutics.0_0", "COMPATIBLE_WITH", 0.8, "epistemology-hermeneutics", "empirical certainty frames literal author-intent interpretation"),
+    ("epistemology.9_9", "hermeneutics.9_9", "COMPATIBLE_WITH", 0.7, "epistemology-hermeneutics", "provisional reasoning invites figurative reader-response interpretation"),
+    ("epistemology.0_0", "hermeneutics.9_9", "TENSIONS_WITH", 0.7, "epistemology-hermeneutics", "empirical certainty resists figurative reader reinterpretation"),
+    ("epistemology.9_0", "hermeneutics.9_0", "COMPATIBLE_WITH", 0.6, "epistemology-hermeneutics", "rational certainty expressed through intentional figurative abstraction"),
+    # === Epistemology ↔ Heuristics (4) ===
+    ("epistemology.0_0", "heuristics.0_0", "COMPATIBLE_WITH", 0.7, "epistemology-heuristics", "empirical certainty supports systematic conservative strategy"),
+    ("epistemology.9_9", "heuristics.9_9", "COMPATIBLE_WITH", 0.7, "epistemology-heuristics", "provisional reasoning partners with intuitive exploratory strategy"),
+    ("epistemology.0_0", "heuristics.9_9", "TENSIONS_WITH", 0.6, "epistemology-heuristics", "empirical certainty resists intuitive exploratory strategy"),
+    ("epistemology.0_9", "heuristics.0_9", "COMPATIBLE_WITH", 0.6, "epistemology-heuristics", "provisional empirical knowledge benefits from systematic exploration"),
+    # === Axiology ↔ Teleology (4) ===
+    ("axiology.0_0", "teleology.0_0", "COMPATIBLE_WITH", 0.7, "axiology-teleology", "intrinsic individual value defines immediate intentional purpose"),
+    ("axiology.9_9", "teleology.9_9", "COMPATIBLE_WITH", 0.7, "axiology-teleology", "instrumental collective value aligns with ultimate emergent purpose"),
+    ("axiology.0_0", "teleology.9_9", "TENSIONS_WITH", 0.6, "axiology-teleology", "intrinsic individual value resists ultimate emergent purpose"),
+    ("axiology.9_0", "teleology.9_0", "COMPATIBLE_WITH", 0.6, "axiology-teleology", "instrumental individual value serves ultimate intentional purpose"),
+    # === Axiology ↔ Phenomenology (4) ===
+    ("axiology.0_0", "phenomenology.9_9", "COMPATIBLE_WITH", 0.7, "axiology-phenomenology", "intrinsic individual value is validated through deep subjective experience"),
+    ("axiology.9_9", "phenomenology.0_0", "COMPATIBLE_WITH", 0.6, "axiology-phenomenology", "instrumental collective value is validated through objective surface observation"),
+    ("axiology.0_0", "phenomenology.0_0", "TENSIONS_WITH", 0.5, "axiology-phenomenology", "intrinsic value is challenged by reduction to objective surface experience"),
+    ("axiology.0_9", "phenomenology.9_9", "COMPATIBLE_WITH", 0.6, "axiology-phenomenology", "intrinsic collective value shaped through deep subjective shared experience"),
+    # === Axiology ↔ Praxeology (4) ===
+    ("axiology.0_0", "praxeology.0_9", "COMPATIBLE_WITH", 0.7, "axiology-praxeology", "intrinsic individual value motivates individual proactive initiative"),
+    ("axiology.9_9", "praxeology.9_9", "COMPATIBLE_WITH", 0.7, "axiology-praxeology", "instrumental collective value motivates coordinated proactive action"),
+    ("axiology.0_0", "praxeology.9_0", "TENSIONS_WITH", 0.6, "axiology-praxeology", "intrinsic individual value tensions with coordinated reactive demands"),
+    ("axiology.9_0", "praxeology.0_0", "COMPATIBLE_WITH", 0.5, "axiology-praxeology", "instrumental individual value motivates individual reactive response"),
+    # === Axiology ↔ Methodology (4) ===
+    ("axiology.0_0", "methodology.0_0", "COMPATIBLE_WITH", 0.6, "axiology-methodology", "intrinsic individual value favors analytic deductive rigor"),
+    ("axiology.9_9", "methodology.9_9", "COMPATIBLE_WITH", 0.6, "axiology-methodology", "instrumental collective value favors synthetic inductive pragmatism"),
+    ("axiology.0_0", "methodology.9_9", "TENSIONS_WITH", 0.5, "axiology-methodology", "intrinsic individual value resists synthetic inductive methods"),
+    ("axiology.0_9", "methodology.0_9", "COMPATIBLE_WITH", 0.5, "axiology-methodology", "intrinsic collective value aligns with analytic inductive discovery"),
+    # === Axiology ↔ Semiotics (3) ===
+    ("axiology.0_0", "semiotics.0_9", "COMPATIBLE_WITH", 0.6, "axiology-semiotics", "intrinsic individual value communicates through explicit semantic meaning"),
+    ("axiology.9_9", "semiotics.9_0", "COMPATIBLE_WITH", 0.5, "axiology-semiotics", "instrumental collective value encoded through implicit syntactic convention"),
+    ("axiology.0_0", "semiotics.9_0", "TENSIONS_WITH", 0.5, "axiology-semiotics", "intrinsic value resists implicit syntactic encoding"),
+    # === Axiology ↔ Hermeneutics (4) ===
+    ("axiology.0_0", "hermeneutics.0_0", "COMPATIBLE_WITH", 0.7, "axiology-hermeneutics", "intrinsic individual value frames literal author-intent interpretation"),
+    ("axiology.9_9", "hermeneutics.9_9", "COMPATIBLE_WITH", 0.6, "axiology-hermeneutics", "instrumental collective value revealed through figurative reader-response"),
+    ("axiology.0_0", "hermeneutics.9_9", "TENSIONS_WITH", 0.6, "axiology-hermeneutics", "intrinsic individual value resists figurative reader reinterpretation"),
+    ("axiology.0_9", "hermeneutics.0_9", "COMPATIBLE_WITH", 0.5, "axiology-hermeneutics", "intrinsic collective value frames literal reader-response"),
+    # === Axiology ↔ Heuristics (4) ===
+    ("axiology.0_0", "heuristics.0_0", "COMPATIBLE_WITH", 0.7, "axiology-heuristics", "intrinsic individual value constrains toward systematic conservative strategy"),
+    ("axiology.9_9", "heuristics.9_9", "COMPATIBLE_WITH", 0.6, "axiology-heuristics", "instrumental collective value permits intuitive exploratory strategy"),
+    ("axiology.0_0", "heuristics.9_9", "TENSIONS_WITH", 0.6, "axiology-heuristics", "intrinsic individual value resists intuitive exploratory risk"),
+    ("axiology.9_0", "heuristics.9_0", "COMPATIBLE_WITH", 0.5, "axiology-heuristics", "instrumental individual value aligns with intuitive conservative caution"),
+    # === Teleology ↔ Phenomenology (4) ===
+    ("teleology.0_0", "phenomenology.0_0", "COMPATIBLE_WITH", 0.7, "teleology-phenomenology", "immediate intentional purpose structures objective surface experience"),
+    ("teleology.9_9", "phenomenology.9_9", "COMPATIBLE_WITH", 0.7, "teleology-phenomenology", "ultimate emergent purpose revealed through deep subjective experience"),
+    ("teleology.0_0", "phenomenology.9_9", "TENSIONS_WITH", 0.6, "teleology-phenomenology", "immediate intentional purpose resists deep subjective subversion"),
+    ("teleology.0_9", "phenomenology.9_0", "COMPATIBLE_WITH", 0.5, "teleology-phenomenology", "immediate emergent purpose revealed through subjective surface impression"),
+    # === Teleology ↔ Praxeology (4) ===
+    ("teleology.0_0", "praxeology.0_0", "COMPATIBLE_WITH", 0.8, "teleology-praxeology", "immediate intentional purpose directs individual reactive action"),
+    ("teleology.9_0", "praxeology.9_9", "COMPATIBLE_WITH", 0.8, "teleology-praxeology", "ultimate intentional purpose directs coordinated proactive action"),
+    ("teleology.9_9", "praxeology.0_0", "TENSIONS_WITH", 0.6, "teleology-praxeology", "ultimate emergent purpose tensions with individual reactive response"),
+    ("teleology.0_9", "praxeology.0_9", "COMPATIBLE_WITH", 0.7, "teleology-praxeology", "immediate emergent purpose drives individual proactive initiative"),
+    # === Teleology ↔ Methodology (4) ===
+    ("teleology.0_0", "methodology.0_0", "COMPATIBLE_WITH", 0.7, "teleology-methodology", "immediate intentional purpose selects analytic deductive method"),
+    ("teleology.9_9", "methodology.9_9", "COMPATIBLE_WITH", 0.7, "teleology-methodology", "ultimate emergent purpose reshapes toward synthetic inductive method"),
+    ("teleology.9_0", "methodology.0_0", "COMPATIBLE_WITH", 0.6, "teleology-methodology", "ultimate intentional purpose sustains analytic deductive method"),
+    ("teleology.0_0", "methodology.9_9", "TENSIONS_WITH", 0.6, "teleology-methodology", "immediate intentional purpose resists synthetic inductive emergence"),
+    # === Teleology ↔ Semiotics (3) ===
+    ("teleology.0_0", "semiotics.0_0", "COMPATIBLE_WITH", 0.7, "teleology-semiotics", "immediate intentional purpose encoded through explicit syntactic signals"),
+    ("teleology.9_9", "semiotics.9_9", "COMPATIBLE_WITH", 0.6, "teleology-semiotics", "ultimate emergent purpose carried through implicit semantic meaning"),
+    ("teleology.0_0", "semiotics.9_9", "TENSIONS_WITH", 0.5, "teleology-semiotics", "immediate intentional purpose resists implicit semantic obscurity"),
+    # === Teleology ↔ Hermeneutics (3) ===
+    ("teleology.0_0", "hermeneutics.0_0", "COMPATIBLE_WITH", 0.8, "teleology-hermeneutics", "immediate intentional purpose frames literal author-intent interpretation"),
+    ("teleology.9_9", "hermeneutics.9_9", "COMPATIBLE_WITH", 0.7, "teleology-hermeneutics", "ultimate emergent purpose reveals through figurative reader-response"),
+    ("teleology.0_0", "hermeneutics.9_9", "TENSIONS_WITH", 0.7, "teleology-hermeneutics", "immediate intentional purpose resists figurative reader reinterpretation"),
+    # === Teleology ↔ Heuristics (4) ===
+    ("teleology.0_0", "heuristics.0_0", "COMPATIBLE_WITH", 0.7, "teleology-heuristics", "immediate intentional purpose constrains toward systematic conservative strategy"),
+    ("teleology.9_9", "heuristics.9_9", "COMPATIBLE_WITH", 0.7, "teleology-heuristics", "ultimate emergent purpose demands intuitive exploratory strategy"),
+    ("teleology.0_0", "heuristics.9_9", "TENSIONS_WITH", 0.6, "teleology-heuristics", "immediate intentional purpose resists intuitive exploratory risk"),
+    ("teleology.9_0", "heuristics.0_0", "COMPATIBLE_WITH", 0.5, "teleology-heuristics", "ultimate intentional purpose sustains systematic conservative strategy"),
+    # === Phenomenology ↔ Praxeology (3) ===
+    ("phenomenology.0_0", "praxeology.0_0", "COMPATIBLE_WITH", 0.7, "phenomenology-praxeology", "objective surface experience motivates individual reactive action"),
+    ("phenomenology.9_9", "praxeology.0_9", "COMPATIBLE_WITH", 0.6, "phenomenology-praxeology", "deep subjective experience motivates individual proactive initiative"),
+    ("phenomenology.0_0", "praxeology.9_9", "TENSIONS_WITH", 0.5, "phenomenology-praxeology", "objective surface experience tensions with coordinated proactive initiative"),
+    # === Phenomenology ↔ Methodology (3) ===
+    ("phenomenology.0_0", "methodology.0_0", "COMPATIBLE_WITH", 0.7, "phenomenology-methodology", "objective surface experience informs analytic deductive method"),
+    ("phenomenology.9_9", "methodology.9_9", "COMPATIBLE_WITH", 0.6, "phenomenology-methodology", "deep subjective experience structures synthetic inductive method"),
+    ("phenomenology.0_0", "methodology.9_9", "TENSIONS_WITH", 0.5, "phenomenology-methodology", "objective surface experience resists synthetic inductive structuring"),
+    # === Phenomenology ↔ Semiotics (3) ===
+    ("phenomenology.0_0", "semiotics.0_0", "COMPATIBLE_WITH", 0.7, "phenomenology-semiotics", "objective surface experience generates explicit syntactic meaning"),
+    ("phenomenology.9_9", "semiotics.9_9", "COMPATIBLE_WITH", 0.7, "phenomenology-semiotics", "deep subjective experience generates implicit semantic meaning"),
+    ("phenomenology.0_0", "semiotics.9_9", "TENSIONS_WITH", 0.6, "phenomenology-semiotics", "objective surface experience resists implicit semantic shaping"),
+    # === Phenomenology ↔ Hermeneutics (3) ===
+    ("phenomenology.0_0", "hermeneutics.0_0", "COMPATIBLE_WITH", 0.6, "phenomenology-hermeneutics", "objective surface experience frames literal author-intent interpretation"),
+    ("phenomenology.9_9", "hermeneutics.9_9", "COMPATIBLE_WITH", 0.8, "phenomenology-hermeneutics", "deep subjective experience deepens figurative reader-response interpretation"),
+    ("phenomenology.9_9", "hermeneutics.0_0", "TENSIONS_WITH", 0.6, "phenomenology-hermeneutics", "deep subjective experience resists reduction to literal author-intent"),
+    # === Phenomenology ↔ Heuristics (3) ===
+    ("phenomenology.0_0", "heuristics.0_0", "COMPATIBLE_WITH", 0.6, "phenomenology-heuristics", "objective surface experience informs systematic conservative strategy"),
+    ("phenomenology.9_9", "heuristics.9_9", "COMPATIBLE_WITH", 0.6, "phenomenology-heuristics", "deep subjective experience informs intuitive exploratory strategy"),
+    ("phenomenology.0_0", "heuristics.9_9", "TENSIONS_WITH", 0.5, "phenomenology-heuristics", "objective surface experience resists intuitive exploratory strategy"),
+    # === Praxeology ↔ Methodology (3) ===
+    ("praxeology.0_0", "methodology.0_0", "COMPATIBLE_WITH", 0.7, "praxeology-methodology", "individual reactive action requires analytic deductive method"),
+    ("praxeology.9_9", "methodology.9_9", "COMPATIBLE_WITH", 0.7, "praxeology-methodology", "coordinated proactive action enables synthetic inductive method"),
+    ("praxeology.0_0", "methodology.9_9", "TENSIONS_WITH", 0.6, "praxeology-methodology", "individual reactive action resists synthetic inductive approach"),
+    # === Praxeology ↔ Semiotics (3) ===
+    ("praxeology.9_9", "semiotics.0_0", "COMPATIBLE_WITH", 0.6, "praxeology-semiotics", "coordinated proactive action communicated through explicit syntactic structures"),
+    ("praxeology.0_0", "semiotics.9_9", "TENSIONS_WITH", 0.5, "praxeology-semiotics", "individual reactive action resists implicit semantic communication"),
+    ("praxeology.0_9", "semiotics.0_9", "COMPATIBLE_WITH", 0.5, "praxeology-semiotics", "individual proactive action communicates through explicit semantic meaning"),
+    # === Praxeology ↔ Hermeneutics (3) ===
+    ("praxeology.0_0", "hermeneutics.0_0", "COMPATIBLE_WITH", 0.6, "praxeology-hermeneutics", "individual reactive action interpreted literally as intended"),
+    ("praxeology.9_9", "hermeneutics.9_9", "COMPATIBLE_WITH", 0.5, "praxeology-hermeneutics", "coordinated proactive action reinterpreted through figurative reader-response"),
+    ("praxeology.0_0", "hermeneutics.9_9", "TENSIONS_WITH", 0.5, "praxeology-hermeneutics", "individual reactive action resists figurative reader reinterpretation"),
+    # === Praxeology ↔ Heuristics (3) ===
+    ("praxeology.0_0", "heuristics.0_0", "COMPATIBLE_WITH", 0.7, "praxeology-heuristics", "individual reactive action structured by systematic conservative strategy"),
+    ("praxeology.9_9", "heuristics.9_9", "COMPATIBLE_WITH", 0.6, "praxeology-heuristics", "coordinated proactive action refined through intuitive exploratory strategy"),
+    ("praxeology.0_0", "heuristics.9_9", "TENSIONS_WITH", 0.5, "praxeology-heuristics", "individual reactive action resists intuitive exploratory risk"),
+    # === Methodology ↔ Semiotics (3) ===
+    ("methodology.0_0", "semiotics.0_0", "COMPATIBLE_WITH", 0.7, "methodology-semiotics", "analytic deductive method produces explicit syntactic signs"),
+    ("methodology.9_9", "semiotics.9_9", "COMPATIBLE_WITH", 0.6, "methodology-semiotics", "synthetic inductive method communicates through implicit semantic signs"),
+    ("methodology.0_0", "semiotics.9_9", "TENSIONS_WITH", 0.5, "methodology-semiotics", "analytic deductive method resists implicit semantic encoding"),
+    # === Methodology ↔ Hermeneutics (3) ===
+    ("methodology.0_0", "hermeneutics.0_0", "COMPATIBLE_WITH", 0.8, "methodology-hermeneutics", "analytic deductive method frames literal author-intent interpretation"),
+    ("methodology.9_9", "hermeneutics.9_9", "COMPATIBLE_WITH", 0.7, "methodology-hermeneutics", "synthetic inductive method challenges assumptions through figurative reader-response"),
+    ("methodology.0_0", "hermeneutics.9_9", "TENSIONS_WITH", 0.6, "methodology-hermeneutics", "analytic deductive method resists figurative reader reinterpretation"),
+    # === Methodology ↔ Heuristics (4) ===
+    ("methodology.0_0", "heuristics.0_0", "COMPATIBLE_WITH", 0.8, "methodology-heuristics", "analytic deductive method aligns with systematic conservative strategy"),
+    ("methodology.9_9", "heuristics.9_9", "COMPATIBLE_WITH", 0.7, "methodology-heuristics", "synthetic inductive method discovers through intuitive exploratory strategy"),
+    ("methodology.0_0", "heuristics.9_9", "TENSIONS_WITH", 0.7, "methodology-heuristics", "formal analytic deduction resists informal intuitive exploration"),
+    ("methodology.9_9", "heuristics.0_0", "TENSIONS_WITH", 0.5, "methodology-heuristics", "synthetic induction resists systematic conservative constraints"),
+    # === Semiotics ↔ Hermeneutics (4) ===
+    ("semiotics.0_0", "hermeneutics.0_0", "COMPATIBLE_WITH", 0.8, "semiotics-hermeneutics", "explicit syntactic signs invite literal author-intent interpretation"),
+    ("semiotics.9_9", "hermeneutics.9_9", "COMPATIBLE_WITH", 0.8, "semiotics-hermeneutics", "implicit semantic signs generate figurative reader-response interpretation"),
+    ("semiotics.0_0", "hermeneutics.9_9", "TENSIONS_WITH", 0.7, "semiotics-hermeneutics", "explicit syntactic signs resist figurative reader reinterpretation"),
+    ("semiotics.9_9", "hermeneutics.0_0", "TENSIONS_WITH", 0.7, "semiotics-hermeneutics", "implicit semantic signs resist literal author-intent reading"),
+    # === Semiotics ↔ Heuristics (3) ===
+    ("semiotics.0_0", "heuristics.0_0", "COMPATIBLE_WITH", 0.6, "semiotics-heuristics", "explicit syntactic signs encode systematic conservative strategies"),
+    ("semiotics.9_9", "heuristics.9_9", "COMPATIBLE_WITH", 0.6, "semiotics-heuristics", "implicit semantic signs carry intuitive exploratory adaptations"),
+    ("semiotics.0_0", "heuristics.9_9", "TENSIONS_WITH", 0.5, "semiotics-heuristics", "explicit syntactic signs resist intuitive exploratory encoding"),
+    # === Hermeneutics ↔ Heuristics (4) ===
+    ("hermeneutics.0_0", "heuristics.0_0", "COMPATIBLE_WITH", 0.7, "hermeneutics-heuristics", "literal author-intent interpretation informs systematic conservative strategy"),
+    ("hermeneutics.9_9", "heuristics.9_9", "COMPATIBLE_WITH", 0.7, "hermeneutics-heuristics", "figurative reader-response reshapes intuitive exploratory strategy"),
+    ("hermeneutics.0_0", "heuristics.9_9", "TENSIONS_WITH", 0.6, "hermeneutics-heuristics", "literal interpretation resists intuitive exploratory reframing"),
+    ("hermeneutics.9_9", "heuristics.0_0", "TENSIONS_WITH", 0.5, "hermeneutics-heuristics", "figurative reader-response resists systematic conservative constraints"),
+]
+
+
+# ---------------------------------------------------------------------------
 # Generation functions
 # ---------------------------------------------------------------------------
 
@@ -395,7 +620,7 @@ def generate_central_gem() -> dict:
 
 
 def generate_all_edges(constructs: list[dict] | None = None) -> list[dict]:
-    """Generate all 1459 canonical edges.
+    """Generate all 1629 canonical edges.
 
     If constructs is provided, populates their spectrum_ids in place.
     """
@@ -489,6 +714,17 @@ def generate_all_edges(constructs: list[dict] | None = None) -> list[dict]:
             "source_id": "central_gem",
             "target_id": f"nexus.{branch_b}.{branch_a}",
             "relation": CENTRAL_GEM_LINK,
+        })
+
+    # 7. CANONICAL_CROSS_BRANCH edges (197)
+    for src, tgt, rel, strength, nexus_pair, justification in CANONICAL_CROSS_BRANCH_EDGES:
+        edges.append({
+            "source_id": src,
+            "target_id": tgt,
+            "relation": rel,
+            "strength": strength,
+            "source": "canonical_cross_branch",
+            "nexus_pair": nexus_pair,
         })
 
     return edges
