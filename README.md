@@ -1,5 +1,10 @@
 # Advanced Prompting Engine
 
+[![CI](https://github.com/JoshuaRamirez/advanced-prompting-engine/actions/workflows/ci.yml/badge.svg)](https://github.com/JoshuaRamirez/advanced-prompting-engine/actions/workflows/ci.yml)
+[![PyPI version](https://img.shields.io/pypi/v/advanced-prompting-engine)](https://pypi.org/project/advanced-prompting-engine/)
+[![Python](https://img.shields.io/pypi/pyversions/advanced-prompting-engine)](https://pypi.org/project/advanced-prompting-engine/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 A universal prompt creation engine delivered as an MCP server. Measures intent across 10 philosophical dimensions and returns a construction basis from which the client constructs prompts.
 
 The engine does not generate prompts. It provides the dimensional foundation — active constructs, spectrum opposites, tensions, gems, spokes, and construction questions — that make prompt construction principled rather than heuristic.
@@ -96,6 +101,14 @@ The construction basis tells you what your prompt assumes exists (ontology), how
 pip install -e ".[dev]"
 pytest tests/ -v
 ```
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup and guidelines.
+
+## Security
+
+See [SECURITY.md](SECURITY.md) for vulnerability reporting instructions.
 
 ## License
 

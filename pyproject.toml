@@ -34,6 +34,7 @@ dependencies = [
 Homepage = "https://github.com/JoshuaRamirez/advanced-prompting-engine"
 Repository = "https://github.com/JoshuaRamirez/advanced-prompting-engine"
 Issues = "https://github.com/JoshuaRamirez/advanced-prompting-engine/issues"
+Changelog = "https://github.com/JoshuaRamirez/advanced-prompting-engine/blob/main/CHANGELOG.md"
 
 [project.optional-dependencies]
 dev = [
