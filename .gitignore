@@ -59,8 +59,7 @@ auth.json
 Thumbs.db
 Desktop.ini
 
-# MCP local config (contains machine-specific paths)
-.mcp.json
+# MCP local config — NOT ignored; .mcp.json uses ${CLAUDE_PLUGIN_ROOT} for portability
 
 # Profiling
 *.prof
