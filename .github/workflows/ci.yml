@@ -21,12 +21,22 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: pyproject.toml
 
       - name: Install dependencies
         run: pip install -e ".[dev]"
 
       - name: Run tests
-        run: pytest
+        run: pytest --junitxml=test-results/results.xml -q
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-${{ matrix.python-version }}
+          path: test-results/
+          retention-days: 30
 
   lint:
     runs-on: ubuntu-latest
@@ -37,6 +47,8 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
 
       - name: Install package
         run: pip install -e ".[dev]"
@@ -57,18 +69,24 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
 
       - name: Install build tools
-        run: pip install build
+        run: pip install build twine
 
       - name: Build wheel and sdist
         run: python -m build
 
-      - name: Verify distributions
+      - name: Verify distributions with twine
+        run: twine check dist/*
+
+      - name: Verify wheel installs and imports
         run: |
-          ls -lh dist/
           pip install dist/*.whl
           python -c "import advanced_prompting_engine; print('Import OK')"
+          # Verify the entry point script is available
+          which advanced-prompting-engine
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4

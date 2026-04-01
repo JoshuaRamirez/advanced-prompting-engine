@@ -1,0 +1,10 @@
+# Default owner for everything in the repo
+* @JoshuaRamirez
+
+# Construct specification and ADRs require explicit review
+docs/CONSTRUCT.md @JoshuaRamirez
+docs/adr/ @JoshuaRamirez
+
+# Canonical data changes require explicit review
+src/advanced_prompting_engine/graph/canonical.py @JoshuaRamirez
+src/advanced_prompting_engine/graph/schema.py @JoshuaRamirez
