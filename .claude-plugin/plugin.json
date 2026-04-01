@@ -1,0 +1,12 @@
+{
+  "name": "advanced-prompting-engine",
+  "version": "0.1.1",
+  "description": "Universal prompt creation engine — MCP server with 10-axis philosophical manifold for principled prompt construction",
+  "author": {
+    "name": "Joshua Ramirez",
+    "url": "https://github.com/JoshuaRamirez"
+  },
+  "repository": "https://github.com/JoshuaRamirez/advanced-prompting-engine",
+  "license": "MIT",
+  "keywords": ["mcp", "prompt-engineering", "philosophical-manifold", "construct"]
+}
