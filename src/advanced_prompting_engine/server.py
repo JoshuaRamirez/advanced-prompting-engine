@@ -6,10 +6,14 @@ Startup: SQLite → canonical data → NetworkX graph → caches → pipeline �
 
 from __future__ import annotations
 
+import atexit
 import json
+import logging
 
 import networkx as nx
 from mcp.server.fastmcp import FastMCP
+
+logger = logging.getLogger(__name__)
 
 from advanced_prompting_engine.cache.centrality import CentralityCache
 from advanced_prompting_engine.cache.embedding import EmbeddingCache
@@ -31,12 +35,13 @@ def create_server(db_path: str | None = None) -> FastMCP:
     # --- Step 1-4: Database + Graph ---
     store = SqliteStore(db_path=db_path)
     store.create_tables()
+    atexit.register(store.close)
 
     if store.needs_initialization():
-        print("First run — initializing canonical data...")
+        logger.info("First run — initializing canonical data...")
         nodes, edges = generate_all_canonical()
         store.initialize_canonical(nodes, edges, CANONICAL_VERSION)
-        print(f"Canonical data initialized: {len(nodes)} nodes, {len(edges)} edges")
+        logger.info("Canonical data initialized: %d nodes, %d edges", len(nodes), len(edges))
 
     # Load all data into NetworkX
     G = nx.DiGraph()
@@ -57,7 +62,7 @@ def create_server(db_path: str | None = None) -> FastMCP:
             G.add_edge(e["target_id"], e["source_id"],
                        source_id=e["target_id"], target_id=e["source_id"], **rev)
 
-    print(f"Graph loaded: {len(G.nodes())} nodes, {len(G.edges())} edges")
+    logger.info("Graph loaded: %d nodes, %d edges", len(G.nodes()), len(G.edges()))
 
     # --- Step 5-7: Caches ---
     embedding_cache = EmbeddingCache()
@@ -69,7 +74,7 @@ def create_server(db_path: str | None = None) -> FastMCP:
     centrality_cache = CentralityCache()
     centrality_cache.initialize(G)
 
-    print("Caches initialized")
+    logger.info("Caches initialized")
 
     # --- Step 8: Pipeline ---
     query_layer = GraphQueryLayer(G)
@@ -274,7 +279,7 @@ def create_server(db_path: str | None = None) -> FastMCP:
             "5. Use explore_space with operation=stress_test to find improvements"
         )
 
-    print("MCP server configured: 3 tools, 4 prompts, 3 resources")
+    logger.info("MCP server configured: 3 tools, 4 prompts, 3 resources")
     return mcp
 
 
