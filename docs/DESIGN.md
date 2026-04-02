@@ -424,7 +424,7 @@ EXTERNAL (3 tools + 4 prompts + 3 resources)
 │  managed, auto-invalidate   vectors, pre-computed     │
 ├───────────────────────────────────────────────────────┤
 │  NetworkX (compute)         SQLite (persist)           │
-│  1101 nodes, 1629 edges    canonical | user tables    │
+│  1101 nodes, 1696 edges    canonical | user tables    │
 └───────────────────────────────────────────────────────┘
 ```
 
@@ -1005,4 +1005,4 @@ The construction questions are the **bridge** between dimensional analysis and p
 | NEXUS_SOURCE | 90 |
 | NEXUS_TARGET | 90 |
 | CENTRAL_GEM_LINK | 90 |
-| **Total** | **1629** |
+| **Total** | **1696** |

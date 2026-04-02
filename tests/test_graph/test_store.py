@@ -49,7 +49,7 @@ class TestInitialization:
         assert initialized_store.canonical_node_count() == 1101
 
     def test_canonical_edge_count(self, initialized_store):
-        assert initialized_store.canonical_edge_count() == 1629
+        assert initialized_store.canonical_edge_count() == 1696
 
     def test_version_manifest(self, initialized_store):
         assert initialized_store.get_current_version() == CANONICAL_VERSION
@@ -97,7 +97,7 @@ class TestRoundTrip:
 
     def test_load_canonical_edges(self, initialized_store):
         edges = initialized_store.load_canonical_edges()
-        assert len(edges) == 1629
+        assert len(edges) == 1696
 
     def test_user_nodes_empty_initially(self, initialized_store):
         assert len(initialized_store.load_user_nodes()) == 0

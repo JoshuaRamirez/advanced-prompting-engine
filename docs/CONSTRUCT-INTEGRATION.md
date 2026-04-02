@@ -345,6 +345,6 @@ Every section of DESIGN.md and its required change:
 | NEXUS_SOURCE (nexus → source branch) | 90 | Canonical |
 | NEXUS_TARGET (nexus → target branch) | 90 | Canonical |
 | CENTRAL_GEM_LINK (central gem → nexus) | 90 | Canonical |
-| **Total edges** | **1629** | |
+| **Total edges** | **1696** | |
 
 User extensions add to this via the Graph Mutation Layer with provenance tagging. Canonical data remains immutable.

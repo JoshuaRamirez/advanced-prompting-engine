@@ -83,7 +83,7 @@ The construction basis tells you what your prompt assumes exists (ontology), how
 ## Architecture
 
 - **Stack:** Python + NetworkX + numpy + SQLite + MCP SDK
-- **Graph:** 1101 nodes, 1629 edges (10 branches × 100 constructs + 90 nexi + 1 central gem)
+- **Graph:** 1101 nodes, 1696 edges (10 branches × 100 constructs + 90 nexi + 1 central gem)
 - **Pipeline:** 8 stages (Intent Parser → Coordinate Resolver → Position Computer → Construct Resolver → Tension Analyzer → Nexus/Gem Analyzer → Spoke Analyzer → Construction Bridge)
 - **Deployment:** Single process, stdio transport, no daemon, no external dependencies
 

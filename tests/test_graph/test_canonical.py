@@ -146,9 +146,9 @@ class TestCentralGem:
 
 
 class TestEdges:
-    def test_total_1629(self):
+    def test_total_1696(self):
         edges = generate_all_edges()
-        assert len(edges) == 1629, f"Expected 1629 edges, got {len(edges)}"
+        assert len(edges) == 1696, f"Expected 1696 edges, got {len(edges)}"
 
     def test_edge_type_distribution(self):
         edges = generate_all_edges()
@@ -167,9 +167,9 @@ class TestFullCanonical:
         nodes, edges = generate_all_canonical()
         assert len(nodes) == 1101, f"Expected 1101 nodes, got {len(nodes)}"
 
-    def test_total_edges_1629(self):
+    def test_total_edges_1696(self):
         nodes, edges = generate_all_canonical()
-        assert len(edges) == 1629, f"Expected 1629 edges, got {len(edges)}"
+        assert len(edges) == 1696, f"Expected 1696 edges, got {len(edges)}"
 
     def test_node_type_distribution(self):
         nodes, _ = generate_all_canonical()
@@ -246,4 +246,4 @@ class TestCrossBranchEdges:
             assert 0 < strength <= 1.0, f"Strength {strength} out of range on {src} → {tgt}"
 
     def test_edge_count(self):
-        assert len(CANONICAL_CROSS_BRANCH_EDGES) == 170
+        assert len(CANONICAL_CROSS_BRANCH_EDGES) == 237

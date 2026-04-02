@@ -1,4 +1,4 @@
-"""Canonical graph data — generates all 1101 nodes and 1629 edges.
+"""Canonical graph data — generates all 1101 nodes and 1696 edges.
 
 Authoritative source: Spec 03 (canonical-content.md), Spec 03a (source-questions.md).
 Contains the 100 base questions, 19 spectrum questions, 45 nexus definitions,
@@ -509,6 +509,95 @@ CANONICAL_CROSS_BRANCH_EDGES: list[tuple[str, str, str, float, str, str]] = [
     ("hermeneutics.9_9", "heuristics.9_9", "COMPATIBLE_WITH", 0.7, "hermeneutics-heuristics", "figurative reader-response reshapes intuitive exploratory strategy"),
     ("hermeneutics.0_0", "heuristics.9_9", "TENSIONS_WITH", 0.6, "hermeneutics-heuristics", "literal interpretation resists intuitive exploratory reframing"),
     ("hermeneutics.9_9", "heuristics.0_0", "TENSIONS_WITH", 0.5, "hermeneutics-heuristics", "figurative reader-response resists systematic conservative constraints"),
+    # === MIDPOINT CROSS-BRANCH EDGES (82 total) ===
+    # Primary midpoints only: (4,0), (9,4), (4,9), (0,4)
+    # Duals (5,0), (9,5), (5,9), (0,5) inherit by structural equivalence.
+    # --- Epistemology ↔ Methodology ---
+    ("epistemology.4_0", "methodology.4_0", "COMPATIBLE_WITH", 0.7, "epistemology-methodology", "balanced knowing at certainty reinforces balanced method at deduction"),
+    ("epistemology.4_9", "methodology.4_9", "COMPATIBLE_WITH", 0.7, "epistemology-methodology", "balanced knowing at provisionality reinforces balanced method at induction"),
+    ("epistemology.4_0", "methodology.4_9", "TENSIONS_WITH", 0.5, "epistemology-methodology", "balanced knowing at certainty tensions with balanced method at induction"),
+    ("epistemology.9_4", "methodology.9_4", "COMPATIBLE_WITH", 0.5, "epistemology-methodology", "strongly rational at balanced certainty reinforces strongly synthetic at balanced deduction"),
+    ("epistemology.0_4", "methodology.0_4", "COMPATIBLE_WITH", 0.5, "epistemology-methodology", "strongly empirical at balanced certainty reinforces strongly analytic at balanced deduction"),
+    # --- Ontology ↔ Epistemology ---
+    ("ontology.4_0", "epistemology.4_0", "COMPATIBLE_WITH", 0.7, "ontology-epistemology", "balanced particular/universal at static reinforces balanced empirical/rational at certain"),
+    ("ontology.4_9", "epistemology.4_9", "COMPATIBLE_WITH", 0.7, "ontology-epistemology", "balanced particular/universal at dynamic reinforces balanced knowing at provisional"),
+    ("ontology.4_0", "epistemology.4_9", "TENSIONS_WITH", 0.5, "ontology-epistemology", "static ontological balance tensions with provisional epistemic balance"),
+    ("ontology.0_4", "epistemology.0_4", "COMPATIBLE_WITH", 0.5, "ontology-epistemology", "strongly particular at balanced stasis reinforces strongly empirical at balanced certainty"),
+    # --- Ontology ↔ Methodology ---
+    ("ontology.4_0", "methodology.4_0", "COMPATIBLE_WITH", 0.7, "ontology-methodology", "balanced ontology at static reinforces balanced method at deductive"),
+    ("ontology.4_9", "methodology.4_9", "COMPATIBLE_WITH", 0.7, "ontology-methodology", "balanced ontology at dynamic reinforces balanced method at inductive"),
+    ("ontology.9_4", "methodology.9_4", "COMPATIBLE_WITH", 0.5, "ontology-methodology", "strongly universal at balanced stasis reinforces strongly synthetic at balanced deduction"),
+    ("ontology.4_0", "methodology.4_9", "TENSIONS_WITH", 0.5, "ontology-methodology", "static balanced ontology tensions with inductive balanced method"),
+    # --- Axiology ↔ Teleology ---
+    ("axiology.4_0", "teleology.4_0", "COMPATIBLE_WITH", 0.7, "axiology-teleology", "balanced value at individual reinforces balanced purpose at intentional"),
+    ("axiology.4_9", "teleology.4_9", "COMPATIBLE_WITH", 0.7, "axiology-teleology", "balanced value at collective reinforces balanced purpose at emergent"),
+    ("axiology.4_0", "teleology.4_9", "TENSIONS_WITH", 0.5, "axiology-teleology", "individual balanced value tensions with emergent balanced purpose"),
+    ("axiology.0_4", "teleology.0_4", "COMPATIBLE_WITH", 0.5, "axiology-teleology", "strongly intrinsic at balanced scope reinforces strongly immediate at balanced emergence"),
+    # --- Teleology ↔ Praxeology ---
+    ("teleology.4_0", "praxeology.4_0", "COMPATIBLE_WITH", 0.7, "teleology-praxeology", "balanced purpose at intentional reinforces balanced action at reactive"),
+    ("teleology.4_9", "praxeology.4_9", "COMPATIBLE_WITH", 0.7, "teleology-praxeology", "balanced purpose at emergent reinforces balanced action at proactive"),
+    ("teleology.9_4", "praxeology.9_4", "COMPATIBLE_WITH", 0.7, "teleology-praxeology", "strongly ultimate at balanced emergence reinforces strongly coordinated at balanced reactivity"),
+    ("teleology.4_0", "praxeology.4_9", "TENSIONS_WITH", 0.5, "teleology-praxeology", "intentional balanced purpose tensions with proactive balanced action"),
+    # --- Semiotics ↔ Hermeneutics ---
+    ("semiotics.4_0", "hermeneutics.4_0", "COMPATIBLE_WITH", 0.7, "semiotics-hermeneutics", "balanced signaling at syntactic reinforces balanced interpretation at author-intent"),
+    ("semiotics.4_9", "hermeneutics.4_9", "COMPATIBLE_WITH", 0.7, "semiotics-hermeneutics", "balanced signaling at semantic reinforces balanced interpretation at reader-response"),
+    ("semiotics.4_0", "hermeneutics.4_9", "TENSIONS_WITH", 0.7, "semiotics-hermeneutics", "syntactic balanced signs tension with reader-response balanced interpretation"),
+    ("semiotics.9_4", "hermeneutics.9_4", "COMPATIBLE_WITH", 0.5, "semiotics-hermeneutics", "strongly implicit at balanced form reinforces strongly figurative at balanced response"),
+    # --- Methodology ↔ Heuristics ---
+    ("methodology.4_0", "heuristics.4_0", "COMPATIBLE_WITH", 0.7, "methodology-heuristics", "balanced method at deductive reinforces balanced strategy at conservative"),
+    ("methodology.4_9", "heuristics.4_9", "COMPATIBLE_WITH", 0.7, "methodology-heuristics", "balanced method at inductive reinforces balanced strategy at exploratory"),
+    ("methodology.4_0", "heuristics.4_9", "TENSIONS_WITH", 0.7, "methodology-heuristics", "deductive balanced method tensions with exploratory balanced strategy"),
+    ("methodology.9_4", "heuristics.9_4", "TENSIONS_WITH", 0.5, "methodology-heuristics", "strongly synthetic at balanced deduction tensions with strongly intuitive at balanced conservatism"),
+    # --- Epistemology ↔ Hermeneutics ---
+    ("epistemology.4_0", "hermeneutics.4_0", "COMPATIBLE_WITH", 0.7, "epistemology-hermeneutics", "balanced knowing at certainty reinforces balanced interpretation at author-intent"),
+    ("epistemology.4_9", "hermeneutics.4_9", "COMPATIBLE_WITH", 0.7, "epistemology-hermeneutics", "balanced knowing at provisionality reinforces balanced interpretation at reader-response"),
+    ("epistemology.4_0", "hermeneutics.4_9", "TENSIONS_WITH", 0.7, "epistemology-hermeneutics", "certain balanced knowing tensions with reader-response balanced interpretation"),
+    ("epistemology.0_4", "hermeneutics.0_4", "COMPATIBLE_WITH", 0.5, "epistemology-hermeneutics", "strongly empirical at balanced certainty reinforces strongly literal at balanced intent"),
+    # --- Phenomenology ↔ Hermeneutics ---
+    ("phenomenology.4_0", "hermeneutics.4_0", "COMPATIBLE_WITH", 0.5, "phenomenology-hermeneutics", "balanced experience at surface reinforces balanced interpretation at author-intent"),
+    ("phenomenology.4_9", "hermeneutics.4_9", "COMPATIBLE_WITH", 0.7, "phenomenology-hermeneutics", "balanced experience at deep reinforces balanced interpretation at reader-response"),
+    ("phenomenology.4_9", "hermeneutics.4_0", "TENSIONS_WITH", 0.5, "phenomenology-hermeneutics", "deep balanced experience tensions with author-intent balanced interpretation"),
+    ("phenomenology.9_4", "hermeneutics.9_4", "COMPATIBLE_WITH", 0.5, "phenomenology-hermeneutics", "strongly subjective at balanced depth reinforces strongly figurative at balanced response"),
+    # --- Axiology ↔ Praxeology ---
+    ("axiology.4_0", "praxeology.4_0", "COMPATIBLE_WITH", 0.5, "axiology-praxeology", "balanced value at individual reinforces balanced action at reactive"),
+    ("axiology.4_9", "praxeology.4_9", "COMPATIBLE_WITH", 0.7, "axiology-praxeology", "balanced value at collective reinforces balanced action at proactive"),
+    ("axiology.0_4", "praxeology.0_4", "COMPATIBLE_WITH", 0.5, "axiology-praxeology", "strongly intrinsic at balanced scope reinforces strongly individual at balanced reactivity"),
+    ("axiology.9_4", "praxeology.9_4", "TENSIONS_WITH", 0.5, "axiology-praxeology", "strongly instrumental at balanced scope tensions with strongly coordinated at balanced reactivity"),
+    # --- Ontology ↔ Phenomenology ---
+    ("ontology.4_0", "phenomenology.4_0", "COMPATIBLE_WITH", 0.7, "ontology-phenomenology", "balanced ontology at static reinforces balanced experience at surface"),
+    ("ontology.4_9", "phenomenology.4_9", "COMPATIBLE_WITH", 0.7, "ontology-phenomenology", "balanced ontology at dynamic reinforces balanced experience at deep"),
+    ("ontology.4_0", "phenomenology.4_9", "TENSIONS_WITH", 0.5, "ontology-phenomenology", "static balanced ontology tensions with deep balanced experience"),
+    # --- Epistemology ↔ Phenomenology ---
+    ("epistemology.4_0", "phenomenology.4_0", "COMPATIBLE_WITH", 0.7, "epistemology-phenomenology", "balanced knowing at certainty reinforces balanced experience at surface"),
+    ("epistemology.4_9", "phenomenology.4_9", "COMPATIBLE_WITH", 0.5, "epistemology-phenomenology", "balanced knowing at provisionality reinforces balanced experience at deep"),
+    ("epistemology.4_0", "phenomenology.4_9", "TENSIONS_WITH", 0.7, "epistemology-phenomenology", "certain balanced knowing tensions with deep balanced experience"),
+    # --- Teleology ↔ Methodology ---
+    ("teleology.4_0", "methodology.4_0", "COMPATIBLE_WITH", 0.7, "teleology-methodology", "balanced purpose at intentional reinforces balanced method at deductive"),
+    ("teleology.4_9", "methodology.4_9", "COMPATIBLE_WITH", 0.7, "teleology-methodology", "balanced purpose at emergent reinforces balanced method at inductive"),
+    ("teleology.4_0", "methodology.4_9", "TENSIONS_WITH", 0.5, "teleology-methodology", "intentional balanced purpose tensions with inductive balanced method"),
+    # --- Ontology ↔ Teleology ---
+    ("ontology.4_0", "teleology.4_0", "COMPATIBLE_WITH", 0.7, "ontology-teleology", "balanced ontology at static reinforces balanced purpose at intentional"),
+    ("ontology.4_9", "teleology.4_9", "COMPATIBLE_WITH", 0.7, "ontology-teleology", "balanced ontology at dynamic reinforces balanced purpose at emergent"),
+    ("ontology.4_0", "teleology.4_9", "TENSIONS_WITH", 0.5, "ontology-teleology", "static balanced ontology tensions with emergent balanced purpose"),
+    # --- Epistemology ↔ Heuristics ---
+    ("epistemology.4_0", "heuristics.4_0", "COMPATIBLE_WITH", 0.7, "epistemology-heuristics", "balanced knowing at certainty reinforces balanced strategy at conservative"),
+    ("epistemology.4_9", "heuristics.4_9", "COMPATIBLE_WITH", 0.7, "epistemology-heuristics", "balanced knowing at provisionality reinforces balanced strategy at exploratory"),
+    ("epistemology.4_0", "heuristics.4_9", "TENSIONS_WITH", 0.5, "epistemology-heuristics", "certain balanced knowing tensions with exploratory balanced strategy"),
+    # --- Praxeology ↔ Methodology ---
+    ("praxeology.4_0", "methodology.4_0", "COMPATIBLE_WITH", 0.7, "praxeology-methodology", "balanced action at reactive reinforces balanced method at deductive"),
+    ("praxeology.4_9", "methodology.4_9", "COMPATIBLE_WITH", 0.7, "praxeology-methodology", "balanced action at proactive reinforces balanced method at inductive"),
+    ("praxeology.4_0", "methodology.4_9", "TENSIONS_WITH", 0.5, "praxeology-methodology", "reactive balanced action tensions with inductive balanced method"),
+    # --- Epistemology ↔ Semiotics ---
+    ("epistemology.4_0", "semiotics.4_0", "COMPATIBLE_WITH", 0.7, "epistemology-semiotics", "balanced knowing at certainty reinforces balanced signaling at syntactic"),
+    ("epistemology.4_9", "semiotics.4_9", "COMPATIBLE_WITH", 0.5, "epistemology-semiotics", "balanced knowing at provisionality reinforces balanced signaling at semantic"),
+    ("epistemology.4_0", "semiotics.4_9", "TENSIONS_WITH", 0.5, "epistemology-semiotics", "certain balanced knowing tensions with semantic balanced signaling"),
+    # --- Ontology ↔ Semiotics ---
+    ("ontology.4_0", "semiotics.4_0", "COMPATIBLE_WITH", 0.5, "ontology-semiotics", "balanced ontology at static reinforces balanced signaling at syntactic"),
+    ("ontology.4_9", "semiotics.4_9", "COMPATIBLE_WITH", 0.5, "ontology-semiotics", "balanced ontology at dynamic reinforces balanced signaling at semantic"),
+    # --- Axiology ↔ Hermeneutics ---
+    ("axiology.4_0", "hermeneutics.4_0", "COMPATIBLE_WITH", 0.7, "axiology-hermeneutics", "balanced value at individual reinforces balanced interpretation at author-intent"),
+    ("axiology.4_9", "hermeneutics.4_9", "COMPATIBLE_WITH", 0.5, "axiology-hermeneutics", "balanced value at collective reinforces balanced interpretation at reader-response"),
+    ("axiology.4_0", "hermeneutics.4_9", "TENSIONS_WITH", 0.5, "axiology-hermeneutics", "individual balanced value tensions with reader-response balanced interpretation"),
 ]
 
 
@@ -620,7 +709,7 @@ def generate_central_gem() -> dict:
 
 
 def generate_all_edges(constructs: list[dict] | None = None) -> list[dict]:
-    """Generate all 1629 canonical edges.
+    """Generate all 1696 canonical edges.
 
     If constructs is provided, populates their spectrum_ids in place.
     """

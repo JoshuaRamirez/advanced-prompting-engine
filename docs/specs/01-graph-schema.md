@@ -315,7 +315,7 @@ Declared resolution — one construct mediates a known tension between two other
 | EXCLUDES | Variable | Authored |
 | GENERATES | Variable | Authored |
 | RESOLVES | Variable | Authored |
-| **Fixed total** | **1629** | (1000 + 9 + 180 + 90 + 90 + 90) |
+| **Fixed total** | **1696** | (1000 + 9 + 180 + 90 + 90 + 90) |
 | **Authored total** | **TBD** | |
 
 ---
