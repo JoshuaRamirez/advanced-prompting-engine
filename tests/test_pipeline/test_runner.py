@@ -147,3 +147,35 @@ class TestEmptyInput:
         assert result is not None
         assert len(result["coordinate"]) == 10
         assert len(result["construction_questions"]) == 10
+
+
+class TestCompactOutput:
+    def test_compact_has_expected_keys(self, full_pipeline):
+        from advanced_prompting_engine.tools.create_prompt_basis import _compact
+        coord = {b: {"x": 0, "y": 0, "weight": 1.0} for b in ALL_BRANCHES}
+        full = full_pipeline.run(coord)
+        compact = _compact(full)
+        expected = {"coordinate", "structural_profile", "tensions_summary",
+                    "spokes", "central_gem", "construction_questions"}
+        assert set(compact.keys()) == expected
+
+    def test_compact_is_small(self, full_pipeline):
+        import json
+        from advanced_prompting_engine.tools.create_prompt_basis import _compact
+        coord = {b: {"x": 5, "y": 5, "weight": 0.5} for b in ALL_BRANCHES}
+        full = full_pipeline.run(coord)
+        compact = _compact(full)
+        compact_size = len(json.dumps(compact))
+        full_size = len(json.dumps(full, default=str))
+        assert compact_size < 5000, f"Compact output too large: {compact_size} bytes"
+        assert compact_size < full_size / 5, "Compact should be >5x smaller than full"
+
+    def test_compact_has_position_summary(self, full_pipeline):
+        from advanced_prompting_engine.tools.create_prompt_basis import _compact
+        coord = {b: {"x": 0, "y": 0, "weight": 1.0} for b in ALL_BRANCHES}
+        full = full_pipeline.run(coord)
+        compact = _compact(full)
+        for branch in ALL_BRANCHES:
+            cq = compact["construction_questions"][branch]
+            assert "position_summary" in cq
+            assert cq["position_summary"] is not None

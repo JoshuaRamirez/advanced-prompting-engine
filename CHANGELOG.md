@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2026-04-01
+
+### Added
+- 170 canonical cross-branch edges (116 COMPATIBLE_WITH + 54 TENSIONS_WITH) connecting corner constructs across all 45 nexus pairs. Each edge philosophically derived from nexus definitions with justification.
+- Sub-dimensional interpretation in construction basis output: `position_summary`, `x_interpretation`, `y_interpretation` with 7 strength levels (Strongly/Leaning/Slightly/Balanced).
+- Compact output mode: `compact=true` on `create_prompt_basis` returns ~2KB summary instead of ~52KB full output.
+- Cross-branch edge integrity tests (7 validations: valid IDs, no same-branch, no contradictions, all nexus pairs represented, valid relations, strengths in range).
+- Orchestrator tests: stress_test, triangulate, deepen (graph mutation safety verified).
+- Tool tests: extend_schema add_construct/add_relation with contradiction detection.
+
+### Changed
+- Total canonical edges: 1459 → 1629 (170 cross-branch edges added).
+- Direct tensions now nonzero for diverse coordinates (was always 0).
+- Gem harmony computation now produces differentiated results.
+
 ## [0.1.1] - 2026-03-30
 
 ### Added

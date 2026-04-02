@@ -21,7 +21,7 @@ from advanced_prompting_engine.graph.schema import (
 )
 
 # Current canonical version
-CANONICAL_VERSION = "0.1.2"
+CANONICAL_VERSION = "0.2.0"
 
 # ---------------------------------------------------------------------------
 # Stop words for tag derivation (Spec 03)

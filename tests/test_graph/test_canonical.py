@@ -2,6 +2,7 @@
 
 from advanced_prompting_engine.graph.canonical import (
     BASE_QUESTIONS,
+    CANONICAL_CROSS_BRANCH_EDGES,
     CENTRAL_GEM_CONTENT,
     NEXUS_CONTENT,
     REVISITED_QUESTIONS,
@@ -195,3 +196,54 @@ class TestTagDerivation:
     def test_non_empty_result(self):
         tags = derive_tags("What anchors possibility?", "heuristics", "center")
         assert len(tags) >= 3  # at least: anchor, possib, heuristics, center
+
+
+class TestCrossBranchEdges:
+    """Integrity checks for CANONICAL_CROSS_BRANCH_EDGES."""
+
+    def test_all_source_ids_valid(self):
+        nodes, _ = generate_all_canonical()
+        node_ids = {n["id"] for n in nodes}
+        for src, tgt, rel, strength, nexus_pair, justification in CANONICAL_CROSS_BRANCH_EDGES:
+            assert src in node_ids, f"Invalid source_id: {src}"
+
+    def test_all_target_ids_valid(self):
+        nodes, _ = generate_all_canonical()
+        node_ids = {n["id"] for n in nodes}
+        for src, tgt, rel, strength, nexus_pair, justification in CANONICAL_CROSS_BRANCH_EDGES:
+            assert tgt in node_ids, f"Invalid target_id: {tgt}"
+
+    def test_no_same_branch_edges(self):
+        for src, tgt, rel, strength, nexus_pair, justification in CANONICAL_CROSS_BRANCH_EDGES:
+            src_branch = src.split(".")[0]
+            tgt_branch = tgt.split(".")[0]
+            assert src_branch != tgt_branch, f"Same-branch edge: {src} → {tgt}"
+
+    def test_no_contradictions(self):
+        """No pair should have both COMPATIBLE_WITH and TENSIONS_WITH."""
+        pairs = {}
+        for src, tgt, rel, strength, nexus_pair, justification in CANONICAL_CROSS_BRANCH_EDGES:
+            pair = tuple(sorted([src, tgt]))
+            if pair not in pairs:
+                pairs[pair] = set()
+            pairs[pair].add(rel)
+        for pair, rels in pairs.items():
+            assert not ({"COMPATIBLE_WITH", "TENSIONS_WITH"} <= rels), \
+                f"Contradiction: {pair} has both COMPATIBLE_WITH and TENSIONS_WITH"
+
+    def test_every_nexus_pair_represented(self):
+        nexus_pairs = {e[4] for e in CANONICAL_CROSS_BRANCH_EDGES}
+        # All 45 pairs should be represented
+        assert len(nexus_pairs) == 45, f"Expected 45 nexus pairs, got {len(nexus_pairs)}: missing pairs"
+
+    def test_all_relations_valid(self):
+        valid = {"COMPATIBLE_WITH", "TENSIONS_WITH", "REQUIRES", "EXCLUDES"}
+        for src, tgt, rel, strength, nexus_pair, justification in CANONICAL_CROSS_BRANCH_EDGES:
+            assert rel in valid, f"Invalid relation: {rel} on {src} → {tgt}"
+
+    def test_strengths_in_range(self):
+        for src, tgt, rel, strength, nexus_pair, justification in CANONICAL_CROSS_BRANCH_EDGES:
+            assert 0 < strength <= 1.0, f"Strength {strength} out of range on {src} → {tgt}"
+
+    def test_edge_count(self):
+        assert len(CANONICAL_CROSS_BRANCH_EDGES) == 170

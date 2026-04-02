@@ -97,6 +97,7 @@ def create_server(db_path: str | None = None) -> FastMCP:
     def create_prompt_basis(
         intent: str | None = None,
         coordinate: dict | str | None = None,
+        compact: bool = False,
     ) -> str:
         """Measure intent across 10 philosophical dimensions and return a construction basis.
 
@@ -104,7 +105,8 @@ def create_server(db_path: str | None = None) -> FastMCP:
         philosophical coherence, or systematic completeness matters.
 
         Provide either 'intent' (natural language) or 'coordinate' (JSON object with
-        10 branches, each having x, y, weight).
+        10 branches, each having x, y, weight). Set compact=true for ~2KB summary
+        instead of full ~52KB output.
         """
         coord_dict = None
         if coordinate:
@@ -118,7 +120,7 @@ def create_server(db_path: str | None = None) -> FastMCP:
             else:
                 coord_dict = coordinate
 
-        result = handle_create_prompt_basis(pipeline, intent=intent, coordinate=coord_dict)
+        result = handle_create_prompt_basis(pipeline, intent=intent, coordinate=coord_dict, compact=compact)
         return json.dumps(result, default=_json_default)
 
     @mcp.tool()
