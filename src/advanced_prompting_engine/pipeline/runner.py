@@ -7,6 +7,7 @@ Ensures caches are valid before pipeline run.
 from __future__ import annotations
 
 from advanced_prompting_engine.graph.schema import PipelineState
+from advanced_prompting_engine.math.semantic import SemanticBridge
 from advanced_prompting_engine.pipeline.construction_bridge import ConstructionBridge
 from advanced_prompting_engine.pipeline.construct_resolver import ConstructResolver
 from advanced_prompting_engine.pipeline.coordinate_resolver import CoordinateResolver
@@ -26,8 +27,12 @@ class PipelineRunner:
         self._tfidf_cache = tfidf_cache
         self._centrality_cache = centrality_cache
 
+        # Initialize semantic bridge (degrades gracefully if artifacts missing)
+        semantic_bridge = SemanticBridge()
+        semantic_bridge.load()
+
         self._stages = [
-            IntentParser(tfidf_cache, query_layer),         # Stage 1
+            IntentParser(tfidf_cache, query_layer, semantic_bridge),  # Stage 1
             CoordinateResolver(),                            # Stage 2
             PositionComputer(),                              # Stage 3
             ConstructResolver(query_layer),                  # Stage 4

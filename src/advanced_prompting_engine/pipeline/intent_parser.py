@@ -147,9 +147,10 @@ _FACE_KEYWORDS: dict[str, set[str]] = {
 class IntentParser:
     """Stage 1: Map natural language intent to partial grid coordinates."""
 
-    def __init__(self, tfidf_cache, query_layer):
+    def __init__(self, tfidf_cache, query_layer, semantic_bridge=None):
         self._tfidf = tfidf_cache
         self._query = query_layer
+        self._semantic = semantic_bridge
 
     def execute(self, state: PipelineState):
         raw = state.raw_input
@@ -169,6 +170,11 @@ class IntentParser:
         tokens = self._tokenize(intent)
 
         # --- Phase 1: Face relevance ---
+        # Pre-compute semantic scores once for all faces (avoids redundant work in loop)
+        semantic_scores: dict[str, float] = {}
+        if self._semantic is not None and self._semantic.is_loaded:
+            semantic_scores = self._semantic.face_relevance(tokens)
+
         face_relevance: dict[str, float] = {}
         for face in ALL_FACES:
             keywords = _FACE_KEYWORDS.get(face, set())
@@ -180,6 +186,10 @@ class IntentParser:
             domain_match = len(tokens & domain_stems)
 
             relevance = keyword_overlap * 1.0 + name_match * 2.0 + domain_match * 1.5
+
+            # Semantic bridge signal (broadest matcher — catches words keywords miss)
+            relevance += semantic_scores.get(face, 0.0) * 3.0
+
             face_relevance[face] = relevance
 
         max_relevance = max(face_relevance.values()) if face_relevance else 0.0

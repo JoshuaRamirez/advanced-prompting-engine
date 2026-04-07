@@ -49,6 +49,10 @@ advanced-prompting-engine = "advanced_prompting_engine.__main__:main"
 [tool.hatch.build.targets.wheel]
 packages = ["src/advanced_prompting_engine"]
 
+[tool.hatch.build.targets.wheel.force-include]
+"src/advanced_prompting_engine/data/semantic_bridge.npz" = "advanced_prompting_engine/data/semantic_bridge.npz"
+"src/advanced_prompting_engine/data/semantic_vocab.json" = "advanced_prompting_engine/data/semantic_vocab.json"
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
