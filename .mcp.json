@@ -1,8 +1,8 @@
 {
   "mcpServers": {
     "advanced-prompting-engine": {
-      "command": "bash",
-      "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/run.sh"]
+      "command": "python3",
+      "args": ["-m", "advanced_prompting_engine"]
     }
   }
 }
