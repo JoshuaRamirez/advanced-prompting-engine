@@ -5,6 +5,34 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-04-07
+
+### Added
+- Geometry-integral intent parser: the parser IS the Construct's inference machinery running in reverse. Phase 1 projects intent onto face centroids (discriminative cosine similarity). Phase 2 projects onto axis direction vectors (high_pole - low_pole). Phase 3 maps scalars to grid via polarity convention.
+- GloVe 6B 100d semantic bridge: 15K-word vocabulary with pre-computed face similarity and axis projection matrices. Built at dev time, ships as ~2MB numpy artifacts. Zero ML runtime dependencies.
+- Contextual disambiguation table: 8 polysemous trigger words (state, compelled, right, deep, forces, heaven, tragedy, action) with 10 context-aware senses. Overrides face/axis scores when >= 2 context indicator words are present.
+- N-gram phrase embeddings: 92 curated phrases (domain replacements, pole pair bigrams, philosophical key phrases). Greedy longest-match tokenizer with surface-to-canonical mapping.
+- Contrastive cube-pair dampening: within each complementary pair, transfers 30% of score difference from weaker to stronger face.
+- 46 pole synonym clusters (~320 curated words) for GloVe centroid construction.
+- GeometricBridge class (replaces SemanticBridge): face_relevance() + axis_projection() with disambiguation and phrase support.
+- 39 new tests for GeometricBridge and geometry-integral parser.
+- Semantic bridge algorithm specification (docs/specs/semantic-bridge-algorithms.md).
+- Build script (scripts/build_semantic_bridge.py) with pole self-test validation (all 24 axes pass).
+
+### Changed
+- Intent parser no longer uses TF-IDF or keyword matching for face/position selection — replaced by geometric projection.
+- Tokenizer is now unstemmed (GloVe needs word forms) with expanded stop-word list (~95 words).
+- Face centroids built from authored layers only (core questions + sub-dimension labels + pole synonyms) — NOT from derived question templates.
+
+### Removed
+- Keyword-based face matching (_FACE_KEYWORDS dictionary).
+- TF-IDF dependency in Stage 1 (intent parser no longer queries construct questions).
+- Stemming in intent parser tokenizer.
+
+### Performance
+- Literary text benchmark: 15/20 expected faces in top 6 across 8 benchmark texts (Shakespeare, Bible, Marx, MLK, Newton, Aristotle, Tao Te Ching, Descartes).
+- 300 tests passing.
+
 ## [0.3.0] - 2026-04-07
 
 ### Changed (breaking)
@@ -84,6 +112,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Spectral embedding cache and TF-IDF cache with lifecycle management.
 - 12 Architecture Decision Records.
 
+[0.4.0]: https://github.com/JoshuaRamirez/advanced-prompting-engine/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/JoshuaRamirez/advanced-prompting-engine/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/JoshuaRamirez/advanced-prompting-engine/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/JoshuaRamirez/advanced-prompting-engine/compare/v0.1.0...v0.1.1
