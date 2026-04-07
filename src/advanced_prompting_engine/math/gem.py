@@ -1,93 +1,131 @@
-"""Gem magnitude computation — harmonic mean of edge energy ratios.
+"""Gem magnitude computation — potency-weighted activation with cube tier modulation.
 
-Authoritative source: Spec 05 §10, Spec 07.
-Active edge constructs get 2x potency boost. Harmonic mean ensures both
-branches must contribute for high magnitude.
+Authoritative source: CONSTRUCT-v2.md §9.3.
+
+v2 replaces v1's cross-face edge traversal with positional activation scoring.
+Gems are the condensed state of nexus interactions. Their magnitude reflects
+how strongly both faces are activated, modulated by the cube tier:
+- Paired gems carry complementary resonance
+- Adjacent gems carry proximal interaction
+- Opposite gems carry maximal contrast
 """
 
 from __future__ import annotations
 
-import networkx as nx
+import numpy as np
 
-from advanced_prompting_engine.graph.schema import COMPATIBLE_WITH, TENSIONS_WITH
+from advanced_prompting_engine.graph.schema import GRID_SIZE, NexusTier
+from advanced_prompting_engine.math.tension import positional_distance
+
+
+# Paired gems get a resonance bonus — they're designed to harmonize.
+TIER_GEM_MODIFIERS: dict[str, float] = {
+    NexusTier.PAIRED.value: 1.3,
+    NexusTier.ADJACENT.value: 1.0,
+    NexusTier.OPPOSITE.value: 0.8,
+}
 
 
 def compute_gem(
-    source_branch: str,
-    target_branch: str,
-    active_constructs: dict,
-    G: nx.Graph,
+    source_face: str,
+    target_face: str,
+    active_constructs: dict[str, list[dict]],
+    cube_tier: str,
 ) -> dict:
     """Compute gem for one directional nexus.
 
-    Returns dict with nexus, magnitude, type, source_energy, target_energy.
+    Uses potency-weighted activation ratios with harmonic mean,
+    modulated by cube tier. No graph traversal required.
     """
-    source_edge = _get_edge_constructs(G, source_branch)
-    target_edge = _get_edge_constructs(G, target_branch)
+    source_constructs = active_constructs.get(source_face, [])
+    target_constructs = active_constructs.get(target_face, [])
 
-    source_active_ids = {
-        c["id"] for c in active_constructs.get(source_branch, [])
-    }
-    target_active_ids = {
-        c["id"] for c in active_constructs.get(target_branch, [])
-    }
+    source_energy = sum(c.get("effective_potency", c["potency"]) for c in source_constructs)
+    target_energy = sum(c.get("effective_potency", c["potency"]) for c in target_constructs)
 
-    # Sum potencies: active edge constructs get 2x, inactive get 1x
-    source_energy = sum(
-        c["potency"] * (2.0 if c["id"] in source_active_ids else 1.0)
-        for c in source_edge
-    )
-    target_energy = sum(
-        c["potency"] * (2.0 if c["id"] in target_active_ids else 1.0)
-        for c in target_edge
-    )
+    # Maximum possible energy: all 144 positions activated at their potency.
+    # Use a reasonable estimate: 44 edge points at ~0.8 avg + 100 center at 0.6
+    max_energy = 44 * 0.85 + 100 * 0.6  # ~97.4
 
-    # Normalize by maximum possible (all at 2x)
-    max_source = sum(c["potency"] * 2.0 for c in source_edge) if source_edge else 1.0
-    max_target = sum(c["potency"] * 2.0 for c in target_edge) if target_edge else 1.0
+    source_ratio = source_energy / max(max_energy, 1e-10)
+    target_ratio = target_energy / max(max_energy, 1e-10)
 
-    source_ratio = source_energy / max(max_source, 1e-10)
-    target_ratio = target_energy / max(max_target, 1e-10)
-
-    # Harmonic mean
+    # Harmonic mean ensures both faces must contribute
     if source_ratio + target_ratio == 0:
         magnitude = 0.0
     else:
         magnitude = 2 * source_ratio * target_ratio / (source_ratio + target_ratio)
 
-    # Determine harmony vs conflict
-    tension_count = 0
-    compat_count = 0
-    for sc in active_constructs.get(source_branch, []):
-        for tc in active_constructs.get(target_branch, []):
-            s_id, t_id = sc["id"], tc["id"]
-            for u, v in [(s_id, t_id), (t_id, s_id)]:
-                if G.has_edge(u, v):
-                    rel = G.edges[u, v].get("relation")
-                    if rel == TENSIONS_WITH:
-                        tension_count += 1
-                    elif rel == COMPATIBLE_WITH:
-                        compat_count += 1
+    # Positional correspondence factor: same-position activations → near 1.0,
+    # opposite-position activations → near 0.0
+    correspondence = _positional_correspondence(source_constructs, target_constructs)
+    magnitude *= correspondence
 
-    harmony_type = "harmonious" if compat_count >= tension_count else "conflicting"
+    # Cube tier modulation
+    tier_mod = TIER_GEM_MODIFIERS.get(cube_tier, 1.0)
+    magnitude *= tier_mod
+
+    # Determine harmony type from positional correspondence
+    harmony_type = _classify_gem_type(source_constructs, target_constructs, cube_tier)
 
     return {
-        "nexus": f"nexus.{source_branch}.{target_branch}",
+        "nexus": f"nexus.{source_face}.{target_face}",
         "magnitude": magnitude,
         "type": harmony_type,
         "source_energy": source_ratio,
         "target_energy": target_ratio,
+        "cube_tier": cube_tier,
     }
 
 
-def _get_edge_constructs(G: nx.Graph, branch: str) -> list[dict]:
-    """Get all edge-classified constructs for a branch from the graph."""
-    results = []
-    for node, data in G.nodes(data=True):
-        if (
-            data.get("branch") == branch
-            and data.get("type") == "construct"
-            and data.get("classification") in ("corner", "midpoint", "edge")
-        ):
-            results.append({"id": node, "potency": data.get("potency", 0.8), **data})
-    return results
+def _positional_correspondence(
+    source_constructs: list[dict],
+    target_constructs: list[dict],
+) -> float:
+    """Average positional proximity between activated constructs on two faces.
+
+    Same-position activations yield correspondence near 1.0.
+    Opposite-position activations yield correspondence near 0.0.
+    This makes gems sensitive to WHERE activations fall, not just energy.
+    """
+    if not source_constructs or not target_constructs:
+        return 0.0
+
+    total = 0.0
+    count = 0
+    for sc in source_constructs:
+        for tc in target_constructs:
+            dist = positional_distance(sc["x"], sc["y"], tc["x"], tc["y"])
+            total += (1.0 - dist)
+            count += 1
+
+    return total / max(count, 1)
+
+
+def _classify_gem_type(
+    source_constructs: list[dict],
+    target_constructs: list[dict],
+    cube_tier: str,
+) -> str:
+    """Classify gem as harmonious or conflicting based on positional correspondence.
+
+    If activations are at similar positions on both faces → harmonious.
+    If activations are at distant/opposite positions → conflicting.
+    Paired faces bias toward harmony.
+    """
+    if not source_constructs or not target_constructs:
+        return "inactive"
+
+    # Compute mean position for each face's activations
+    sx = np.mean([c["x"] for c in source_constructs])
+    sy = np.mean([c["y"] for c in source_constructs])
+    tx = np.mean([c["x"] for c in target_constructs])
+    ty = np.mean([c["y"] for c in target_constructs])
+
+    max_dist = np.sqrt(2) * (GRID_SIZE - 1)
+    dist = np.sqrt((sx - tx) ** 2 + (sy - ty) ** 2) / max_dist
+
+    # Paired faces have a lower threshold for harmony
+    threshold = 0.4 if cube_tier == NexusTier.PAIRED.value else 0.5
+
+    return "harmonious" if dist < threshold else "conflicting"

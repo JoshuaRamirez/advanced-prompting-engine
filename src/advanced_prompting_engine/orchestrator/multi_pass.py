@@ -1,6 +1,6 @@
 """Multi-pass orchestration — stress_test, triangulate, deepen.
 
-Authoritative source: Spec 11.
+Authoritative source: CONSTRUCT-v2.md, DESIGN.md.
 These invoke the pipeline multiple times and compare results.
 """
 
@@ -9,39 +9,34 @@ from __future__ import annotations
 import copy
 from typing import TYPE_CHECKING
 
-from advanced_prompting_engine.graph.schema import ALL_BRANCHES
-from advanced_prompting_engine.math.distance import coordinate_distance
+from advanced_prompting_engine.graph.schema import ALL_FACES, GRID_SIZE
 
 if TYPE_CHECKING:
     from advanced_prompting_engine.pipeline.runner import PipelineRunner
 
 
-# All 8 neighbor directions for stress_test
 _DIRECTIONS = [(-1, 0), (1, 0), (0, -1), (0, 1), (-1, -1), (1, 1), (-1, 1), (1, -1)]
+_MAX_COORD = GRID_SIZE - 1
 
 
 def stress_test(coordinate: dict, pipeline: "PipelineRunner") -> dict:
-    """Perturb each axis to neighboring positions. Compare against baseline.
-
-    Returns baseline + breakpoints + improvements.
-    ~80 perturbations × ~150ms each = ~12 seconds.
-    """
+    """Perturb each axis to neighboring positions. Compare against baseline."""
     baseline = pipeline.run(coordinate)
     baseline_tension = baseline["tensions"]["total_magnitude"]
     baseline_coherence = baseline["central_gem"]["coherence"]
 
     perturbations = []
-    for branch in coordinate:
-        bx = coordinate[branch]["x"]
-        by = coordinate[branch]["y"]
+    for face in coordinate:
+        fx = coordinate[face]["x"]
+        fy = coordinate[face]["y"]
         for dx, dy in _DIRECTIONS:
-            nx_, ny = bx + dx, by + dy
-            if 0 <= nx_ <= 9 and 0 <= ny <= 9 and (nx_, ny) != (bx, by):
+            nx_, ny = fx + dx, fy + dy
+            if 0 <= nx_ <= _MAX_COORD and 0 <= ny <= _MAX_COORD and (nx_, ny) != (fx, fy):
                 modified = copy.deepcopy(coordinate)
-                modified[branch] = {"x": nx_, "y": ny, "weight": coordinate[branch]["weight"]}
+                modified[face] = {"x": nx_, "y": ny, "weight": coordinate[face]["weight"]}
                 perturbations.append({
-                    "branch": branch,
-                    "from": (bx, by),
+                    "face": face,
+                    "from": (fx, fy),
                     "to": (nx_, ny),
                     "coordinate": modified,
                 })
@@ -52,7 +47,7 @@ def stress_test(coordinate: dict, pipeline: "PipelineRunner") -> dict:
         tension_delta = result["tensions"]["total_magnitude"] - baseline_tension
         coherence_delta = result["central_gem"]["coherence"] - baseline_coherence
         results.append({
-            "branch": p["branch"],
+            "face": p["face"],
             "from": p["from"],
             "to": p["to"],
             "tension_delta": tension_delta,
@@ -81,44 +76,51 @@ def triangulate(
     result_a = pipeline.run(coord_a)
     result_b = pipeline.run(coord_b)
 
-    # Per-branch construct intersection
     intersection = {}
-    for branch in ALL_BRANCHES:
+    for face in ALL_FACES:
         a_ids = {
             f"{c['position'][0]}_{c['position'][1]}"
-            for c in result_a.get("active_constructs", {}).get(branch, [])
+            for c in result_a.get("active_constructs", {}).get(face, [])
         }
         b_ids = {
             f"{c['position'][0]}_{c['position'][1]}"
-            for c in result_b.get("active_constructs", {}).get(branch, [])
+            for c in result_b.get("active_constructs", {}).get(face, [])
         }
-        intersection[branch] = list(a_ids & b_ids)
+        intersection[face] = list(a_ids & b_ids)
 
-    # Shared tensions
     a_tensions = {
         tuple(sorted(t["between"]))
-        for t in result_a.get("tensions", {}).get("direct", [])
+        for t in result_a.get("tensions", {}).get("positional", [])
     }
     b_tensions = {
         tuple(sorted(t["between"]))
-        for t in result_b.get("tensions", {}).get("direct", [])
+        for t in result_b.get("tensions", {}).get("positional", [])
     }
     shared_tensions = [list(t) for t in a_tensions & b_tensions]
 
-    # Spoke comparison
     spoke_comparison = {}
-    for branch in ALL_BRANCHES:
-        sa = result_a.get("spokes", {}).get(branch, {})
-        sb = result_b.get("spokes", {}).get(branch, {})
-        spoke_comparison[branch] = {
+    for face in ALL_FACES:
+        sa = result_a.get("spokes", {}).get(face, {})
+        sb = result_b.get("spokes", {}).get(face, {})
+        spoke_comparison[face] = {
             "a_classification": sa.get("classification", "unknown"),
             "b_classification": sb.get("classification", "unknown"),
             "strength_delta": sa.get("strength", 0) - sb.get("strength", 0),
             "consistency_delta": sa.get("consistency", 0) - sb.get("consistency", 0),
         }
 
-    # Coordinate distance
-    dist = coordinate_distance(coord_a, coord_b, G)
+    # Coordinate distance: mean Euclidean distance across shared faces
+    shared_faces = set(coord_a.keys()) & set(coord_b.keys())
+    if shared_faces:
+        import numpy as np
+        dists = []
+        for f in shared_faces:
+            dx = coord_a[f]["x"] - coord_b[f]["x"]
+            dy = coord_a[f]["y"] - coord_b[f]["y"]
+            dists.append(np.sqrt(dx**2 + dy**2))
+        dist = float(np.mean(dists)) / (np.sqrt(2) * _MAX_COORD)
+    else:
+        dist = 1.0
 
     return {
         "distance": dist,
@@ -133,40 +135,33 @@ def triangulate(
 def deepen(
     basis: dict, pipeline: "PipelineRunner", G, tfidf_cache, targets: list | None = None
 ) -> dict:
-    """Recursive gem condensation — overlay, semantic similarity, no overwrite.
-
-    Takes a completed construction basis, condenses top gems into center points
-    of uninvolved branches, and runs the pipeline again.
-    """
+    """Recursive gem condensation — overlay, semantic similarity, no overwrite."""
     if targets is None:
         targets = _auto_select_condensation_targets(basis, G, tfidf_cache)
 
     if not targets:
         return basis
 
-    # Record condensation metadata (do NOT mutate the shared graph)
     condensation_metadata = []
     for target in targets:
         gem = target["gem"]
         condensation_metadata.append({
-            "dest_id": f"{target['destination_branch']}.{target['dest_x']}_{target['dest_y']}",
+            "dest_id": f"{target['destination_face']}.{target['dest_x']}_{target['dest_y']}",
             "source_nexus": gem["nexus"],
             "magnitude": gem["magnitude"],
-            "source_planes": [gem["nexus"].split(".")[1], gem["nexus"].split(".")[2]],
+            "source_faces": [gem["nexus"].split(".")[1], gem["nexus"].split(".")[2]],
             "generation": basis.get("depth", 0) + 1,
         })
 
-    # Build coordinate targeting condensed positions
     new_coordinate = copy.deepcopy(basis["coordinate"])
     for target in targets:
-        dest_branch = target["destination_branch"]
-        new_coordinate[dest_branch] = {
+        dest_face = target["destination_face"]
+        new_coordinate[dest_face] = {
             "x": target["dest_x"],
             "y": target["dest_y"],
             "weight": target["gem"]["magnitude"],
         }
 
-    # Run pipeline with modified coordinate
     deeper_basis = pipeline.run(new_coordinate)
     deeper_basis["depth"] = basis.get("depth", 0) + 1
     deeper_basis["condensation_source"] = targets
@@ -179,21 +174,20 @@ def _auto_select_condensation_targets(basis: dict, G, tfidf_cache) -> list:
     """Select top 3 gems and place them via semantic similarity."""
     gems = sorted(basis.get("gems", []), key=lambda g: g["magnitude"], reverse=True)
     targets = []
-    used_branches = set()
+    used_faces = set()
     used_positions = set()
 
     for gem in gems[:3]:
         nexus_parts = gem["nexus"].split(".")
         if len(nexus_parts) < 3:
             continue
-        source_branch = nexus_parts[1]
-        target_branch = nexus_parts[2]
+        source_face = nexus_parts[1]
+        target_face = nexus_parts[2]
 
-        for branch in ALL_BRANCHES:
-            if branch in (source_branch, target_branch) or branch in used_branches:
+        for face in ALL_FACES:
+            if face in (source_face, target_face) or face in used_faces:
                 continue
 
-            # Find the center point most semantically similar to nexus content
             nexus_id = gem["nexus"]
             nexus_content = G.nodes.get(nexus_id, {}).get("content", "") if nexus_id in G.nodes else ""
 
@@ -201,7 +195,7 @@ def _auto_select_condensation_targets(basis: dict, G, tfidf_cache) -> list:
             best_sim = -1.0
 
             for node_id, data in G.nodes(data=True):
-                if (data.get("branch") != branch
+                if (data.get("face") != face
                         or data.get("classification") != "center"
                         or data.get("type") != "construct"):
                     continue
@@ -216,12 +210,12 @@ def _auto_select_condensation_targets(basis: dict, G, tfidf_cache) -> list:
             if best_pos:
                 targets.append({
                     "gem": gem,
-                    "destination_branch": branch,
+                    "destination_face": face,
                     "dest_x": best_pos[0],
                     "dest_y": best_pos[1],
                     "semantic_similarity": best_sim,
                 })
-                used_branches.add(branch)
+                used_faces.add(face)
                 used_positions.add(best_pos)
                 break
 

@@ -1,4 +1,4 @@
-"""End-to-end pipeline runner tests — CHECKPOINT 4.
+"""End-to-end pipeline runner tests — v2 (12 faces, 12x12 grids).
 
 Tests the full 8-stage pipeline with the real canonical graph.
 """
@@ -8,18 +8,17 @@ from __future__ import annotations
 import networkx as nx
 import pytest
 
-from advanced_prompting_engine.cache.embedding import EmbeddingCache
 from advanced_prompting_engine.cache.tfidf import TfidfCache
-from advanced_prompting_engine.graph.canonical import generate_all_canonical
+from advanced_prompting_engine.graph.canonical import build_canonical_graph
 from advanced_prompting_engine.graph.query import GraphQueryLayer
-from advanced_prompting_engine.graph.schema import ALL_BRANCHES, SYMMETRIC_RELATIONS
+from advanced_prompting_engine.graph.schema import ALL_FACES, SYMMETRIC_RELATIONS
 from advanced_prompting_engine.pipeline.runner import PipelineRunner
 
 
 @pytest.fixture(scope="module")
 def full_pipeline():
     """Build the full canonical graph + caches + pipeline. Module-scoped for speed."""
-    nodes, edges = generate_all_canonical()
+    nodes, edges = build_canonical_graph()
 
     G = nx.DiGraph()
     for n in nodes:
@@ -33,12 +32,11 @@ def full_pipeline():
                        source_id=e["target_id"], target_id=e["source_id"], **rev)
 
     query = GraphQueryLayer(G)
-    emb_cache = EmbeddingCache()
-    emb_cache.initialize(G)
     tfidf_cache = TfidfCache()
     tfidf_cache.initialize(G)
 
-    runner = PipelineRunner(G, query, emb_cache, tfidf_cache)
+    # v2: embedding_cache is optional (pass None)
+    runner = PipelineRunner(G, query, None, tfidf_cache)
     return runner
 
 
@@ -50,20 +48,20 @@ class TestIntentInput:
         assert "active_constructs" in result
         assert "construction_questions" in result
 
-    def test_all_10_branches_in_coordinate(self, full_pipeline):
+    def test_all_12_faces_in_coordinate(self, full_pipeline):
         result = full_pipeline.run("analyze the ethical implications of this decision")
-        for branch in ALL_BRANCHES:
-            assert branch in result["coordinate"]
-            entry = result["coordinate"][branch]
-            assert 0 <= entry["x"] <= 9
-            assert 0 <= entry["y"] <= 9
+        for face in ALL_FACES:
+            assert face in result["coordinate"]
+            entry = result["coordinate"][face]
+            assert 0 <= entry["x"] <= 11
+            assert 0 <= entry["y"] <= 11
             assert entry["weight"] > 0
 
-    def test_construction_questions_all_branches(self, full_pipeline):
+    def test_construction_questions_all_faces(self, full_pipeline):
         result = full_pipeline.run("design a learning system")
-        assert len(result["construction_questions"]) == 10
-        for branch in ALL_BRANCHES:
-            cq = result["construction_questions"][branch]
+        assert len(result["construction_questions"]) == 12
+        for face in ALL_FACES:
+            cq = result["construction_questions"][face]
             assert "template" in cq
             assert "active_question" in cq
             assert "classification" in cq
@@ -72,9 +70,9 @@ class TestIntentInput:
 
     def test_spokes_all_present(self, full_pipeline):
         result = full_pipeline.run("build a bridge between theory and practice")
-        assert len(result["spokes"]) == 10
-        for branch in ALL_BRANCHES:
-            spoke = result["spokes"][branch]
+        assert len(result["spokes"]) == 12
+        for face in ALL_FACES:
+            spoke = result["spokes"][face]
             assert "strength" in spoke
             assert "consistency" in spoke
             assert "polarity" in spoke
@@ -103,15 +101,14 @@ class TestIntentInput:
         result = full_pipeline.run("evaluate competing priorities")
         t = result["tensions"]
         assert "total_magnitude" in t
-        assert "direct" in t
+        assert "positional" in t
         assert "spectrum" in t
-        assert "cascading" in t
 
     def test_gems_present(self, full_pipeline):
         result = full_pipeline.run("synthesize multiple perspectives")
         assert "gems" in result
         assert isinstance(result["gems"], list)
-        # With 10 active branches, should have gems
+        # With 12 active faces, should have gems
         if result["gems"]:
             gem = result["gems"][0]
             assert "nexus" in gem
@@ -121,61 +118,61 @@ class TestIntentInput:
 
 class TestCoordinateInput:
     def test_preformed_coordinate(self, full_pipeline):
-        coord = {b: {"x": 5, "y": 5, "weight": 0.5} for b in ALL_BRANCHES}
+        coord = {f: {"x": 5, "y": 5, "weight": 0.5} for f in ALL_FACES}
         result = full_pipeline.run(coord)
         assert result is not None
         assert "coordinate" in result
         # Coordinate should pass through unchanged
-        for branch in ALL_BRANCHES:
-            assert result["coordinate"][branch]["x"] == 5
-            assert result["coordinate"][branch]["y"] == 5
+        for face in ALL_FACES:
+            assert result["coordinate"][face]["x"] == 5
+            assert result["coordinate"][face]["y"] == 5
 
     def test_corner_coordinate(self, full_pipeline):
-        coord = {b: {"x": 0, "y": 0, "weight": 1.0} for b in ALL_BRANCHES}
+        coord = {f: {"x": 0, "y": 0, "weight": 1.0} for f in ALL_FACES}
         result = full_pipeline.run(coord)
         # All constructs should be corner-classified
-        for branch in ALL_BRANCHES:
-            cq = result["construction_questions"][branch]
+        for face in ALL_FACES:
+            cq = result["construction_questions"][face]
             assert cq["classification"] == "corner"
             assert cq["potency"] == 1.0
 
 
 class TestEmptyInput:
     def test_empty_string(self, full_pipeline):
-        """Empty string should still produce a valid result (CSP fills all branches)."""
+        """Empty string should still produce a valid result (CSP fills all faces)."""
         result = full_pipeline.run("")
         assert result is not None
-        assert len(result["coordinate"]) == 10
-        assert len(result["construction_questions"]) == 10
+        assert len(result["coordinate"]) == 12
+        assert len(result["construction_questions"]) == 12
 
 
 class TestCompactOutput:
     def test_compact_has_expected_keys(self, full_pipeline):
         from advanced_prompting_engine.tools.create_prompt_basis import _compact
-        coord = {b: {"x": 0, "y": 0, "weight": 1.0} for b in ALL_BRANCHES}
+        coord = {f: {"x": 0, "y": 0, "weight": 1.0} for f in ALL_FACES}
         full = full_pipeline.run(coord)
         compact = _compact(full)
         expected = {"coordinate", "structural_profile", "tensions_summary",
-                    "spokes", "central_gem", "construction_questions"}
+                    "harmonization", "spokes", "central_gem", "construction_questions"}
         assert set(compact.keys()) == expected
 
     def test_compact_is_small(self, full_pipeline):
         import json
         from advanced_prompting_engine.tools.create_prompt_basis import _compact
-        coord = {b: {"x": 5, "y": 5, "weight": 0.5} for b in ALL_BRANCHES}
+        coord = {f: {"x": 5, "y": 5, "weight": 0.5} for f in ALL_FACES}
         full = full_pipeline.run(coord)
         compact = _compact(full)
         compact_size = len(json.dumps(compact))
         full_size = len(json.dumps(full, default=str))
-        assert compact_size < 5000, f"Compact output too large: {compact_size} bytes"
+        assert compact_size < 8000, f"Compact output too large: {compact_size} bytes"
         assert compact_size < full_size / 5, "Compact should be >5x smaller than full"
 
     def test_compact_has_position_summary(self, full_pipeline):
         from advanced_prompting_engine.tools.create_prompt_basis import _compact
-        coord = {b: {"x": 0, "y": 0, "weight": 1.0} for b in ALL_BRANCHES}
+        coord = {f: {"x": 0, "y": 0, "weight": 1.0} for f in ALL_FACES}
         full = full_pipeline.run(coord)
         compact = _compact(full)
-        for branch in ALL_BRANCHES:
-            cq = compact["construction_questions"][branch]
+        for face in ALL_FACES:
+            cq = compact["construction_questions"][face]
             assert "position_summary" in cq
             assert cq["position_summary"] is not None

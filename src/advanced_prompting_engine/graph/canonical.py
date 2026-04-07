@@ -1,30 +1,45 @@
-"""Canonical graph data — generates all 1101 nodes and 1696 edges.
+"""Canonical graph data — generates all face, construct, nexus, and gem nodes.
 
-Authoritative source: Spec 03 (canonical-content.md), Spec 03a (source-questions.md).
-Contains the 100 base questions, 19 spectrum questions, 45 nexus definitions,
-and all generation functions.
+Authoritative source: CONSTRUCT-v2.md (§3–§14), CONSTRUCT-v2-questions.md.
+Contains 144 base question templates, 66 nexus definitions, and all generation
+functions for the v2 12-face Construct.
+
+v2 changes from v1:
+  - 12 faces (was 10 branches), 144 constructs per face (was 100), 1728 total
+  - 66 nexus pairs (was 45) — adds ethics and aesthetics
+  - Positional correspondence replaces declared cross-face edges
+  - Spectrum meaning derived from sub-dimensions, not separate authored questions
+  - 12x12 grid with dual midpoints (positions 5 and 6)
 """
 
 from __future__ import annotations
 
-from advanced_prompting_engine.graph.grid import classify, potency, generate_spectrums
+from advanced_prompting_engine.graph.grid import (
+    classify,
+    generate_spectrums,
+    potency,
+)
 from advanced_prompting_engine.graph.schema import (
-    ALL_BRANCHES,
-    BRANCH_DEFINITIONS,
+    ALL_FACES,
     CENTRAL_GEM_LINK,
+    CUBE_PAIRS,
     DOMAIN_REPLACEMENTS,
+    FACE_DEFINITIONS,
+    GRID_SIZE,
     HAS_CONSTRUCT,
     NEXUS_SOURCE,
     NEXUS_TARGET,
+    NexusTier,
     PRECEDES,
     SPECTRUM_OPPOSITION,
 )
 
 # Current canonical version
-CANONICAL_VERSION = "0.2.0"
+CANONICAL_VERSION = "2.0.0"
+
 
 # ---------------------------------------------------------------------------
-# Stop words for tag derivation (Spec 03)
+# Stop words for tag derivation
 # ---------------------------------------------------------------------------
 
 STOP_WORDS = frozenset({
@@ -46,7 +61,7 @@ _SUFFIXES = [
 ]
 
 
-def _stem(word: str) -> str:
+def stem(word: str) -> str:
     """Minimal suffix-stripping stemmer. Consistency > accuracy."""
     if len(word) <= 4:
         return word
@@ -56,185 +71,235 @@ def _stem(word: str) -> str:
     return word
 
 
-def derive_tags(question: str, branch: str, classification: str) -> list[str]:
-    """Extract tags from a parameterized question (Spec 03 tag derivation rule)."""
+def derive_tags(question: str, face: str, classification: str) -> list[str]:
+    """Extract tags from a parameterized question.
+
+    Filters stop words, stems remaining tokens, appends face name and
+    classification as trailing tags.
+    """
     words = question.lower().replace("?", "").replace(",", "").replace("'", "").split()
     filtered = [w for w in words if w not in STOP_WORDS and len(w) > 1]
-    stemmed = list(dict.fromkeys(_stem(w) for w in filtered))  # deduplicate, preserve order
-    stemmed.append(branch)
+    stemmed = list(dict.fromkeys(stem(w) for w in filtered))  # deduplicate, preserve order
+    stemmed.append(face)
     stemmed.append(classification)
     return stemmed
 
 
 # ---------------------------------------------------------------------------
-# 100 base questions — indexed by (x, y)
-# Edge questions from Spec 03a Q1-Q36, center from Q56-Q99 + authored y=6-8
-# All use {domain} placeholder for branch parameterization
+# 144 base questions — indexed by (x, y)
+# From CONSTRUCT-v2-questions.md. All use {domain} placeholder for face
+# parameterization via DOMAIN_REPLACEMENTS.
 # ---------------------------------------------------------------------------
 
 BASE_QUESTIONS: dict[tuple[int, int], str] = {
-    # Corners (4)
-    (0, 0): "What originating possibility initiates the total epistemic field of {domain}?",
-    (9, 0): "What force-defined boundary sets the limitation of harmonic potential across the horizontal axis of {domain}?",
-    (0, 9): "What end-state possibility reflects the accumulation of spectral influence along the vertical edge of {domain}?",
-    (9, 9): "What convergence of opposed energetic directions yields a coherent inflection in {domain}?",
-    # Midpoints — primary 4
-    (4, 0): "What axial tension originates from the horizontal dimension's central polarity in {domain}?",
-    (9, 4): "What transformation does vertical edge influence undergo at the locus of maximal lateral divergence in {domain}?",
-    (4, 9): "What reflected projection completes the harmonic sequence begun from the top center of {domain}?",
-    (0, 4): "What counterbalancing projection is enacted through edge-derived force reflection in {domain}?",
-    # Midpoints — dual 4 (spec source questions Q12, Q19, Q26, Q33)
-    (5, 0): "What resonant field defines transitional knowledge zones in {domain}?",
-    (9, 5): "What energetic recoil or redirection signals inversion from external to internal force in {domain}?",
-    (5, 9): "What terminal convergence mirrors the primary center of {domain}?",
-    (0, 5): "What balanced state reflects both ascending and descending tension in {domain}?",
-    # Top edge y=0 (7)
-    (1, 0): "What emergent polarity forms between anchoring origin and expanding vector in {domain}?",
-    (2, 0): "What preliminary expression of spectrum is encoded before the midpoint of {domain} is reached?",
-    (3, 0): "What early-stage energetic differentiator signals the initial divergence of {domain}?",
-    (6, 0): "What hyperstructural inversion begins to unfold from lateral energy in {domain}?",
-    (7, 0): "What high-fidelity spectral signature delineates specific knowing from generalized form in {domain}?",
-    (8, 0): "What final pre-corner alignment locks the edge's intent in {domain}?",
-    # Right edge x=9 (7)
-    (9, 1): "What lateral discharge begins to transfer energetic potency downward in {domain}?",
-    (9, 2): "What boundary-modulated field accumulates adjacent to edge-centric energy in {domain}?",
-    (9, 3): "What preparation is made for harmonization across horizontal and vertical interplay in {domain}?",
-    (9, 6): "What emergent tension creates a mirrored reflection of the upper quadrant in {domain}?",
-    (9, 7): "What force-integration model completes the downward projection in {domain}?",
-    (9, 8): "What point of containment regulates the end flow of vertical energy in {domain}?",
-    # Bottom edge y=9 (7)
-    (8, 9): "What spectral conclusion begins the return journey of horizontal contraction in {domain}?",
-    (7, 9): "What saturation defines the late-stage energy horizon of {domain}?",
-    (6, 9): "What reversal of directional knowledge becomes manifest in {domain}?",
-    (3, 9): "What leftward movement of energy distills upper tensions in {domain}?",
-    (2, 9): "What potential resolves against its horizontal inverse in {domain}?",
-    (1, 9): "What fading polarity finalizes its contribution to {domain}?",
-    # Left edge x=0 (7)
-    (0, 8): "What structural echo of vertical centrality influences the boundary of {domain}?",
-    (0, 7): "What harmonization across lower-edge spectrums arises in this ascending node of {domain}?",
-    (0, 6): "What signature potential rotates into active formation within {domain}?",
-    (0, 3): "What transitional field mimics inversion before the medial point of {domain}?",
-    (0, 2): "What initiating edge thrust configures the spectral flow path of {domain}?",
-    (0, 1): "What near-originating field contains an echo of the first point's truth in {domain}?",
-    # --- Center points (64) ---
-    # Core center (4)
-    (4, 4): "What universal convergence of possibility initiates nexus formation in {domain}?",
-    (4, 5): "What active boundary supports the center's epistemic field of {domain}?",
-    (5, 4): "What mirror of core potential modulates counter-flow in {domain}?",
-    (5, 5): "What harmonization at the true grid center governs all structural interactions in {domain}?",
-    # Row y=1
-    (1, 1): "What embryonic possibility awakens from boundary proximity in {domain}?",
-    (2, 1): "What directional gradient modulates substructural motion in {domain}?",
-    (3, 1): "What spectral tremor prefigures axial alignment in {domain}?",
-    (4, 1): "What harmonic overture begins energetic modulation of {domain}?",
-    (5, 1): "What flow redirection captures post-centrality effects in {domain}?",
-    (6, 1): "What resonance buffer bounds central field harmonics in {domain}?",
-    (7, 1): "What external harmonics leak inward at this position in {domain}?",
-    (8, 1): "What semi-boundary potential blurs the center-edge distinction in {domain}?",
-    # Row y=2
-    (1, 2): "What vertical spectral transition begins force layering in {domain}?",
-    (2, 2): "What dual harmonics rise into structured balance within {domain}?",
-    (3, 2): "What sweep of cognition modulates upward force in {domain}?",
-    (4, 2): "What tuning operation bridges the northern internal zone of {domain}?",
-    (5, 2): "What return harmonic reshapes phase delay in {domain}?",
-    (6, 2): "What edge proximity biases the flow of {domain}?",
-    (7, 2): "What asymmetrical resonance is visible at this locus of {domain}?",
-    (8, 2): "What thinning of possibility occurs at this boundary-adjacent point of {domain}?",
-    # Row y=3
-    (1, 3): "What layering of force expands downward in {domain}?",
-    (2, 3): "What midpoint translation occurs at this progressive entry of {domain}?",
-    (3, 3): "What convergence wave begins to overlap within {domain}?",
-    (4, 3): "What pressure gradient builds before the core of {domain}?",
-    (5, 3): "What inverse reflection shapes internal motion of {domain}?",
-    (6, 3): "What spectral compression sounds at this stepping-out point of {domain}?",
-    (7, 3): "What filtering behavior modulates vector intensity in {domain}?",
-    (8, 3): "What preparation for transition is made at this position in {domain}?",
-    # Row y=4
-    (1, 4): "What return-to-core path signals harmonic approach in {domain}?",
-    (2, 4): "What stabilizing formation sits beneath the secondary vertical of {domain}?",
-    (3, 4): "What triadic edge balance frames ascending potential in {domain}?",
-    (6, 4): "What feedback occurs at the grid dilation boundary of {domain}?",
-    (7, 4): "What pressure absorption harmonizes forces at this position of {domain}?",
-    (8, 4): "What is filtered from {domain} at this rightward central resolution point?",
-    # Row y=5
-    (1, 5): "What vertical inversion harmonizes within the southern trajectory of {domain}?",
-    (2, 5): "What mirrored convergence operates in phase-locked relationship within {domain}?",
-    (3, 5): "What descending gradient re-enters the axis of {domain}?",
-    (6, 5): "What winding dispersion approaches the external edge of {domain}?",
-    (7, 5): "What final arc of central-to-boundary shift characterizes {domain} here?",
-    (8, 5): "What concluding harmonic slips from internal projection in {domain}?",
-    # Row y=6 [PROVISIONAL]
-    (1, 6): "What deepening structural descent carries {domain} below its median?",
-    (2, 6): "What secondary harmonic layer stabilizes {domain} at this depth?",
-    (3, 6): "What rotational echo of the upper field persists at this position of {domain}?",
-    (4, 6): "What post-core release disperses concentrated energy in {domain}?",
-    (5, 6): "What mirror of the upper-center symmetry reflects at this position of {domain}?",
-    (6, 6): "What diagonal resonance crosses through this interior node of {domain}?",
-    (7, 6): "What dampened edge influence reaches this interior point of {domain}?",
-    (8, 6): "What boundary-proximate thinning recurs at this lower position of {domain}?",
-    # Row y=7 [PROVISIONAL]
-    (1, 7): "What lower-field harmonic rises from the depths of {domain}?",
-    (2, 7): "What resolution pattern begins to crystallize at this position of {domain}?",
-    (3, 7): "What late-stage convergence draws inward from the field of {domain}?",
-    (4, 7): "What pre-terminal synthesis collects the energies of {domain}?",
-    (5, 7): "What counterpart to the upper core operates at this depth of {domain}?",
-    (6, 7): "What dispersive tendency is counteracted by structural constraint in {domain}?",
-    (7, 7): "What near-boundary resonance echoes the opposite corner's influence in {domain}?",
-    (8, 7): "What penultimate resolution forms before the terminal edge of {domain}?",
-    # Row y=8 [PROVISIONAL]
-    (1, 8): "What final interior force prepares {domain} for its southern boundary?",
-    (2, 8): "What residual harmonic persists at this depth within {domain}?",
-    (3, 8): "What last trace of central convergence is detectable at this position of {domain}?",
-    (4, 8): "What pre-edge compression focuses the remaining energy of {domain}?",
-    (5, 8): "What mirrored pre-edge state reflects the upper boundary approach of {domain}?",
-    (6, 8): "What terminal interior oscillation characterizes this position of {domain}?",
-    (7, 8): "What boundary anticipation shapes the final interior expression of {domain}?",
-    (8, 8): "What near-corner resonance prefigures the terminal convergence of {domain}?",
-}
+    # ===================================================================
+    # Zone 1: Corners (4 templates)
+    # ===================================================================
+    (0, 0): "What is the irreducible fixed commitment that {domain} demands before anything else can be built — the foundational given that admits no negotiation and no motion?",
+    (11, 0): "What does {domain} look like when its full scope has been mapped and settled — when comprehensiveness itself has become a stable foundation rather than an ongoing effort?",
+    (0, 11): "Where does {domain} become most alive in its simplest form — where a single elemental truth refuses to stay still and instead drives continuous transformation?",
+    (11, 11): "What emerges when {domain} operates without structural constraint or temporal anchor — when the widest possible understanding and the freest possible movement are recognized as the same thing?",
 
-# Revisited questions (Q87 for (4,4), Q100 for (9,9))
-REVISITED_QUESTIONS: dict[tuple[int, int], str] = {
-    (4, 4): "What confirms the role of universal synthesizer in {domain}?",
-    (9, 9): "How does final epistemic containment fold the totality back into origin symmetry in {domain}?",
+    # ===================================================================
+    # Zone 2: Edge Midpoints (8 templates)
+    # ===================================================================
+    (5, 0): "When {domain} achieves a settled, fully grounded stance, what form does it take if the nature of that grounding neither simplifies to its root element nor expands to full scope, but rests slightly closer to the foundational?",
+    (6, 0): "When {domain} achieves a settled, fully grounded stance, what form does it take if the nature of that grounding neither simplifies to its root element nor expands to full scope, but leans slightly toward broader inclusion?",
+    (5, 11): "When {domain} operates at maximum fluidity and openness, what emerges if the kind of thing in motion holds itself in near-equilibrium but tilts slightly toward the elemental and irreducible?",
+    (6, 11): "When {domain} operates at maximum fluidity and openness, what emerges if the kind of thing in motion holds itself in near-equilibrium but tilts slightly toward the encompassing and synthetic?",
+    (0, 5): "When {domain} is stripped to its most foundational form, what does balanced engagement look like — neither fully anchored nor fully in motion, but inclining slightly toward stability?",
+    (0, 6): "When {domain} is stripped to its most foundational form, what does balanced engagement look like — neither fully anchored nor fully in motion, but inclining slightly toward adaptiveness?",
+    (11, 5): "When {domain} reaches its most comprehensive and encompassing form, what does balanced engagement look like — neither fully anchored nor fully in motion, but inclining slightly toward stability?",
+    (11, 6): "When {domain} reaches its most comprehensive and encompassing form, what does balanced engagement look like — neither fully anchored nor fully in motion, but inclining slightly toward adaptiveness?",
+
+    # ===================================================================
+    # Zone 3: Other Edge Points (32 templates)
+    # ===================================================================
+
+    # --- Bottom Edge (y=0, fully stable tendency) ---
+    (1, 0): "When {domain} is grounded in its most stable disposition, what foundational insight emerges from examining its most elemental forms just as they begin to differentiate?",
+    (2, 0): "What does {domain} reveal about bedrock commitments when its constitutive nature remains strongly elemental and its tendency toward change is entirely absent?",
+    (3, 0): "At full dispositional stability, what happens in {domain} when its constitutive character shifts from elemental purity toward a moderate blend — what new structural possibility appears at that threshold?",
+    (4, 0): "How does {domain} express a moderately elemental nature under conditions of complete stability — what constrained but not minimal form takes shape when no dynamism is present?",
+    (7, 0): "When {domain} achieves a moderately comprehensive constitutive character while remaining fully stable, what integrated structure becomes possible precisely because nothing is in motion?",
+    (8, 0): "What does {domain} consolidate when its nature is moderately comprehensive and its disposition is locked at maximum stability — what settled breadth of scope defines this position?",
+    (9, 0): "Under conditions of total dispositional stability, what does {domain} look like when its constitutive scope is strongly comprehensive but has not yet reached full universality?",
+    (10, 0): "What final preparation does {domain} make at the boundary of comprehensive scope — strongly expansive yet fully stable — just before reaching the corner where scope and permanence fuse completely?",
+
+    # --- Top Edge (y=11, fully fluid tendency) ---
+    (1, 11): "When {domain} operates at maximum fluidity, what does its most elemental form become when nothing about its disposition is fixed — what irreducible kernel persists through total openness?",
+    (2, 11): "What does {domain} disclose when its constitutive character is strongly elemental but its tendency is entirely exploratory — how does a simple nature behave under unrestricted movement?",
+    (3, 11): "At full dispositional fluidity, what transitional form does {domain} take when its constitutive character is moderately elemental — neither minimal nor central, yet entirely unanchored?",
+    (4, 11): "How does {domain} navigate full fluidity when its constitutive nature is moderately elemental — what emerges from a constrained scope given total freedom of engagement?",
+    (7, 11): "When {domain} is moderately comprehensive in nature and fully fluid in disposition, what expansive possibility opens that would collapse under more stable conditions?",
+    (8, 11): "What does {domain} explore when its constitutive breadth is moderately comprehensive and no dispositional constraint exists — what synthesis becomes available only through complete openness?",
+    (9, 11): "Under maximum fluidity, what does {domain} reveal at strongly comprehensive scope — what near-total integration looks like when every tendency is exploratory and nothing is settled?",
+    (10, 11): "What does the penultimate reach of {domain} look like — strongly comprehensive and fully fluid — at the threshold where total scope and total openness are about to converge?",
+
+    # --- Left Edge (x=0, fully elemental nature) ---
+    (0, 1): "When {domain} is reduced to its most elemental constitutive form, what does a strongly stable disposition preserve — what endures in the simplest possible structure just after it begins to admit any movement at all?",
+    (0, 2): "At fully elemental scope, what does {domain} look like when its dispositional orientation is strongly stable but has moved perceptibly away from total fixity — what slight capacity for engagement appears?",
+    (0, 3): "What does {domain} encounter at its most elemental when disposition shifts to moderately stable — when the simplest form must accommodate a genuine, if limited, tendency toward engagement?",
+    (0, 4): "How does the most elemental form of {domain} express a moderately stable disposition — what balance between stillness and movement is possible at the narrowest constitutive scope?",
+    (0, 7): "When {domain} is fully elemental but moderately fluid in disposition, what does its simplest form look like once real dynamism has entered — what basic structure adapts rather than resists?",
+    (0, 8): "At its most elemental, what does {domain} gain from a moderately fluid orientation — how does the irreducible foundation of the domain begin to actively participate in change?",
+    (0, 9): "What tension does {domain} carry at fully elemental scope when its disposition is strongly fluid — what happens to the simplest structure when nearly all stability has been released?",
+    (0, 10): "When {domain} at its most elemental reaches strongly fluid disposition, what does the final approach toward total openness demand of a form that has no constitutive breadth to draw upon?",
+
+    # --- Right Edge (x=11, fully comprehensive nature) ---
+    (11, 1): "When {domain} achieves its most comprehensive constitutive scope, what does a strongly stable disposition anchor — what total breadth looks like when it is nearly as fixed as it can be?",
+    (11, 2): "At fully comprehensive scope, what does {domain} express when disposition is strongly stable but admits the first perceptible degrees of movement — what begins to stir within total integration?",
+    (11, 3): "How does {domain} at full constitutive comprehensiveness manage a moderately stable disposition — what does total scope look like when it must accommodate genuine but contained engagement?",
+    (11, 4): "What does {domain} become when it holds the widest possible constitutive nature under moderately stable conditions — what organized breadth emerges when disposition is more balanced than fixed?",
+    (11, 7): "When {domain} is fully comprehensive and moderately fluid, what kind of engagement does total scope undertake once real dynamism shapes how that breadth is deployed?",
+    (11, 8): "At maximum constitutive comprehensiveness with moderately fluid disposition, what does {domain} actively pursue — what does total integration look like when it is seeking rather than holding?",
+    (11, 9): "What does {domain} risk when its scope is fully comprehensive and its disposition strongly fluid — what strain appears when total breadth operates under nearly unconstrained movement?",
+    (11, 10): "At fully comprehensive scope and strongly fluid disposition, what does {domain} look like at the threshold before total openness — the widest possible nature about to release its last dispositional constraint?",
+
+    # ===================================================================
+    # Zone 4: Near-Edge Interior (36 templates)
+    # ===================================================================
+
+    # --- Bottom Ring (y=1, strongly stable disposition) ---
+    (1, 1): "What is the most foundational, nearly irreducible commitment that {domain} makes when operating under conditions of maximal stability?",
+    (2, 1): "When {domain} holds its disposition firmly stable, what elementary structural distinction first becomes visible as constitutive scope begins to widen?",
+    (3, 1): "How does {domain} begin to differentiate its foundational categories while maintaining an unwavering commitment to grounded engagement?",
+    (4, 1): "At what threshold does {domain} shift from purely elemental classification toward moderate structural breadth, while its manner of engagement remains deeply anchored?",
+    (5, 1): "When the constitutive character of {domain} reaches its midpoint — neither simple nor expansive — what does a thoroughly stable disposition preserve from collapsing into ambiguity?",
+    (6, 1): "How does {domain} sustain coherent identity as its constitutive scope crosses center and begins favoring comprehensiveness, while its dispositional posture refuses to move?",
+    (7, 1): "What distinguishes moderately comprehensive stances in {domain} that remain tethered to their most grounded dispositional form?",
+    (8, 1): "As {domain} approaches structural breadth, what specific tension arises between expansive classification and a disposition that remains close to its most stable expression?",
+    (9, 1): "When {domain} operates at nearly full constitutive scope under conditions of near-complete stability, what does it gain in coverage that it sacrifices in anchoring precision?",
+    (10, 1): "What does the broadest feasible characterization within {domain} look like when every dispositional impulse is held just one degree above its most grounded extreme?",
+
+    # --- Top Ring (y=10, strongly fluid disposition) ---
+    (1, 10): "What is the most elemental expression {domain} can take when its dispositional orientation is at its most fluid and exploratory?",
+    (2, 10): "When {domain} holds its engagement at near-maximum openness, what elementary structural distinction persists as the simplest thing that can still move?",
+    (3, 10): "How does {domain} begin to widen its constitutive scope while sustaining the highest feasible degree of dispositional fluidity?",
+    (4, 10): "At what point does moderately foundational classification in {domain} create a recognizable form within what is otherwise near-total dispositional openness?",
+    (5, 10): "When {domain} is constitutively balanced and dispositionally near its fluid extreme, what kind of center holds amid maximum relational motion?",
+    (6, 10): "How does {domain} express a constitutive scope that has just crossed center toward comprehensiveness when its dispositional posture is overwhelmingly exploratory?",
+    (7, 10): "What does moderate structural breadth look like in {domain} when the manner of engagement is almost entirely open-ended?",
+    (8, 10): "As {domain} nears constitutive comprehensiveness under conditions of near-maximal fluidity, what prevents scope from dissolving into formlessness?",
+    (9, 10): "When {domain} operates at nearly full breadth with nearly full dispositional openness, what distinguishes this position from the total integration of the nearby corner?",
+    (10, 10): "What does {domain} look like at the widest feasible scope and highest feasible fluidity — one step inside the boundary on both axes — where comprehensiveness and openness almost, but do not quite, fuse?",
+
+    # --- Left Ring (x=1, strongly elemental constitution) ---
+    (1, 2): "When {domain} takes its first measurable step away from pure stability while remaining constitutively foundational, what new relational possibility opens?",
+    (1, 3): "How does {domain} express its most foundational structural identity when its dispositional orientation has moved into a moderately stable register?",
+    (1, 4): "When {domain} is constitutively near-elemental, at what degree of dispositional moderation does the foundational form begin to carry directional intent?",
+    (1, 5): "What does {domain} look like at its most structurally foundational when the dispositional axis is perfectly balanced — neither anchored nor exploratory?",
+    (1, 6): "When {domain} holds an almost-elemental constitution and its disposition tilts just past center toward fluidity, what subtle reorientation occurs?",
+    (1, 7): "How does a strongly foundational stance in {domain} accommodate a moderately fluid disposition without losing its elemental identity?",
+    (1, 8): "What tension does {domain} carry when its constitutive character is nearly irreducible but its dispositional orientation approaches strong openness?",
+    (1, 9): "When {domain} is constitutively one step from pure foundation and dispositionally one step from pure fluidity, what does that near-diagonal opposition produce?",
+
+    # --- Right Ring (x=10, strongly comprehensive constitution) ---
+    (10, 2): "When {domain} holds nearly full constitutive scope but its disposition has only just begun to move from stability, what kind of comprehensive structure remains effectively grounded?",
+    (10, 3): "How does {domain} sustain broad constitutive coverage when its dispositional orientation enters a moderately stable range — still anchored but no longer maximally so?",
+    (10, 4): "At what point does the moderately stable disposition of {domain} begin to test the structural integrity of a near-comprehensive constitutive stance?",
+    (10, 5): "What does {domain} look like at its broadest feasible scope when the dispositional axis is perfectly balanced — neither anchored nor exploratory?",
+    (10, 6): "When {domain} operates at nearly full constitutive breadth and its disposition tips just past center toward fluidity, what new vulnerability or capacity appears?",
+    (10, 7): "How does broad structural comprehensiveness in {domain} respond when its dispositional orientation reaches a moderately fluid register?",
+    (10, 8): "What emerges in {domain} when near-comprehensive scope is paired with a dispositional orientation approaching strong openness — a breadth that is almost ready to move?",
+    (10, 9): "When {domain} is constitutively one step from maximum scope and dispositionally one step from maximum fluidity, what distinguishes this near-total position from the corner's full commitment?",
+
+    # ===================================================================
+    # Zone 5: Deep Interior (64 templates)
+    # ===================================================================
+
+    # --- Row y=2 (strongly stable disposition) ---
+    (2, 2): "What foundational commitment does the prompt make about {domain} that it treats as too basic to question, and what would shift if that commitment were withdrawn?",
+    (3, 2): "Where does the prompt rely on a settled, elemental understanding of {domain} that quietly constrains the range of responses it can receive?",
+    (4, 2): "What grounded but moderately developed assumption about {domain} serves as the load-bearing structure beneath the prompt's intent?",
+    (5, 2): "When the prompt holds a stable posture toward {domain} without favoring simplicity or complexity, what balanced foundation does it stand on?",
+    (6, 2): "What anchored equilibrium in the prompt's treatment of {domain} might appear neutral but actually forecloses certain lines of inquiry?",
+    (7, 2): "Where does the prompt assume a broad but firmly settled view of {domain}, and what would happen if that breadth were forced into motion?",
+    (8, 2): "What expansive claim about {domain} does the prompt treat as permanently resolved, and is that resolution warranted?",
+    (9, 2): "Where does the prompt presume a comprehensive and stable account of {domain} that risks mistaking completeness for correctness?",
+
+    # --- Row y=3 (moderately stable disposition) ---
+    (2, 3): "What elemental aspect of {domain} does the prompt assume will hold steady under moderate pressure, and what kind of pressure would prove it wrong?",
+    (3, 3): "Where does the prompt's treatment of {domain} settle into a modest, grounded position that neither reaches nor risks, and what does that caution cost?",
+    (4, 3): "What moderately foundational understanding of {domain} does the prompt lean on while maintaining a conservative trajectory?",
+    (5, 3): "Where does the prompt strike a balance in its constitutive view of {domain} while maintaining a preference for stability, and what does that combination produce?",
+    (6, 3): "What slightly synthetic treatment of {domain} does the prompt pair with a grounded disposition, and does the pairing create tension or coherence?",
+    (7, 3): "Where does the prompt adopt a moderately comprehensive view of {domain} while resisting exploratory engagement, and what gets suppressed by that resistance?",
+    (8, 3): "What broad structural claim about {domain} does the prompt hold in a relatively settled frame, and what phenomena does that framing exclude?",
+    (9, 3): "Where does the prompt assert near-comprehensive scope over {domain} while keeping engagement measured, and what would full fluidity reveal that this posture conceals?",
+
+    # --- Row y=4 (moderately stable disposition) ---
+    (2, 4): "What simple, enduring feature of {domain} does the prompt invoke as though it were self-evident, and what interpretive work does that apparent simplicity actually perform?",
+    (3, 4): "Where does the prompt take a deliberately modest and steady stance toward {domain} that functions as a constraint it never names?",
+    (4, 4): "What moderately foundational and moderately grounded understanding of {domain} forms the quiet center of the prompt's intent?",
+    (5, 4): "Where does the prompt hold both the nature and the movement of {domain} in a near-equilibrium that favors groundedness, and what instability is that equilibrium suppressing?",
+    (6, 4): "What mildly expansive treatment of {domain} does the prompt stabilize through conservative engagement, and what would destabilizing that engagement reveal?",
+    (7, 4): "Where does the prompt build a moderately broad view of {domain} on a moderately stable base, and what does that architecture assume will never change?",
+    (8, 4): "What comprehensive but cautiously held position on {domain} does the prompt adopt, and where does caution shade into avoidance?",
+    (9, 4): "Where does the prompt claim expansive coverage of {domain} while remaining dispositionally conservative, and what does that combination fail to reach?",
+
+    # --- Row y=5 (balanced disposition) ---
+    (2, 5): "What elemental aspect of {domain} does the prompt hold in dynamic balance, neither fixing it in place nor releasing it to open movement?",
+    (3, 5): "Where does the prompt treat a relatively simple feature of {domain} with an evenly weighted disposition, and what unexpected depth does that balance uncover?",
+    (4, 5): "What moderately foundational view of {domain} does the prompt carry with a disposition equally open to stability and exploration, and what emerges from that openness?",
+    (5, 5): "At the point of maximum equilibrium, where neither the nature nor the engagement with {domain} is committed to any pole, what does the prompt actually ask for?",
+    (6, 5): "Where does the prompt hold a slightly expansive view of {domain} in dispositional equilibrium, and what would tipping that balance in either direction produce?",
+    (7, 5): "What moderately comprehensive account of {domain} does the prompt sustain through balanced engagement, and does the balance serve the breadth or constrain it?",
+    (8, 5): "Where does the prompt's broad treatment of {domain} meet an uncommitted disposition, and what does that lack of commitment enable that conviction would not?",
+    (9, 5): "What near-comprehensive scope over {domain} does the prompt hold in dispositional balance, and is that balance a genuine center or an indecision?",
+
+    # --- Row y=6 (balanced disposition) ---
+    (2, 6): "What foundational element of {domain} does the prompt hold with a disposition tilting faintly toward exploration, and what does that tilt invite?",
+    (3, 6): "Where does the prompt take a relatively simple view of {domain} while allowing slightly more fluidity than fixity, and what possibilities does that slight asymmetry open?",
+    (4, 6): "What moderately elemental feature of {domain} does the prompt engage with a balanced-to-exploratory stance, and what tensions between depth and movement does that create?",
+    (5, 6): "Where does the prompt's centered view of {domain} pair with a disposition leaning faintly toward the fluid, and what does that lean do to the meaning of balance?",
+    (6, 6): "What mildly expansive and mildly exploratory treatment of {domain} does the prompt adopt, and what does this gentle double departure from center produce that center itself cannot?",
+    (7, 6): "Where does the prompt's moderately broad engagement with {domain} meet a balanced disposition with a slight exploratory edge, and what form of inquiry does that combination privilege?",
+    (8, 6): "What broad but not maximal view of {domain} does the prompt hold while allowing engagement to drift toward fluidity, and what does that drift make available?",
+    (9, 6): "Where does the prompt claim near-total scope over {domain} while holding its disposition just past equilibrium toward exploration, and what does the prompt expect to find that settled comprehension would miss?",
+
+    # --- Row y=7 (moderately fluid disposition) ---
+    (2, 7): "What elemental understanding of {domain} does the prompt set in motion, and what happens when something foundational is treated as if it can move?",
+    (3, 7): "Where does the prompt take a modestly developed view of {domain} and give it a moderately exploratory trajectory, and what does that trajectory discover that a settled view would not?",
+    (4, 7): "What moderately simple feature of {domain} does the prompt engage with notable fluidity, and does that fluidity enrich the feature or dissolve it?",
+    (5, 7): "Where does the prompt balance the constitutive nature of {domain} while adopting a moderately exploratory posture, and what forms of {domain} become visible only through that movement?",
+    (6, 7): "What slightly expansive treatment of {domain} does the prompt pursue with genuine exploratory momentum, and what does that momentum carry the prompt toward?",
+    (7, 7): "Where does the prompt adopt a moderately comprehensive and moderately fluid engagement with {domain}, and what does this double moderation produce that stronger commitments would obscure?",
+    (8, 7): "What broad understanding of {domain} does the prompt explore with active fluidity, and where does the breadth of scope conflict with the openness of movement?",
+    (9, 7): "Where does the prompt combine near-comprehensive scope over {domain} with moderately fluid engagement, and what emerges at the boundary between knowing widely and remaining open?",
+
+    # --- Row y=8 (moderately fluid disposition) ---
+    (2, 8): "What basic building block of {domain} does the prompt set loose into active exploration, and what does that liberation of a foundational element make possible?",
+    (3, 8): "Where does the prompt take a relatively elemental aspect of {domain} and subject it to sustained exploratory pressure, and what transformation does that pressure produce?",
+    (4, 8): "What moderately simple view of {domain} does the prompt carry with a strongly exploratory disposition, and what does it mean when the mode of engagement outpaces the scope of the claim?",
+    (5, 8): "Where does the prompt hold a balanced constitutive view of {domain} while engaging with pronounced fluidity, and what does the prompt seek through movement that it could not find through commitment?",
+    (6, 8): "What mildly expansive treatment of {domain} does the prompt pursue with active exploratory energy, and what new territory does that combination open?",
+    (7, 8): "Where does the prompt's moderately comprehensive view of {domain} meet a strongly fluid engagement, and what does this asymmetry between breadth and movement generate?",
+    (8, 8): "What broad scope over {domain} does the prompt animate with strong exploratory momentum, and what does the prompt risk losing to that momentum?",
+    (9, 8): "Where does the prompt combine near-total comprehension of {domain} with vigorous exploratory engagement, and what becomes visible only when comprehensive understanding is itself set in motion?",
+
+    # --- Row y=9 (strongly fluid disposition) ---
+    (2, 9): "What foundational element of {domain} does the prompt release into maximum fluidity, and what happens when something meant to anchor is itself allowed to drift?",
+    (3, 9): "Where does the prompt take a modestly developed aspect of {domain} and give it the most exploratory trajectory available, and what does that disproportion between scope and movement reveal?",
+    (4, 9): "What moderately elemental feature of {domain} does the prompt engage with strongly fluid disposition, and does the fluidity transform the feature or merely destabilize it?",
+    (5, 9): "Where does the prompt hold a balanced view of the nature of {domain} while adopting a strongly exploratory posture, and what does it mean to explore from a center rather than from an edge?",
+    (6, 9): "What slightly expansive view of {domain} does the prompt carry into strongly fluid engagement, and what does it discover about {domain} that only sustained openness can reach?",
+    (7, 9): "Where does the prompt pursue a moderately comprehensive understanding of {domain} with strongly exploratory energy, and what forms of knowledge emerge only in that forward motion?",
+    (8, 9): "What broad account of {domain} does the prompt hold while engaging with near-maximum fluidity, and where does the tension between comprehensive scope and radical openness become productive?",
+    (9, 9): "Where does the prompt assert both expansive scope and maximum exploratory engagement with {domain}, and what does it mean when nothing is held back and nothing is held still?",
 }
 
 
 # ---------------------------------------------------------------------------
-# 19 spectrum questions — indexed by (point_a, point_b)
-# From Spec 03a Q37-Q55
-# ---------------------------------------------------------------------------
-
-SPECTRUM_QUESTIONS: dict[tuple[tuple[int, int], tuple[int, int]], str] = {
-    ((0, 0), (9, 9)): "What diagonal spectrum defines the longest uninterrupted field of force-paired knowledge in {domain}?",
-    ((0, 1), (9, 8)): "What tension manifests between offset vertical polarities in {domain}?",
-    ((0, 2), (9, 7)): "What dynamic between secondaries encodes nuanced relationships in {domain}?",
-    ((0, 3), (9, 6)): "What diagonal field carries mirrored harmonic intent in {domain}?",
-    ((0, 4), (9, 5)): "What intersectional convergence frames a resonance of central axis inversion in {domain}?",
-    ((0, 5), (9, 4)): "What mirrored spectrum balances opposing phase channels in {domain}?",
-    ((0, 6), (9, 3)): "What axial rotation produces lateral constraint in {domain}?",
-    ((0, 7), (9, 2)): "What reversal mirror is expressed in opposing phase lag in {domain}?",
-    ((0, 8), (9, 1)): "What diagonal returns to near-origin configuration in {domain}?",
-    ((0, 9), (9, 0)): "What final spectrum defines the inversion between start and end in {domain}?",
-    ((1, 0), (8, 9)): "What interior-facing spectrum cross-links secondaries across opposing edge regions in {domain}?",
-    ((2, 0), (7, 9)): "What intermediate diagonal translates structural tension into spectral arc in {domain}?",
-    ((3, 0), (6, 9)): "What mid-range spectrum amplifies edge-center integration in {domain}?",
-    ((4, 0), (5, 9)): "What direct axial alignment overlays mirrored projections in {domain}?",
-    ((5, 0), (4, 9)): "What inwardly reversing diagonal manifests dynamic inversion in {domain}?",
-    ((6, 0), (3, 9)): "What force corridor overlays reversal with asymmetry in {domain}?",
-    ((7, 0), (2, 9)): "What counter-spectral swing defines displaced reciprocity in {domain}?",
-    ((8, 0), (1, 9)): "What nearly-terminal spectrum refines terminal edges of {domain}?",
-    ((9, 0), (0, 9)): "What full-spectrum inversion completes edge-to-edge totality in {domain}?",
-}
-
-
-# ---------------------------------------------------------------------------
-# 45 nexus pair definitions (undirected)
-# From Spec 03 nexus definitions
+# 66 nexus pair definitions (undirected)
+# 45 original v1 pairs (with 9 axiology pairs updated for v2 evaluative
+# framing: Absolute→Relative × Quantitative→Qualitative) plus 21 new pairs
+# involving ethics and aesthetics.
 # ---------------------------------------------------------------------------
 
 NEXUS_CONTENT: dict[tuple[str, str], str] = {
+    # === Original 10-domain pairs (36 non-axiology pairs retained from v1) ===
     ("ontology", "epistemology"): "How does the nature of what exists determine what can be known, and how does knowing reshape what is recognized as existing?",
-    ("ontology", "axiology"): "How does the nature of existence ground what can be valued, and how do values determine which entities are recognized?",
     ("ontology", "teleology"): "How do existing entities bear purpose, and how does purpose call entities into recognized existence?",
     ("ontology", "phenomenology"): "How does existence present itself to experience, and how does experience constitute what is recognized as real?",
     ("ontology", "praxeology"): "How does the structure of what exists enable or constrain action, and how does action alter what exists?",
@@ -242,7 +307,6 @@ NEXUS_CONTENT: dict[tuple[str, str], str] = {
     ("ontology", "semiotics"): "How do existing entities generate signs, and how do signs constitute the recognition of entities?",
     ("ontology", "hermeneutics"): "How does the nature of what exists shape how it is interpreted, and how does interpretation reconstitute what is understood to exist?",
     ("ontology", "heuristics"): "How does the structure of existence determine which problem-solving strategies are viable, and how do strategies reshape perceived reality?",
-    ("epistemology", "axiology"): "How does justified knowledge determine what is worth valuing, and how do values shape what counts as knowledge?",
     ("epistemology", "teleology"): "How does knowledge direct purpose, and how does purpose determine what is worth knowing?",
     ("epistemology", "phenomenology"): "How does knowledge relate to lived experience, and how does experience generate or undermine claims to knowledge?",
     ("epistemology", "praxeology"): "How does knowing inform acting, and how does acting produce or revise knowledge?",
@@ -250,13 +314,6 @@ NEXUS_CONTENT: dict[tuple[str, str], str] = {
     ("epistemology", "semiotics"): "How does knowledge encode into signs, and how do signs carry or distort epistemic content?",
     ("epistemology", "hermeneutics"): "How does established knowledge frame interpretation, and how does interpretation challenge or extend knowledge?",
     ("epistemology", "heuristics"): "How does knowledge inform strategy, and how do strategies reveal knowledge that formal methods miss?",
-    ("axiology", "teleology"): "How do values define purpose, and how does purpose reveal which values are operative?",
-    ("axiology", "phenomenology"): "How do values shape experience, and how does experience challenge or validate value claims?",
-    ("axiology", "praxeology"): "How do values motivate action, and how do the outcomes of action revise what is valued?",
-    ("axiology", "methodology"): "How do values determine which methods are acceptable, and how do methods produce value judgments?",
-    ("axiology", "semiotics"): "How are values communicated through signs, and how do semiotic structures privilege certain values?",
-    ("axiology", "hermeneutics"): "How do values frame interpretation, and how does interpretation reveal hidden value commitments?",
-    ("axiology", "heuristics"): "How do values constrain strategy, and how do strategic outcomes reshape value hierarchies?",
     ("teleology", "phenomenology"): "How does purpose structure experience, and how does experience reveal or subvert intended purpose?",
     ("teleology", "praxeology"): "How does purpose direct action, and how does action fulfill, redirect, or abandon purpose?",
     ("teleology", "methodology"): "How does purpose select method, and how do methodological constraints reshape achievable purpose?",
@@ -278,341 +335,120 @@ NEXUS_CONTENT: dict[tuple[str, str], str] = {
     ("semiotics", "hermeneutics"): "How do signs invite interpretation, and how does interpretive practice generate new semiotic conventions?",
     ("semiotics", "heuristics"): "How do signs encode strategies, and how do strategic adaptations produce new signs?",
     ("hermeneutics", "heuristics"): "How does interpretation inform practical strategy, and how do strategies for managing the unknown reshape interpretive frames?",
+
+    # === Axiology pairs (9 — updated for v2: Absolute→Relative × Quantitative→Qualitative) ===
+    ("ontology", "axiology"): "How does the nature of existence ground evaluative criteria, and how do standards of worth determine which entities are recognized as mattering?",
+    ("epistemology", "axiology"): "How does justified knowledge determine what is worth valuing, and how do evaluative standards shape what counts as knowledge?",
+    ("axiology", "teleology"): "How do evaluative criteria define purpose, and how does purpose reveal which standards of worth are operative?",
+    ("axiology", "phenomenology"): "How do evaluative standards shape experience, and how does experience challenge or validate claims of worth?",
+    ("axiology", "praxeology"): "How do evaluative criteria motivate action, and how do the outcomes of action revise what is deemed worthy?",
+    ("axiology", "methodology"): "How do evaluative standards determine which methods are acceptable, and how do methods produce or challenge value judgments?",
+    ("axiology", "semiotics"): "How are evaluative standards communicated through signs, and how do semiotic structures privilege certain criteria of worth?",
+    ("axiology", "hermeneutics"): "How do evaluative standards frame interpretation, and how does interpretation reveal hidden evaluative commitments?",
+    ("axiology", "heuristics"): "How do evaluative criteria constrain strategy, and how do strategic outcomes reshape standards of worth?",
+
+    # === Ethics pairs (11 — new in v2) ===
+    ("ontology", "ethics"): "How does the nature of what exists determine what moral obligations can hold, and how do ethical commitments reshape what is recognized as morally significant?",
+    ("epistemology", "ethics"): "How does justified knowledge ground moral judgment, and how do ethical obligations shape what counts as morally relevant knowledge?",
+    ("axiology", "ethics"): "How do evaluative standards of worth inform moral duty, and how do ethical obligations challenge or validate claims about what is valuable?",
+    ("teleology", "ethics"): "How does purpose frame moral obligation, and how do ethical duties constrain or redirect what purposes may be pursued?",
+    ("phenomenology", "ethics"): "How does lived experience give rise to moral awareness, and how do ethical obligations structure what is experienced as morally salient?",
+    ("ethics", "praxeology"): "How do moral obligations govern action, and how does action under constraint reveal the practical limits of ethical commitment?",
+    ("ethics", "methodology"): "How do ethical obligations constrain permissible methods, and how do methodological choices carry moral implications?",
+    ("ethics", "semiotics"): "How are moral obligations communicated through signs, and how do semiotic structures enable or obscure ethical content?",
+    ("ethics", "hermeneutics"): "How do ethical commitments frame interpretation, and how does interpretation reveal moral obligations not previously recognized?",
+    ("ethics", "heuristics"): "How do moral obligations constrain strategic choice, and how do strategies under uncertainty create new ethical demands?",
+    ("ethics", "aesthetics"): "How do moral obligations shape aesthetic judgment, and how does aesthetic recognition reveal or challenge ethical commitments?",
+
+    # === Aesthetics pairs (10 — new in v2, ethics-aesthetics counted above) ===
+    ("ontology", "aesthetics"): "How does the nature of what exists determine what can be aesthetically recognized, and how does aesthetic perception reconstitute what is understood to be real?",
+    ("epistemology", "aesthetics"): "How does justified knowledge inform aesthetic judgment, and how does aesthetic recognition generate or challenge epistemic claims?",
+    ("axiology", "aesthetics"): "How do evaluative standards of worth frame aesthetic recognition, and how does aesthetic experience challenge or refine criteria of value?",
+    ("teleology", "aesthetics"): "How does purpose shape aesthetic form, and how does aesthetic recognition reveal purposes not consciously intended?",
+    ("phenomenology", "aesthetics"): "How does lived experience give rise to aesthetic recognition, and how does aesthetic form structure what can be experienced?",
+    ("aesthetics", "praxeology"): "How does aesthetic recognition shape action, and how does purposeful action generate or destroy aesthetic qualities?",
+    ("aesthetics", "methodology"): "How does aesthetic recognition constrain or inspire methodological choices, and how do methods produce or foreclose aesthetic possibilities?",
+    ("aesthetics", "semiotics"): "How are aesthetic qualities communicated through signs, and how do semiotic structures enable or limit aesthetic recognition?",
+    ("aesthetics", "hermeneutics"): "How does aesthetic form invite interpretation, and how does interpretive practice generate new modes of aesthetic recognition?",
+    ("aesthetics", "heuristics"): "How does aesthetic recognition inform strategic judgment, and how do practical strategies reshape what is perceived as aesthetically significant?",
 }
+
+
+# ---------------------------------------------------------------------------
+# Central gem content
+# ---------------------------------------------------------------------------
 
 CENTRAL_GEM_CONTENT = (
     "What singular coherence emerges when the extremes of existence, knowing, "
-    "valuing, purposing, experiencing, acting, systematizing, communicating, "
-    "interpreting, and strategizing are held simultaneously in mutual awareness?"
+    "evaluating, purposing, experiencing, judging morally, recognizing form, "
+    "acting, systematizing, communicating, interpreting, and strategizing "
+    "are held simultaneously in mutual awareness?"
 )
 
 
 # ---------------------------------------------------------------------------
-# Canonical cross-branch edges (197 total)
-# Derived from 45 nexus definitions × 16 corner pairings each.
-# Each edge: (source_id, target_id, relation, strength, nexus_pair, justification)
+# Cube face adjacency model (provisional — see CONSTRUCT-v2.md §15.3)
+#
+# The 6 cube faces are:
+#   Face A: ontology / praxeology
+#   Face B: epistemology / methodology
+#   Face C: axiology / ethics
+#   Face D: teleology / heuristics
+#   Face E: phenomenology / aesthetics
+#   Face F: semiotics / hermeneutics
+#
+# Opposite face pairs (3):
+#   A ↔ C  (being/doing vs valuing/judging)
+#   B ↔ D  (knowing/method vs purpose/strategy)
+#   E ↔ F  (experience/form vs encoding/decoding)
+#
+# Adjacency: each face shares an edge with all 4 non-opposite faces.
 # ---------------------------------------------------------------------------
 
-CANONICAL_CROSS_BRANCH_EDGES: list[tuple[str, str, str, float, str, str]] = [
-    # === Ontology ↔ Epistemology (6) ===
-    ("ontology.0_0", "epistemology.0_0", "COMPATIBLE_WITH", 0.8, "ontology-epistemology", "particular static entities are the natural objects of empirical certainty"),
-    ("ontology.9_0", "epistemology.9_0", "COMPATIBLE_WITH", 0.8, "ontology-epistemology", "universal static categories are the natural objects of rational certainty"),
-    ("ontology.0_9", "epistemology.9_0", "TENSIONS_WITH", 0.7, "ontology-epistemology", "changing particulars resist fixed rational categorization"),
-    ("ontology.9_9", "epistemology.0_0", "TENSIONS_WITH", 0.7, "ontology-epistemology", "evolving universal categories resist empirical certainty at a fixed point"),
-    ("ontology.0_9", "epistemology.0_9", "COMPATIBLE_WITH", 0.7, "ontology-epistemology", "changing particulars are best known through revisable empirical observation"),
-    ("ontology.9_9", "epistemology.9_9", "COMPATIBLE_WITH", 0.7, "ontology-epistemology", "evolving universals are best known through provisional rational inference"),
-    # === Ontology ↔ Axiology (4) ===
-    ("ontology.0_0", "axiology.0_0", "COMPATIBLE_WITH", 0.7, "ontology-axiology", "particular static entities are naturally valued intrinsically by individuals"),
-    ("ontology.9_0", "axiology.9_9", "COMPATIBLE_WITH", 0.7, "ontology-axiology", "fixed universal categories serve as instruments for collective organization"),
-    ("ontology.0_9", "axiology.9_9", "TENSIONS_WITH", 0.5, "ontology-axiology", "evolving particulars resist collective instrumentalization"),
-    ("ontology.9_9", "axiology.0_0", "TENSIONS_WITH", 0.5, "ontology-axiology", "evolving universals resist individual intrinsic valuation"),
-    # === Ontology ↔ Teleology (5) ===
-    ("ontology.0_0", "teleology.0_0", "COMPATIBLE_WITH", 0.7, "ontology-teleology", "particular static entities naturally serve immediate intentional purposes"),
-    ("ontology.9_9", "teleology.9_9", "COMPATIBLE_WITH", 0.8, "ontology-teleology", "evolving universals align with ultimate emergent purpose"),
-    ("ontology.0_0", "teleology.9_9", "TENSIONS_WITH", 0.7, "ontology-teleology", "fixed particulars resist bearing emergent ultimate purpose"),
-    ("ontology.9_0", "teleology.9_0", "COMPATIBLE_WITH", 0.7, "ontology-teleology", "fixed universal categories embody intentional ultimate purpose"),
-    ("ontology.0_9", "teleology.0_9", "COMPATIBLE_WITH", 0.7, "ontology-teleology", "changing particulars naturally produce immediate emergent purposes"),
-    # === Ontology ↔ Phenomenology (4) ===
-    ("ontology.0_0", "phenomenology.0_0", "COMPATIBLE_WITH", 0.8, "ontology-phenomenology", "fixed particulars naturally present as observable surface phenomena"),
-    ("ontology.9_9", "phenomenology.9_9", "COMPATIBLE_WITH", 0.7, "ontology-phenomenology", "evolving universals are constituted through deep subjective experience"),
-    ("ontology.0_0", "phenomenology.9_9", "TENSIONS_WITH", 0.6, "ontology-phenomenology", "fixed particulars resist constitution through deep subjective experience"),
-    ("ontology.9_0", "phenomenology.9_0", "TENSIONS_WITH", 0.5, "ontology-phenomenology", "universal categories resist reduction to surface subjective impression"),
-    # === Ontology ↔ Praxeology (4) ===
-    ("ontology.0_0", "praxeology.0_0", "COMPATIBLE_WITH", 0.7, "ontology-praxeology", "fixed particulars naturally elicit individual reactive response"),
-    ("ontology.9_9", "praxeology.9_9", "COMPATIBLE_WITH", 0.7, "ontology-praxeology", "evolving universals require coordinated proactive engagement"),
-    ("ontology.0_0", "praxeology.9_9", "TENSIONS_WITH", 0.6, "ontology-praxeology", "fixed particulars resist requiring coordinated proactive initiative"),
-    ("ontology.9_0", "praxeology.9_0", "COMPATIBLE_WITH", 0.5, "ontology-praxeology", "fixed universal structures enable coordinated reactive response"),
-    # === Ontology ↔ Methodology (5) ===
-    ("ontology.9_0", "methodology.0_0", "COMPATIBLE_WITH", 0.8, "ontology-methodology", "fixed universal categories are naturally analyzed through deduction"),
-    ("ontology.0_9", "methodology.9_9", "COMPATIBLE_WITH", 0.8, "ontology-methodology", "changing particulars are best understood through inductive synthesis"),
-    ("ontology.9_0", "methodology.9_9", "TENSIONS_WITH", 0.7, "ontology-methodology", "fixed universal categories resist inductive construction from cases"),
-    ("ontology.0_0", "methodology.0_0", "COMPATIBLE_WITH", 0.6, "ontology-methodology", "particular static entities yield to analytic deductive examination"),
-    ("ontology.0_9", "methodology.0_0", "TENSIONS_WITH", 0.6, "ontology-methodology", "changing particulars resist fixed analytic deductive decomposition"),
-    # === Ontology ↔ Semiotics (3) ===
-    ("ontology.0_0", "semiotics.0_0", "COMPATIBLE_WITH", 0.7, "ontology-semiotics", "fixed particulars generate explicit syntactic signs"),
-    ("ontology.9_9", "semiotics.9_9", "COMPATIBLE_WITH", 0.7, "ontology-semiotics", "evolving universals constitute recognition through implicit semantic signs"),
-    ("ontology.0_0", "semiotics.9_9", "TENSIONS_WITH", 0.5, "ontology-semiotics", "fixed particulars resist constitution through implicit semantic meaning"),
-    # === Ontology ↔ Hermeneutics (4) ===
-    ("ontology.0_0", "hermeneutics.0_0", "COMPATIBLE_WITH", 0.8, "ontology-hermeneutics", "fixed particulars are naturally interpreted literally as the author intended"),
-    ("ontology.9_9", "hermeneutics.9_9", "COMPATIBLE_WITH", 0.8, "ontology-hermeneutics", "evolving universals are reconstituted through figurative reader interpretation"),
-    ("ontology.0_0", "hermeneutics.9_9", "TENSIONS_WITH", 0.7, "ontology-hermeneutics", "fixed particulars resist figurative reader reinterpretation"),
-    ("ontology.9_0", "hermeneutics.9_0", "COMPATIBLE_WITH", 0.6, "ontology-hermeneutics", "universal categories are expressed through intentional figurative abstraction"),
-    # === Ontology ↔ Heuristics (5) ===
-    ("ontology.0_0", "heuristics.0_0", "COMPATIBLE_WITH", 0.7, "ontology-heuristics", "fixed particular entities are best addressed by systematic conservative strategy"),
-    ("ontology.9_9", "heuristics.9_9", "COMPATIBLE_WITH", 0.7, "ontology-heuristics", "evolving universals require intuitive exploratory strategy"),
-    ("ontology.0_0", "heuristics.9_9", "TENSIONS_WITH", 0.6, "ontology-heuristics", "fixed particulars resist requiring intuitive exploratory strategy"),
-    ("ontology.9_9", "heuristics.0_0", "TENSIONS_WITH", 0.6, "ontology-heuristics", "evolving universals resist systematic conservative constraints"),
-    ("ontology.0_9", "heuristics.0_9", "COMPATIBLE_WITH", 0.5, "ontology-heuristics", "changing particulars benefit from systematic exploratory strategy"),
-    # === Epistemology ↔ Axiology (4) ===
-    ("epistemology.0_0", "axiology.9_0", "COMPATIBLE_WITH", 0.7, "epistemology-axiology", "verified empirical facts naturally serve individual instrumental value"),
-    ("epistemology.9_0", "axiology.0_9", "COMPATIBLE_WITH", 0.6, "epistemology-axiology", "proven rational truths carry intrinsic collective worth"),
-    ("epistemology.0_9", "axiology.0_0", "TENSIONS_WITH", 0.5, "epistemology-axiology", "provisional empirical observations resist grounding stable intrinsic individual value"),
-    ("epistemology.9_9", "axiology.9_9", "COMPATIBLE_WITH", 0.5, "epistemology-axiology", "speculative rational inference serves collective instrumental ends"),
-    # === Epistemology ↔ Teleology (5) ===
-    ("epistemology.0_0", "teleology.0_0", "COMPATIBLE_WITH", 0.8, "epistemology-teleology", "empirical certainty directs immediate intentional purpose"),
-    ("epistemology.9_0", "teleology.9_0", "COMPATIBLE_WITH", 0.8, "epistemology-teleology", "rational certainty directs ultimate intentional purpose"),
-    ("epistemology.0_9", "teleology.0_9", "COMPATIBLE_WITH", 0.7, "epistemology-teleology", "provisional observation produces immediate emergent purpose"),
-    ("epistemology.9_9", "teleology.9_9", "COMPATIBLE_WITH", 0.7, "epistemology-teleology", "provisional rational inference aligns with ultimate emergent purpose"),
-    ("epistemology.0_0", "teleology.9_9", "TENSIONS_WITH", 0.6, "epistemology-teleology", "empirical certainty resists directing toward emergent ultimate purpose"),
-    # === Epistemology ↔ Phenomenology (4) ===
-    ("epistemology.0_0", "phenomenology.0_0", "COMPATIBLE_WITH", 0.8, "epistemology-phenomenology", "empirical certainty aligns with objective surface experience"),
-    ("epistemology.9_9", "phenomenology.9_9", "COMPATIBLE_WITH", 0.6, "epistemology-phenomenology", "provisional rational inference engages deep subjective experience"),
-    ("epistemology.0_0", "phenomenology.9_9", "TENSIONS_WITH", 0.7, "epistemology-phenomenology", "empirical certainty cannot access deep subjective experience"),
-    ("epistemology.9_0", "phenomenology.0_9", "TENSIONS_WITH", 0.5, "epistemology-phenomenology", "rational certainty tensions with objective deep pre-reflective structure"),
-    # === Epistemology ↔ Praxeology (4) ===
-    ("epistemology.0_0", "praxeology.0_0", "COMPATIBLE_WITH", 0.7, "epistemology-praxeology", "empirical certainty informs individual reactive action"),
-    ("epistemology.9_0", "praxeology.9_9", "COMPATIBLE_WITH", 0.6, "epistemology-praxeology", "rational certainty enables coordinated proactive action"),
-    ("epistemology.0_9", "praxeology.0_9", "COMPATIBLE_WITH", 0.6, "epistemology-praxeology", "provisional empirical knowledge drives individual proactive testing"),
-    ("epistemology.9_9", "praxeology.9_0", "TENSIONS_WITH", 0.5, "epistemology-praxeology", "provisional rational inference tensions with coordinated reactive demands"),
-    # === Epistemology ↔ Methodology (5) ===
-    ("epistemology.0_0", "methodology.0_0", "COMPATIBLE_WITH", 0.8, "epistemology-methodology", "empirical certainty and analytic deduction mutually validate"),
-    ("epistemology.9_0", "methodology.9_0", "COMPATIBLE_WITH", 0.7, "epistemology-methodology", "rational certainty aligns with synthetic deductive construction"),
-    ("epistemology.0_9", "methodology.0_9", "COMPATIBLE_WITH", 0.8, "epistemology-methodology", "provisional empirical knowledge aligns with analytic inductive method"),
-    ("epistemology.9_9", "methodology.9_9", "COMPATIBLE_WITH", 0.7, "epistemology-methodology", "provisional rational inference aligns with synthetic inductive method"),
-    ("epistemology.0_0", "methodology.9_9", "TENSIONS_WITH", 0.6, "epistemology-methodology", "empirical certainty resists synthetic inductive reconstruction"),
-    # === Epistemology ↔ Semiotics (3) ===
-    ("epistemology.0_0", "semiotics.0_0", "COMPATIBLE_WITH", 0.7, "epistemology-semiotics", "empirical certainty encodes naturally into explicit syntactic signs"),
-    ("epistemology.9_9", "semiotics.9_9", "COMPATIBLE_WITH", 0.6, "epistemology-semiotics", "provisional rational inference travels through implicit semantic signs"),
-    ("epistemology.0_0", "semiotics.9_9", "TENSIONS_WITH", 0.6, "epistemology-semiotics", "empirical certainty is distorted by implicit semantic encoding"),
-    # === Epistemology ↔ Hermeneutics (4) ===
-    ("epistemology.0_0", "hermeneutics.0_0", "COMPATIBLE_WITH", 0.8, "epistemology-hermeneutics", "empirical certainty frames literal author-intent interpretation"),
-    ("epistemology.9_9", "hermeneutics.9_9", "COMPATIBLE_WITH", 0.7, "epistemology-hermeneutics", "provisional reasoning invites figurative reader-response interpretation"),
-    ("epistemology.0_0", "hermeneutics.9_9", "TENSIONS_WITH", 0.7, "epistemology-hermeneutics", "empirical certainty resists figurative reader reinterpretation"),
-    ("epistemology.9_0", "hermeneutics.9_0", "COMPATIBLE_WITH", 0.6, "epistemology-hermeneutics", "rational certainty expressed through intentional figurative abstraction"),
-    # === Epistemology ↔ Heuristics (4) ===
-    ("epistemology.0_0", "heuristics.0_0", "COMPATIBLE_WITH", 0.7, "epistemology-heuristics", "empirical certainty supports systematic conservative strategy"),
-    ("epistemology.9_9", "heuristics.9_9", "COMPATIBLE_WITH", 0.7, "epistemology-heuristics", "provisional reasoning partners with intuitive exploratory strategy"),
-    ("epistemology.0_0", "heuristics.9_9", "TENSIONS_WITH", 0.6, "epistemology-heuristics", "empirical certainty resists intuitive exploratory strategy"),
-    ("epistemology.0_9", "heuristics.0_9", "COMPATIBLE_WITH", 0.6, "epistemology-heuristics", "provisional empirical knowledge benefits from systematic exploration"),
-    # === Axiology ↔ Teleology (4) ===
-    ("axiology.0_0", "teleology.0_0", "COMPATIBLE_WITH", 0.7, "axiology-teleology", "intrinsic individual value defines immediate intentional purpose"),
-    ("axiology.9_9", "teleology.9_9", "COMPATIBLE_WITH", 0.7, "axiology-teleology", "instrumental collective value aligns with ultimate emergent purpose"),
-    ("axiology.0_0", "teleology.9_9", "TENSIONS_WITH", 0.6, "axiology-teleology", "intrinsic individual value resists ultimate emergent purpose"),
-    ("axiology.9_0", "teleology.9_0", "COMPATIBLE_WITH", 0.6, "axiology-teleology", "instrumental individual value serves ultimate intentional purpose"),
-    # === Axiology ↔ Phenomenology (4) ===
-    ("axiology.0_0", "phenomenology.9_9", "COMPATIBLE_WITH", 0.7, "axiology-phenomenology", "intrinsic individual value is validated through deep subjective experience"),
-    ("axiology.9_9", "phenomenology.0_0", "COMPATIBLE_WITH", 0.6, "axiology-phenomenology", "instrumental collective value is validated through objective surface observation"),
-    ("axiology.0_0", "phenomenology.0_0", "TENSIONS_WITH", 0.5, "axiology-phenomenology", "intrinsic value is challenged by reduction to objective surface experience"),
-    ("axiology.0_9", "phenomenology.9_9", "COMPATIBLE_WITH", 0.6, "axiology-phenomenology", "intrinsic collective value shaped through deep subjective shared experience"),
-    # === Axiology ↔ Praxeology (4) ===
-    ("axiology.0_0", "praxeology.0_9", "COMPATIBLE_WITH", 0.7, "axiology-praxeology", "intrinsic individual value motivates individual proactive initiative"),
-    ("axiology.9_9", "praxeology.9_9", "COMPATIBLE_WITH", 0.7, "axiology-praxeology", "instrumental collective value motivates coordinated proactive action"),
-    ("axiology.0_0", "praxeology.9_0", "TENSIONS_WITH", 0.6, "axiology-praxeology", "intrinsic individual value tensions with coordinated reactive demands"),
-    ("axiology.9_0", "praxeology.0_0", "COMPATIBLE_WITH", 0.5, "axiology-praxeology", "instrumental individual value motivates individual reactive response"),
-    # === Axiology ↔ Methodology (4) ===
-    ("axiology.0_0", "methodology.0_0", "COMPATIBLE_WITH", 0.6, "axiology-methodology", "intrinsic individual value favors analytic deductive rigor"),
-    ("axiology.9_9", "methodology.9_9", "COMPATIBLE_WITH", 0.6, "axiology-methodology", "instrumental collective value favors synthetic inductive pragmatism"),
-    ("axiology.0_0", "methodology.9_9", "TENSIONS_WITH", 0.5, "axiology-methodology", "intrinsic individual value resists synthetic inductive methods"),
-    ("axiology.0_9", "methodology.0_9", "COMPATIBLE_WITH", 0.5, "axiology-methodology", "intrinsic collective value aligns with analytic inductive discovery"),
-    # === Axiology ↔ Semiotics (3) ===
-    ("axiology.0_0", "semiotics.0_9", "COMPATIBLE_WITH", 0.6, "axiology-semiotics", "intrinsic individual value communicates through explicit semantic meaning"),
-    ("axiology.9_9", "semiotics.9_0", "COMPATIBLE_WITH", 0.5, "axiology-semiotics", "instrumental collective value encoded through implicit syntactic convention"),
-    ("axiology.0_0", "semiotics.9_0", "TENSIONS_WITH", 0.5, "axiology-semiotics", "intrinsic value resists implicit syntactic encoding"),
-    # === Axiology ↔ Hermeneutics (4) ===
-    ("axiology.0_0", "hermeneutics.0_0", "COMPATIBLE_WITH", 0.7, "axiology-hermeneutics", "intrinsic individual value frames literal author-intent interpretation"),
-    ("axiology.9_9", "hermeneutics.9_9", "COMPATIBLE_WITH", 0.6, "axiology-hermeneutics", "instrumental collective value revealed through figurative reader-response"),
-    ("axiology.0_0", "hermeneutics.9_9", "TENSIONS_WITH", 0.6, "axiology-hermeneutics", "intrinsic individual value resists figurative reader reinterpretation"),
-    ("axiology.0_9", "hermeneutics.0_9", "COMPATIBLE_WITH", 0.5, "axiology-hermeneutics", "intrinsic collective value frames literal reader-response"),
-    # === Axiology ↔ Heuristics (4) ===
-    ("axiology.0_0", "heuristics.0_0", "COMPATIBLE_WITH", 0.7, "axiology-heuristics", "intrinsic individual value constrains toward systematic conservative strategy"),
-    ("axiology.9_9", "heuristics.9_9", "COMPATIBLE_WITH", 0.6, "axiology-heuristics", "instrumental collective value permits intuitive exploratory strategy"),
-    ("axiology.0_0", "heuristics.9_9", "TENSIONS_WITH", 0.6, "axiology-heuristics", "intrinsic individual value resists intuitive exploratory risk"),
-    ("axiology.9_0", "heuristics.9_0", "COMPATIBLE_WITH", 0.5, "axiology-heuristics", "instrumental individual value aligns with intuitive conservative caution"),
-    # === Teleology ↔ Phenomenology (4) ===
-    ("teleology.0_0", "phenomenology.0_0", "COMPATIBLE_WITH", 0.7, "teleology-phenomenology", "immediate intentional purpose structures objective surface experience"),
-    ("teleology.9_9", "phenomenology.9_9", "COMPATIBLE_WITH", 0.7, "teleology-phenomenology", "ultimate emergent purpose revealed through deep subjective experience"),
-    ("teleology.0_0", "phenomenology.9_9", "TENSIONS_WITH", 0.6, "teleology-phenomenology", "immediate intentional purpose resists deep subjective subversion"),
-    ("teleology.0_9", "phenomenology.9_0", "COMPATIBLE_WITH", 0.5, "teleology-phenomenology", "immediate emergent purpose revealed through subjective surface impression"),
-    # === Teleology ↔ Praxeology (4) ===
-    ("teleology.0_0", "praxeology.0_0", "COMPATIBLE_WITH", 0.8, "teleology-praxeology", "immediate intentional purpose directs individual reactive action"),
-    ("teleology.9_0", "praxeology.9_9", "COMPATIBLE_WITH", 0.8, "teleology-praxeology", "ultimate intentional purpose directs coordinated proactive action"),
-    ("teleology.9_9", "praxeology.0_0", "TENSIONS_WITH", 0.6, "teleology-praxeology", "ultimate emergent purpose tensions with individual reactive response"),
-    ("teleology.0_9", "praxeology.0_9", "COMPATIBLE_WITH", 0.7, "teleology-praxeology", "immediate emergent purpose drives individual proactive initiative"),
-    # === Teleology ↔ Methodology (4) ===
-    ("teleology.0_0", "methodology.0_0", "COMPATIBLE_WITH", 0.7, "teleology-methodology", "immediate intentional purpose selects analytic deductive method"),
-    ("teleology.9_9", "methodology.9_9", "COMPATIBLE_WITH", 0.7, "teleology-methodology", "ultimate emergent purpose reshapes toward synthetic inductive method"),
-    ("teleology.9_0", "methodology.0_0", "COMPATIBLE_WITH", 0.6, "teleology-methodology", "ultimate intentional purpose sustains analytic deductive method"),
-    ("teleology.0_0", "methodology.9_9", "TENSIONS_WITH", 0.6, "teleology-methodology", "immediate intentional purpose resists synthetic inductive emergence"),
-    # === Teleology ↔ Semiotics (3) ===
-    ("teleology.0_0", "semiotics.0_0", "COMPATIBLE_WITH", 0.7, "teleology-semiotics", "immediate intentional purpose encoded through explicit syntactic signals"),
-    ("teleology.9_9", "semiotics.9_9", "COMPATIBLE_WITH", 0.6, "teleology-semiotics", "ultimate emergent purpose carried through implicit semantic meaning"),
-    ("teleology.0_0", "semiotics.9_9", "TENSIONS_WITH", 0.5, "teleology-semiotics", "immediate intentional purpose resists implicit semantic obscurity"),
-    # === Teleology ↔ Hermeneutics (3) ===
-    ("teleology.0_0", "hermeneutics.0_0", "COMPATIBLE_WITH", 0.8, "teleology-hermeneutics", "immediate intentional purpose frames literal author-intent interpretation"),
-    ("teleology.9_9", "hermeneutics.9_9", "COMPATIBLE_WITH", 0.7, "teleology-hermeneutics", "ultimate emergent purpose reveals through figurative reader-response"),
-    ("teleology.0_0", "hermeneutics.9_9", "TENSIONS_WITH", 0.7, "teleology-hermeneutics", "immediate intentional purpose resists figurative reader reinterpretation"),
-    # === Teleology ↔ Heuristics (4) ===
-    ("teleology.0_0", "heuristics.0_0", "COMPATIBLE_WITH", 0.7, "teleology-heuristics", "immediate intentional purpose constrains toward systematic conservative strategy"),
-    ("teleology.9_9", "heuristics.9_9", "COMPATIBLE_WITH", 0.7, "teleology-heuristics", "ultimate emergent purpose demands intuitive exploratory strategy"),
-    ("teleology.0_0", "heuristics.9_9", "TENSIONS_WITH", 0.6, "teleology-heuristics", "immediate intentional purpose resists intuitive exploratory risk"),
-    ("teleology.9_0", "heuristics.0_0", "COMPATIBLE_WITH", 0.5, "teleology-heuristics", "ultimate intentional purpose sustains systematic conservative strategy"),
-    # === Phenomenology ↔ Praxeology (3) ===
-    ("phenomenology.0_0", "praxeology.0_0", "COMPATIBLE_WITH", 0.7, "phenomenology-praxeology", "objective surface experience motivates individual reactive action"),
-    ("phenomenology.9_9", "praxeology.0_9", "COMPATIBLE_WITH", 0.6, "phenomenology-praxeology", "deep subjective experience motivates individual proactive initiative"),
-    ("phenomenology.0_0", "praxeology.9_9", "TENSIONS_WITH", 0.5, "phenomenology-praxeology", "objective surface experience tensions with coordinated proactive initiative"),
-    # === Phenomenology ↔ Methodology (3) ===
-    ("phenomenology.0_0", "methodology.0_0", "COMPATIBLE_WITH", 0.7, "phenomenology-methodology", "objective surface experience informs analytic deductive method"),
-    ("phenomenology.9_9", "methodology.9_9", "COMPATIBLE_WITH", 0.6, "phenomenology-methodology", "deep subjective experience structures synthetic inductive method"),
-    ("phenomenology.0_0", "methodology.9_9", "TENSIONS_WITH", 0.5, "phenomenology-methodology", "objective surface experience resists synthetic inductive structuring"),
-    # === Phenomenology ↔ Semiotics (3) ===
-    ("phenomenology.0_0", "semiotics.0_0", "COMPATIBLE_WITH", 0.7, "phenomenology-semiotics", "objective surface experience generates explicit syntactic meaning"),
-    ("phenomenology.9_9", "semiotics.9_9", "COMPATIBLE_WITH", 0.7, "phenomenology-semiotics", "deep subjective experience generates implicit semantic meaning"),
-    ("phenomenology.0_0", "semiotics.9_9", "TENSIONS_WITH", 0.6, "phenomenology-semiotics", "objective surface experience resists implicit semantic shaping"),
-    # === Phenomenology ↔ Hermeneutics (3) ===
-    ("phenomenology.0_0", "hermeneutics.0_0", "COMPATIBLE_WITH", 0.6, "phenomenology-hermeneutics", "objective surface experience frames literal author-intent interpretation"),
-    ("phenomenology.9_9", "hermeneutics.9_9", "COMPATIBLE_WITH", 0.8, "phenomenology-hermeneutics", "deep subjective experience deepens figurative reader-response interpretation"),
-    ("phenomenology.9_9", "hermeneutics.0_0", "TENSIONS_WITH", 0.6, "phenomenology-hermeneutics", "deep subjective experience resists reduction to literal author-intent"),
-    # === Phenomenology ↔ Heuristics (3) ===
-    ("phenomenology.0_0", "heuristics.0_0", "COMPATIBLE_WITH", 0.6, "phenomenology-heuristics", "objective surface experience informs systematic conservative strategy"),
-    ("phenomenology.9_9", "heuristics.9_9", "COMPATIBLE_WITH", 0.6, "phenomenology-heuristics", "deep subjective experience informs intuitive exploratory strategy"),
-    ("phenomenology.0_0", "heuristics.9_9", "TENSIONS_WITH", 0.5, "phenomenology-heuristics", "objective surface experience resists intuitive exploratory strategy"),
-    # === Praxeology ↔ Methodology (3) ===
-    ("praxeology.0_0", "methodology.0_0", "COMPATIBLE_WITH", 0.7, "praxeology-methodology", "individual reactive action requires analytic deductive method"),
-    ("praxeology.9_9", "methodology.9_9", "COMPATIBLE_WITH", 0.7, "praxeology-methodology", "coordinated proactive action enables synthetic inductive method"),
-    ("praxeology.0_0", "methodology.9_9", "TENSIONS_WITH", 0.6, "praxeology-methodology", "individual reactive action resists synthetic inductive approach"),
-    # === Praxeology ↔ Semiotics (3) ===
-    ("praxeology.9_9", "semiotics.0_0", "COMPATIBLE_WITH", 0.6, "praxeology-semiotics", "coordinated proactive action communicated through explicit syntactic structures"),
-    ("praxeology.0_0", "semiotics.9_9", "TENSIONS_WITH", 0.5, "praxeology-semiotics", "individual reactive action resists implicit semantic communication"),
-    ("praxeology.0_9", "semiotics.0_9", "COMPATIBLE_WITH", 0.5, "praxeology-semiotics", "individual proactive action communicates through explicit semantic meaning"),
-    # === Praxeology ↔ Hermeneutics (3) ===
-    ("praxeology.0_0", "hermeneutics.0_0", "COMPATIBLE_WITH", 0.6, "praxeology-hermeneutics", "individual reactive action interpreted literally as intended"),
-    ("praxeology.9_9", "hermeneutics.9_9", "COMPATIBLE_WITH", 0.5, "praxeology-hermeneutics", "coordinated proactive action reinterpreted through figurative reader-response"),
-    ("praxeology.0_0", "hermeneutics.9_9", "TENSIONS_WITH", 0.5, "praxeology-hermeneutics", "individual reactive action resists figurative reader reinterpretation"),
-    # === Praxeology ↔ Heuristics (3) ===
-    ("praxeology.0_0", "heuristics.0_0", "COMPATIBLE_WITH", 0.7, "praxeology-heuristics", "individual reactive action structured by systematic conservative strategy"),
-    ("praxeology.9_9", "heuristics.9_9", "COMPATIBLE_WITH", 0.6, "praxeology-heuristics", "coordinated proactive action refined through intuitive exploratory strategy"),
-    ("praxeology.0_0", "heuristics.9_9", "TENSIONS_WITH", 0.5, "praxeology-heuristics", "individual reactive action resists intuitive exploratory risk"),
-    # === Methodology ↔ Semiotics (3) ===
-    ("methodology.0_0", "semiotics.0_0", "COMPATIBLE_WITH", 0.7, "methodology-semiotics", "analytic deductive method produces explicit syntactic signs"),
-    ("methodology.9_9", "semiotics.9_9", "COMPATIBLE_WITH", 0.6, "methodology-semiotics", "synthetic inductive method communicates through implicit semantic signs"),
-    ("methodology.0_0", "semiotics.9_9", "TENSIONS_WITH", 0.5, "methodology-semiotics", "analytic deductive method resists implicit semantic encoding"),
-    # === Methodology ↔ Hermeneutics (3) ===
-    ("methodology.0_0", "hermeneutics.0_0", "COMPATIBLE_WITH", 0.8, "methodology-hermeneutics", "analytic deductive method frames literal author-intent interpretation"),
-    ("methodology.9_9", "hermeneutics.9_9", "COMPATIBLE_WITH", 0.7, "methodology-hermeneutics", "synthetic inductive method challenges assumptions through figurative reader-response"),
-    ("methodology.0_0", "hermeneutics.9_9", "TENSIONS_WITH", 0.6, "methodology-hermeneutics", "analytic deductive method resists figurative reader reinterpretation"),
-    # === Methodology ↔ Heuristics (4) ===
-    ("methodology.0_0", "heuristics.0_0", "COMPATIBLE_WITH", 0.8, "methodology-heuristics", "analytic deductive method aligns with systematic conservative strategy"),
-    ("methodology.9_9", "heuristics.9_9", "COMPATIBLE_WITH", 0.7, "methodology-heuristics", "synthetic inductive method discovers through intuitive exploratory strategy"),
-    ("methodology.0_0", "heuristics.9_9", "TENSIONS_WITH", 0.7, "methodology-heuristics", "formal analytic deduction resists informal intuitive exploration"),
-    ("methodology.9_9", "heuristics.0_0", "TENSIONS_WITH", 0.5, "methodology-heuristics", "synthetic induction resists systematic conservative constraints"),
-    # === Semiotics ↔ Hermeneutics (4) ===
-    ("semiotics.0_0", "hermeneutics.0_0", "COMPATIBLE_WITH", 0.8, "semiotics-hermeneutics", "explicit syntactic signs invite literal author-intent interpretation"),
-    ("semiotics.9_9", "hermeneutics.9_9", "COMPATIBLE_WITH", 0.8, "semiotics-hermeneutics", "implicit semantic signs generate figurative reader-response interpretation"),
-    ("semiotics.0_0", "hermeneutics.9_9", "TENSIONS_WITH", 0.7, "semiotics-hermeneutics", "explicit syntactic signs resist figurative reader reinterpretation"),
-    ("semiotics.9_9", "hermeneutics.0_0", "TENSIONS_WITH", 0.7, "semiotics-hermeneutics", "implicit semantic signs resist literal author-intent reading"),
-    # === Semiotics ↔ Heuristics (3) ===
-    ("semiotics.0_0", "heuristics.0_0", "COMPATIBLE_WITH", 0.6, "semiotics-heuristics", "explicit syntactic signs encode systematic conservative strategies"),
-    ("semiotics.9_9", "heuristics.9_9", "COMPATIBLE_WITH", 0.6, "semiotics-heuristics", "implicit semantic signs carry intuitive exploratory adaptations"),
-    ("semiotics.0_0", "heuristics.9_9", "TENSIONS_WITH", 0.5, "semiotics-heuristics", "explicit syntactic signs resist intuitive exploratory encoding"),
-    # === Hermeneutics ↔ Heuristics (4) ===
-    ("hermeneutics.0_0", "heuristics.0_0", "COMPATIBLE_WITH", 0.7, "hermeneutics-heuristics", "literal author-intent interpretation informs systematic conservative strategy"),
-    ("hermeneutics.9_9", "heuristics.9_9", "COMPATIBLE_WITH", 0.7, "hermeneutics-heuristics", "figurative reader-response reshapes intuitive exploratory strategy"),
-    ("hermeneutics.0_0", "heuristics.9_9", "TENSIONS_WITH", 0.6, "hermeneutics-heuristics", "literal interpretation resists intuitive exploratory reframing"),
-    ("hermeneutics.9_9", "heuristics.0_0", "TENSIONS_WITH", 0.5, "hermeneutics-heuristics", "figurative reader-response resists systematic conservative constraints"),
-    # === MIDPOINT CROSS-BRANCH EDGES (82 total) ===
-    # Primary midpoints only: (4,0), (9,4), (4,9), (0,4)
-    # Duals (5,0), (9,5), (5,9), (0,5) inherit by structural equivalence.
-    # --- Epistemology ↔ Methodology ---
-    ("epistemology.4_0", "methodology.4_0", "COMPATIBLE_WITH", 0.7, "epistemology-methodology", "balanced knowing at certainty reinforces balanced method at deduction"),
-    ("epistemology.4_9", "methodology.4_9", "COMPATIBLE_WITH", 0.7, "epistemology-methodology", "balanced knowing at provisionality reinforces balanced method at induction"),
-    ("epistemology.4_0", "methodology.4_9", "TENSIONS_WITH", 0.5, "epistemology-methodology", "balanced knowing at certainty tensions with balanced method at induction"),
-    ("epistemology.9_4", "methodology.9_4", "COMPATIBLE_WITH", 0.5, "epistemology-methodology", "strongly rational at balanced certainty reinforces strongly synthetic at balanced deduction"),
-    ("epistemology.0_4", "methodology.0_4", "COMPATIBLE_WITH", 0.5, "epistemology-methodology", "strongly empirical at balanced certainty reinforces strongly analytic at balanced deduction"),
-    # --- Ontology ↔ Epistemology ---
-    ("ontology.4_0", "epistemology.4_0", "COMPATIBLE_WITH", 0.7, "ontology-epistemology", "balanced particular/universal at static reinforces balanced empirical/rational at certain"),
-    ("ontology.4_9", "epistemology.4_9", "COMPATIBLE_WITH", 0.7, "ontology-epistemology", "balanced particular/universal at dynamic reinforces balanced knowing at provisional"),
-    ("ontology.4_0", "epistemology.4_9", "TENSIONS_WITH", 0.5, "ontology-epistemology", "static ontological balance tensions with provisional epistemic balance"),
-    ("ontology.0_4", "epistemology.0_4", "COMPATIBLE_WITH", 0.5, "ontology-epistemology", "strongly particular at balanced stasis reinforces strongly empirical at balanced certainty"),
-    # --- Ontology ↔ Methodology ---
-    ("ontology.4_0", "methodology.4_0", "COMPATIBLE_WITH", 0.7, "ontology-methodology", "balanced ontology at static reinforces balanced method at deductive"),
-    ("ontology.4_9", "methodology.4_9", "COMPATIBLE_WITH", 0.7, "ontology-methodology", "balanced ontology at dynamic reinforces balanced method at inductive"),
-    ("ontology.9_4", "methodology.9_4", "COMPATIBLE_WITH", 0.5, "ontology-methodology", "strongly universal at balanced stasis reinforces strongly synthetic at balanced deduction"),
-    ("ontology.4_0", "methodology.4_9", "TENSIONS_WITH", 0.5, "ontology-methodology", "static balanced ontology tensions with inductive balanced method"),
-    # --- Axiology ↔ Teleology ---
-    ("axiology.4_0", "teleology.4_0", "COMPATIBLE_WITH", 0.7, "axiology-teleology", "balanced value at individual reinforces balanced purpose at intentional"),
-    ("axiology.4_9", "teleology.4_9", "COMPATIBLE_WITH", 0.7, "axiology-teleology", "balanced value at collective reinforces balanced purpose at emergent"),
-    ("axiology.4_0", "teleology.4_9", "TENSIONS_WITH", 0.5, "axiology-teleology", "individual balanced value tensions with emergent balanced purpose"),
-    ("axiology.0_4", "teleology.0_4", "COMPATIBLE_WITH", 0.5, "axiology-teleology", "strongly intrinsic at balanced scope reinforces strongly immediate at balanced emergence"),
-    # --- Teleology ↔ Praxeology ---
-    ("teleology.4_0", "praxeology.4_0", "COMPATIBLE_WITH", 0.7, "teleology-praxeology", "balanced purpose at intentional reinforces balanced action at reactive"),
-    ("teleology.4_9", "praxeology.4_9", "COMPATIBLE_WITH", 0.7, "teleology-praxeology", "balanced purpose at emergent reinforces balanced action at proactive"),
-    ("teleology.9_4", "praxeology.9_4", "COMPATIBLE_WITH", 0.7, "teleology-praxeology", "strongly ultimate at balanced emergence reinforces strongly coordinated at balanced reactivity"),
-    ("teleology.4_0", "praxeology.4_9", "TENSIONS_WITH", 0.5, "teleology-praxeology", "intentional balanced purpose tensions with proactive balanced action"),
-    # --- Semiotics ↔ Hermeneutics ---
-    ("semiotics.4_0", "hermeneutics.4_0", "COMPATIBLE_WITH", 0.7, "semiotics-hermeneutics", "balanced signaling at syntactic reinforces balanced interpretation at author-intent"),
-    ("semiotics.4_9", "hermeneutics.4_9", "COMPATIBLE_WITH", 0.7, "semiotics-hermeneutics", "balanced signaling at semantic reinforces balanced interpretation at reader-response"),
-    ("semiotics.4_0", "hermeneutics.4_9", "TENSIONS_WITH", 0.7, "semiotics-hermeneutics", "syntactic balanced signs tension with reader-response balanced interpretation"),
-    ("semiotics.9_4", "hermeneutics.9_4", "COMPATIBLE_WITH", 0.5, "semiotics-hermeneutics", "strongly implicit at balanced form reinforces strongly figurative at balanced response"),
-    # --- Methodology ↔ Heuristics ---
-    ("methodology.4_0", "heuristics.4_0", "COMPATIBLE_WITH", 0.7, "methodology-heuristics", "balanced method at deductive reinforces balanced strategy at conservative"),
-    ("methodology.4_9", "heuristics.4_9", "COMPATIBLE_WITH", 0.7, "methodology-heuristics", "balanced method at inductive reinforces balanced strategy at exploratory"),
-    ("methodology.4_0", "heuristics.4_9", "TENSIONS_WITH", 0.7, "methodology-heuristics", "deductive balanced method tensions with exploratory balanced strategy"),
-    ("methodology.9_4", "heuristics.9_4", "TENSIONS_WITH", 0.5, "methodology-heuristics", "strongly synthetic at balanced deduction tensions with strongly intuitive at balanced conservatism"),
-    # --- Epistemology ↔ Hermeneutics ---
-    ("epistemology.4_0", "hermeneutics.4_0", "COMPATIBLE_WITH", 0.7, "epistemology-hermeneutics", "balanced knowing at certainty reinforces balanced interpretation at author-intent"),
-    ("epistemology.4_9", "hermeneutics.4_9", "COMPATIBLE_WITH", 0.7, "epistemology-hermeneutics", "balanced knowing at provisionality reinforces balanced interpretation at reader-response"),
-    ("epistemology.4_0", "hermeneutics.4_9", "TENSIONS_WITH", 0.7, "epistemology-hermeneutics", "certain balanced knowing tensions with reader-response balanced interpretation"),
-    ("epistemology.0_4", "hermeneutics.0_4", "COMPATIBLE_WITH", 0.5, "epistemology-hermeneutics", "strongly empirical at balanced certainty reinforces strongly literal at balanced intent"),
-    # --- Phenomenology ↔ Hermeneutics ---
-    ("phenomenology.4_0", "hermeneutics.4_0", "COMPATIBLE_WITH", 0.5, "phenomenology-hermeneutics", "balanced experience at surface reinforces balanced interpretation at author-intent"),
-    ("phenomenology.4_9", "hermeneutics.4_9", "COMPATIBLE_WITH", 0.7, "phenomenology-hermeneutics", "balanced experience at deep reinforces balanced interpretation at reader-response"),
-    ("phenomenology.4_9", "hermeneutics.4_0", "TENSIONS_WITH", 0.5, "phenomenology-hermeneutics", "deep balanced experience tensions with author-intent balanced interpretation"),
-    ("phenomenology.9_4", "hermeneutics.9_4", "COMPATIBLE_WITH", 0.5, "phenomenology-hermeneutics", "strongly subjective at balanced depth reinforces strongly figurative at balanced response"),
-    # --- Axiology ↔ Praxeology ---
-    ("axiology.4_0", "praxeology.4_0", "COMPATIBLE_WITH", 0.5, "axiology-praxeology", "balanced value at individual reinforces balanced action at reactive"),
-    ("axiology.4_9", "praxeology.4_9", "COMPATIBLE_WITH", 0.7, "axiology-praxeology", "balanced value at collective reinforces balanced action at proactive"),
-    ("axiology.0_4", "praxeology.0_4", "COMPATIBLE_WITH", 0.5, "axiology-praxeology", "strongly intrinsic at balanced scope reinforces strongly individual at balanced reactivity"),
-    ("axiology.9_4", "praxeology.9_4", "TENSIONS_WITH", 0.5, "axiology-praxeology", "strongly instrumental at balanced scope tensions with strongly coordinated at balanced reactivity"),
-    # --- Ontology ↔ Phenomenology ---
-    ("ontology.4_0", "phenomenology.4_0", "COMPATIBLE_WITH", 0.7, "ontology-phenomenology", "balanced ontology at static reinforces balanced experience at surface"),
-    ("ontology.4_9", "phenomenology.4_9", "COMPATIBLE_WITH", 0.7, "ontology-phenomenology", "balanced ontology at dynamic reinforces balanced experience at deep"),
-    ("ontology.4_0", "phenomenology.4_9", "TENSIONS_WITH", 0.5, "ontology-phenomenology", "static balanced ontology tensions with deep balanced experience"),
-    # --- Epistemology ↔ Phenomenology ---
-    ("epistemology.4_0", "phenomenology.4_0", "COMPATIBLE_WITH", 0.7, "epistemology-phenomenology", "balanced knowing at certainty reinforces balanced experience at surface"),
-    ("epistemology.4_9", "phenomenology.4_9", "COMPATIBLE_WITH", 0.5, "epistemology-phenomenology", "balanced knowing at provisionality reinforces balanced experience at deep"),
-    ("epistemology.4_0", "phenomenology.4_9", "TENSIONS_WITH", 0.7, "epistemology-phenomenology", "certain balanced knowing tensions with deep balanced experience"),
-    # --- Teleology ↔ Methodology ---
-    ("teleology.4_0", "methodology.4_0", "COMPATIBLE_WITH", 0.7, "teleology-methodology", "balanced purpose at intentional reinforces balanced method at deductive"),
-    ("teleology.4_9", "methodology.4_9", "COMPATIBLE_WITH", 0.7, "teleology-methodology", "balanced purpose at emergent reinforces balanced method at inductive"),
-    ("teleology.4_0", "methodology.4_9", "TENSIONS_WITH", 0.5, "teleology-methodology", "intentional balanced purpose tensions with inductive balanced method"),
-    # --- Ontology ↔ Teleology ---
-    ("ontology.4_0", "teleology.4_0", "COMPATIBLE_WITH", 0.7, "ontology-teleology", "balanced ontology at static reinforces balanced purpose at intentional"),
-    ("ontology.4_9", "teleology.4_9", "COMPATIBLE_WITH", 0.7, "ontology-teleology", "balanced ontology at dynamic reinforces balanced purpose at emergent"),
-    ("ontology.4_0", "teleology.4_9", "TENSIONS_WITH", 0.5, "ontology-teleology", "static balanced ontology tensions with emergent balanced purpose"),
-    # --- Epistemology ↔ Heuristics ---
-    ("epistemology.4_0", "heuristics.4_0", "COMPATIBLE_WITH", 0.7, "epistemology-heuristics", "balanced knowing at certainty reinforces balanced strategy at conservative"),
-    ("epistemology.4_9", "heuristics.4_9", "COMPATIBLE_WITH", 0.7, "epistemology-heuristics", "balanced knowing at provisionality reinforces balanced strategy at exploratory"),
-    ("epistemology.4_0", "heuristics.4_9", "TENSIONS_WITH", 0.5, "epistemology-heuristics", "certain balanced knowing tensions with exploratory balanced strategy"),
-    # --- Praxeology ↔ Methodology ---
-    ("praxeology.4_0", "methodology.4_0", "COMPATIBLE_WITH", 0.7, "praxeology-methodology", "balanced action at reactive reinforces balanced method at deductive"),
-    ("praxeology.4_9", "methodology.4_9", "COMPATIBLE_WITH", 0.7, "praxeology-methodology", "balanced action at proactive reinforces balanced method at inductive"),
-    ("praxeology.4_0", "methodology.4_9", "TENSIONS_WITH", 0.5, "praxeology-methodology", "reactive balanced action tensions with inductive balanced method"),
-    # --- Epistemology ↔ Semiotics ---
-    ("epistemology.4_0", "semiotics.4_0", "COMPATIBLE_WITH", 0.7, "epistemology-semiotics", "balanced knowing at certainty reinforces balanced signaling at syntactic"),
-    ("epistemology.4_9", "semiotics.4_9", "COMPATIBLE_WITH", 0.5, "epistemology-semiotics", "balanced knowing at provisionality reinforces balanced signaling at semantic"),
-    ("epistemology.4_0", "semiotics.4_9", "TENSIONS_WITH", 0.5, "epistemology-semiotics", "certain balanced knowing tensions with semantic balanced signaling"),
-    # --- Ontology ↔ Semiotics ---
-    ("ontology.4_0", "semiotics.4_0", "COMPATIBLE_WITH", 0.5, "ontology-semiotics", "balanced ontology at static reinforces balanced signaling at syntactic"),
-    ("ontology.4_9", "semiotics.4_9", "COMPATIBLE_WITH", 0.5, "ontology-semiotics", "balanced ontology at dynamic reinforces balanced signaling at semantic"),
-    # --- Axiology ↔ Hermeneutics ---
-    ("axiology.4_0", "hermeneutics.4_0", "COMPATIBLE_WITH", 0.7, "axiology-hermeneutics", "balanced value at individual reinforces balanced interpretation at author-intent"),
-    ("axiology.4_9", "hermeneutics.4_9", "COMPATIBLE_WITH", 0.5, "axiology-hermeneutics", "balanced value at collective reinforces balanced interpretation at reader-response"),
-    ("axiology.4_0", "hermeneutics.4_9", "TENSIONS_WITH", 0.5, "axiology-hermeneutics", "individual balanced value tensions with reader-response balanced interpretation"),
-]
+_CUBE_FACE_LABELS: dict[str, str] = {
+    "ontology": "A", "praxeology": "A",
+    "epistemology": "B", "methodology": "B",
+    "axiology": "C", "ethics": "C",
+    "teleology": "D", "heuristics": "D",
+    "phenomenology": "E", "aesthetics": "E",
+    "semiotics": "F", "hermeneutics": "F",
+}
+
+_OPPOSITE_FACES: set[frozenset[str]] = {
+    frozenset({"A", "C"}),
+    frozenset({"B", "D"}),
+    frozenset({"E", "F"}),
+}
+
+
+def _nexus_tier(face_a: str, face_b: str) -> NexusTier:
+    """Determine the geometric tier of a nexus between two faces.
+
+    Returns NexusTier.PAIRED if they share a cube face, OPPOSITE if their
+    cube faces are across the cube, ADJACENT otherwise.
+    """
+    label_a = _CUBE_FACE_LABELS[face_a]
+    label_b = _CUBE_FACE_LABELS[face_b]
+
+    if label_a == label_b:
+        return NexusTier.PAIRED
+    if frozenset({label_a, label_b}) in _OPPOSITE_FACES:
+        return NexusTier.OPPOSITE
+    return NexusTier.ADJACENT
 
 
 # ---------------------------------------------------------------------------
 # Generation functions
 # ---------------------------------------------------------------------------
 
-def generate_all_branches() -> list[dict]:
-    """Generate the 10 branch nodes."""
+def generate_face_nodes() -> list[dict]:
+    """Generate the 12 face (axiom-layer) nodes."""
     nodes = []
-    for i, branch in enumerate(ALL_BRANCHES):
-        defn = BRANCH_DEFINITIONS[branch]
+    for i, face in enumerate(ALL_FACES):
+        defn = FACE_DEFINITIONS[face]
         nodes.append({
-            "id": branch,
-            "type": "branch",
+            "id": face,
+            "type": "face",
             "tier": 1,
             "core_question": defn["core_question"],
             "construction_template": defn["construction_template"],
@@ -629,77 +465,137 @@ def generate_all_branches() -> list[dict]:
     return nodes
 
 
-def generate_all_constructs() -> list[dict]:
-    """Generate all 1000 construct nodes (100 per branch × 10 branches)."""
+def generate_constructs(face: str) -> list[dict]:
+    """Generate 144 construct nodes for a single face.
+
+    Each node gets a parameterized question from BASE_QUESTIONS, with {domain}
+    replaced by the face's DOMAIN_REPLACEMENTS string.
+    """
+    domain = DOMAIN_REPLACEMENTS[face]
     nodes = []
-    for branch in ALL_BRANCHES:
-        domain = DOMAIN_REPLACEMENTS[branch]
-        for x in range(10):
-            for y in range(10):
-                base_q = BASE_QUESTIONS.get((x, y))
-                if base_q is None:
-                    raise ValueError(f"Missing base question for position ({x}, {y})")
 
-                question = base_q.replace("{domain}", domain)
-                cls = classify(x, y)
-                pot = potency(x, y)
+    for x in range(GRID_SIZE):
+        for y in range(GRID_SIZE):
+            base_q = BASE_QUESTIONS.get((x, y))
+            if base_q is None:
+                raise ValueError(
+                    f"Missing base question for position ({x}, {y})"
+                )
 
-                revisited_base = REVISITED_QUESTIONS.get((x, y))
-                question_revisited = revisited_base.replace("{domain}", domain) if revisited_base else None
+            question = base_q.replace("{domain}", domain)
+            cls = classify(x, y)
+            pot = potency(x, y)
+            tags = derive_tags(question, face, cls)
 
-                tags = derive_tags(question, branch, cls)
+            nodes.append({
+                "id": f"{face}.{x}_{y}",
+                "type": "construct",
+                "tier": 2,
+                "face": face,
+                "x": x,
+                "y": y,
+                "classification": cls,
+                "potency": pot,
+                "question": question,
+                "description": f"{cls.title()} construct at ({x},{y}) in {face}: {question}",
+                "tags": tags,
+                "spectrum_ids": [],  # populated during edge generation
+                "condensed_gems": [],
+                "provenance": "canonical",
+                "mutable": False,
+            })
 
-                nodes.append({
-                    "id": f"{branch}.{x}_{y}",
-                    "type": "construct",
-                    "tier": 2,
-                    "branch": branch,
-                    "x": x,
-                    "y": y,
-                    "classification": cls,
-                    "potency": pot,
-                    "question": question,
-                    "question_revisited": question_revisited,
-                    "description": f"{cls.title()} construct at ({x},{y}) in {branch}: {question}",
-                    "tags": tags,
-                    "spectrum_ids": [],  # populated during edge generation
-                    "condensed_gems": [],
-                    "provenance": "canonical",
-                    "mutable": False,
-                })
     return nodes
 
 
-def generate_all_nexi() -> list[dict]:
-    """Generate all 90 directional nexus nodes (45 pairs × 2 directions)."""
-    nodes = []
-    for (branch_a, branch_b), content in NEXUS_CONTENT.items():
+def generate_precedes_edges() -> list[dict]:
+    """Generate the 11 PRECEDES edges from the causal ordering of ALL_FACES."""
+    edges: list[dict] = []
+    for i in range(len(ALL_FACES) - 1):
+        edges.append({
+            "source_id": ALL_FACES[i],
+            "target_id": ALL_FACES[i + 1],
+            "relation": PRECEDES,
+        })
+    return edges
+
+
+def generate_nexus_nodes() -> tuple[list[dict], list[dict]]:
+    """Generate 66 nexus nodes plus 132 directional edges.
+
+    Each undirected nexus pair produces:
+      - 1 nexus node (id: nexus.source.target, canonical sorted order)
+      - 2 NEXUS_SOURCE edges (nexus → each face)
+      - 2 NEXUS_TARGET edges (nexus → each face, reversed direction)
+    Actually, following v1 convention: each pair produces 2 directional nexus
+    nodes (A→B and B→A), each with a NEXUS_SOURCE and NEXUS_TARGET edge.
+
+    Returns (nodes, edges).
+    """
+    nodes: list[dict] = []
+    edges: list[dict] = []
+
+    for (face_a, face_b), content in NEXUS_CONTENT.items():
+        tier = _nexus_tier(face_a, face_b)
+
         # A→B direction
+        nid_ab = f"nexus.{face_a}.{face_b}"
         nodes.append({
-            "id": f"nexus.{branch_a}.{branch_b}",
+            "id": nid_ab,
             "type": "nexus",
-            "source_branch": branch_a,
-            "target_branch": branch_b,
+            "source_face": face_a,
+            "target_face": face_b,
             "content": content,
+            "cube_tier": tier.value,
             "provenance": "canonical",
             "mutable": False,
         })
+        edges.append({
+            "source_id": nid_ab,
+            "target_id": face_a,
+            "relation": NEXUS_SOURCE,
+        })
+        edges.append({
+            "source_id": nid_ab,
+            "target_id": face_b,
+            "relation": NEXUS_TARGET,
+        })
+
         # B→A direction (same content, reversed source/target)
+        nid_ba = f"nexus.{face_b}.{face_a}"
         nodes.append({
-            "id": f"nexus.{branch_b}.{branch_a}",
+            "id": nid_ba,
             "type": "nexus",
-            "source_branch": branch_b,
-            "target_branch": branch_a,
+            "source_face": face_b,
+            "target_face": face_a,
             "content": content,
+            "cube_tier": tier.value,
             "provenance": "canonical",
             "mutable": False,
         })
-    return nodes
+        edges.append({
+            "source_id": nid_ba,
+            "target_id": face_b,
+            "relation": NEXUS_SOURCE,
+        })
+        edges.append({
+            "source_id": nid_ba,
+            "target_id": face_a,
+            "relation": NEXUS_TARGET,
+        })
+
+    return nodes, edges
 
 
-def generate_central_gem() -> dict:
-    """Generate the single central gem node."""
-    return {
+def generate_central_gem() -> tuple[dict, list[dict]]:
+    """Generate the single central gem node and its 12 CENTRAL_GEM_LINK edges.
+
+    One link per face (not per nexus) — the central gem connects to each face
+    directly.
+
+    Returns (gem_node, edges).
+    """
+    gem = {
         "id": "central_gem",
         "type": "central_gem",
         "content": CENTRAL_GEM_CONTENT,
@@ -707,129 +603,90 @@ def generate_central_gem() -> dict:
         "mutable": False,
     }
 
+    edges: list[dict] = []
+    for face in ALL_FACES:
+        edges.append({
+            "source_id": "central_gem",
+            "target_id": face,
+            "relation": CENTRAL_GEM_LINK,
+        })
 
-def generate_all_edges(constructs: list[dict] | None = None) -> list[dict]:
-    """Generate all 1696 canonical edges.
+    return gem, edges
 
-    If constructs is provided, populates their spectrum_ids in place.
+
+def generate_spectrum_edges(face: str) -> list[dict]:
+    """Generate SPECTRUM_OPPOSITION edges for a single face.
+
+    Delegates to grid.generate_spectrums() for the geometric derivation.
     """
     edges: list[dict] = []
-    construct_index = {c["id"]: c for c in constructs} if constructs else {}
+    spectrums = generate_spectrums(face)
 
-    # 1. HAS_CONSTRUCT edges (1000)
-    for branch in ALL_BRANCHES:
-        for x in range(10):
-            for y in range(10):
-                edges.append({
-                    "source_id": branch,
-                    "target_id": f"{branch}.{x}_{y}",
-                    "relation": HAS_CONSTRUCT,
-                })
-
-    # 2. PRECEDES edges (9)
-    for i in range(len(ALL_BRANCHES) - 1):
+    for sid, a_id, b_id in spectrums:
         edges.append({
-            "source_id": ALL_BRANCHES[i],
-            "target_id": ALL_BRANCHES[i + 1],
-            "relation": PRECEDES,
-        })
-
-    # 3. SPECTRUM_OPPOSITION edges (180 = 18 per branch × 10)
-    for branch in ALL_BRANCHES:
-        domain = DOMAIN_REPLACEMENTS[branch]
-        spectrums = generate_spectrums(branch)
-        for sid, a_id, b_id in spectrums:
-            # Parse positions from IDs
-            ax, ay = map(int, a_id.split(".")[1].split("_"))
-            bx, by = map(int, b_id.split(".")[1].split("_"))
-
-            # Look up spectrum question (may be None)
-            # Keys are sorted so ((0,9),(9,0)) matches regardless of edge direction
-            pair_key = tuple(sorted([(ax, ay), (bx, by)]))
-            spectrum_q = SPECTRUM_QUESTIONS.get(pair_key)
-            question = spectrum_q.replace("{domain}", domain) if spectrum_q else None
-
-            edges.append({
-                "source_id": a_id,
-                "target_id": b_id,
-                "relation": SPECTRUM_OPPOSITION,
-                "spectrum_id": sid,
-                "strength": 0.6,
-                "question": question,
-                "source": "geometric",
-            })
-
-            # Populate spectrum_ids on construct nodes if provided
-            if construct_index:
-                if a_id in construct_index:
-                    construct_index[a_id]["spectrum_ids"].append(sid)
-                if b_id in construct_index:
-                    construct_index[b_id]["spectrum_ids"].append(sid)
-
-    # 4. NEXUS_SOURCE edges (90)
-    for (branch_a, branch_b) in NEXUS_CONTENT:
-        edges.append({
-            "source_id": f"nexus.{branch_a}.{branch_b}",
-            "target_id": branch_a,
-            "relation": NEXUS_SOURCE,
-        })
-        edges.append({
-            "source_id": f"nexus.{branch_b}.{branch_a}",
-            "target_id": branch_b,
-            "relation": NEXUS_SOURCE,
-        })
-
-    # 5. NEXUS_TARGET edges (90)
-    for (branch_a, branch_b) in NEXUS_CONTENT:
-        edges.append({
-            "source_id": f"nexus.{branch_a}.{branch_b}",
-            "target_id": branch_b,
-            "relation": NEXUS_TARGET,
-        })
-        edges.append({
-            "source_id": f"nexus.{branch_b}.{branch_a}",
-            "target_id": branch_a,
-            "relation": NEXUS_TARGET,
-        })
-
-    # 6. CENTRAL_GEM_LINK edges (90)
-    for (branch_a, branch_b) in NEXUS_CONTENT:
-        edges.append({
-            "source_id": "central_gem",
-            "target_id": f"nexus.{branch_a}.{branch_b}",
-            "relation": CENTRAL_GEM_LINK,
-        })
-        edges.append({
-            "source_id": "central_gem",
-            "target_id": f"nexus.{branch_b}.{branch_a}",
-            "relation": CENTRAL_GEM_LINK,
-        })
-
-    # 7. CANONICAL_CROSS_BRANCH edges (197)
-    for src, tgt, rel, strength, nexus_pair, justification in CANONICAL_CROSS_BRANCH_EDGES:
-        edges.append({
-            "source_id": src,
-            "target_id": tgt,
-            "relation": rel,
-            "strength": strength,
-            "source": "canonical_cross_branch",
-            "nexus_pair": nexus_pair,
+            "source_id": a_id,
+            "target_id": b_id,
+            "relation": SPECTRUM_OPPOSITION,
+            "spectrum_id": sid,
+            "strength": 0.6,
+            "source": "geometric",
         })
 
     return edges
 
 
-def generate_all_canonical() -> tuple[list[dict], list[dict]]:
-    """Generate all canonical nodes and edges.
+def build_canonical_graph() -> tuple[list[dict], list[dict]]:
+    """Orchestrate generation of all canonical nodes and edges.
 
     Returns (nodes, edges) ready for SqliteStore.initialize_canonical().
     """
-    branches = generate_all_branches()
-    constructs = generate_all_constructs()
-    nexi = generate_all_nexi()
-    gem = generate_central_gem()
+    all_nodes: list[dict] = []
+    all_edges: list[dict] = []
 
-    nodes = branches + constructs + nexi + [gem]
-    edges = generate_all_edges(constructs)
+    # 1. Face nodes (12)
+    face_nodes = generate_face_nodes()
+    all_nodes.extend(face_nodes)
 
-    return nodes, edges
+    # 2. Construct nodes (144 per face × 12 faces = 1728)
+    construct_index: dict[str, dict] = {}
+    for face in ALL_FACES:
+        constructs = generate_constructs(face)
+        all_nodes.extend(constructs)
+        for c in constructs:
+            construct_index[c["id"]] = c
+
+    # 3. HAS_CONSTRUCT edges (1728)
+    for face in ALL_FACES:
+        for x in range(GRID_SIZE):
+            for y in range(GRID_SIZE):
+                all_edges.append({
+                    "source_id": face,
+                    "target_id": f"{face}.{x}_{y}",
+                    "relation": HAS_CONSTRUCT,
+                })
+
+    # 4. PRECEDES edges (11)
+    all_edges.extend(generate_precedes_edges())
+
+    # 5. SPECTRUM_OPPOSITION edges (22 per face × 12 faces = 264)
+    for face in ALL_FACES:
+        spectrum_edges = generate_spectrum_edges(face)
+        all_edges.extend(spectrum_edges)
+        # Populate spectrum_ids on construct nodes
+        for edge in spectrum_edges:
+            sid = edge["spectrum_id"]
+            for node_id in (edge["source_id"], edge["target_id"]):
+                if node_id in construct_index:
+                    construct_index[node_id]["spectrum_ids"].append(sid)
+
+    # 6. Nexus nodes (132) and edges (264)
+    nexus_nodes, nexus_edges = generate_nexus_nodes()
+    all_nodes.extend(nexus_nodes)
+    all_edges.extend(nexus_edges)
+
+    # 7. Central gem node (1) and edges (12)
+    gem_node, gem_edges = generate_central_gem()
+    all_nodes.append(gem_node)
+    all_edges.extend(gem_edges)
+
+    return all_nodes, all_edges

@@ -1,4 +1,4 @@
-"""Tests for multi-pass orchestration — stress_test, triangulate, deepen."""
+"""Tests for multi-pass orchestration — stress_test, triangulate, deepen (v2 12-face system)."""
 
 import copy
 
@@ -7,16 +7,16 @@ import pytest
 
 from advanced_prompting_engine.cache.embedding import EmbeddingCache
 from advanced_prompting_engine.cache.tfidf import TfidfCache
-from advanced_prompting_engine.graph.canonical import generate_all_canonical
+from advanced_prompting_engine.graph.canonical import build_canonical_graph
 from advanced_prompting_engine.graph.query import GraphQueryLayer
-from advanced_prompting_engine.graph.schema import ALL_BRANCHES, SYMMETRIC_RELATIONS
+from advanced_prompting_engine.graph.schema import ALL_FACES, GRID_SIZE, SYMMETRIC_RELATIONS
 from advanced_prompting_engine.orchestrator.multi_pass import deepen, stress_test, triangulate
 from advanced_prompting_engine.pipeline.runner import PipelineRunner
 
 
 @pytest.fixture(scope="module")
 def engine():
-    nodes, edges = generate_all_canonical()
+    nodes, edges = build_canonical_graph()
     G = nx.DiGraph()
     for n in nodes:
         G.add_node(n["id"], **n)
@@ -35,7 +35,7 @@ def engine():
 
 @pytest.fixture
 def coord():
-    return {b: {"x": 0, "y": 0, "weight": 0.5} for b in ALL_BRANCHES}
+    return {f: {"x": 0, "y": 0, "weight": 0.5} for f in ALL_FACES}
 
 
 class TestStressTest:
@@ -53,35 +53,51 @@ class TestStressTest:
         _, pipeline, _ = engine
         result = stress_test(coord, pipeline)
         for r in result["all_results"][:3]:
-            assert "branch" in r
+            assert "face" in r
             assert "from" in r
             assert "to" in r
             assert "tension_delta" in r
             assert "coherence_delta" in r
 
+    def test_respects_grid_bounds(self, engine, coord):
+        """No perturbation should exceed 12x12 grid bounds (0 to 11)."""
+        _, pipeline, _ = engine
+        max_coord = GRID_SIZE - 1
+        result = stress_test(coord, pipeline)
+        for r in result["all_results"]:
+            to_x, to_y = r["to"]
+            assert 0 <= to_x <= max_coord
+            assert 0 <= to_y <= max_coord
+
 
 class TestTriangulate:
     def test_produces_intersection(self, engine):
         G, pipeline, _ = engine
-        coord_a = {b: {"x": 0, "y": 0, "weight": 1.0} for b in ALL_BRANCHES}
-        coord_b = {b: {"x": 9, "y": 9, "weight": 1.0} for b in ALL_BRANCHES}
+        coord_a = {f: {"x": 0, "y": 0, "weight": 1.0} for f in ALL_FACES}
+        max_coord = GRID_SIZE - 1
+        coord_b = {f: {"x": max_coord, "y": max_coord, "weight": 1.0} for f in ALL_FACES}
         result = triangulate(coord_a, coord_b, pipeline, G)
         assert "distance" in result
         assert "intersection" in result
         assert "spoke_comparison" in result
         assert "a_coherence" in result
         assert "b_coherence" in result
-        assert len(result["intersection"]) == 10
+        assert len(result["intersection"]) == 12  # 12 faces
+
+    def test_same_coordinate_zero_distance(self, engine):
+        G, pipeline, _ = engine
+        coord_a = {f: {"x": 5, "y": 5, "weight": 1.0} for f in ALL_FACES}
+        coord_b = {f: {"x": 5, "y": 5, "weight": 1.0} for f in ALL_FACES}
+        result = triangulate(coord_a, coord_b, pipeline, G)
+        assert result["distance"] == 0.0
 
 
 class TestDeepen:
     def test_does_not_mutate_graph(self, engine, coord):
         G, pipeline, tfidf = engine
-        # Snapshot node data before
         node_snapshot = {n: dict(G.nodes[n]) for n in list(G.nodes())[:10]}
         basis = pipeline.run(coord)
         deepen(basis, pipeline, G, tfidf)
-        # Verify nodes unchanged
         for n, data in node_snapshot.items():
             for key, val in data.items():
                 assert G.nodes[n].get(key) == val, f"Node {n} mutated on key {key}"
@@ -92,4 +108,4 @@ class TestDeepen:
         deeper = deepen(basis, pipeline, G, tfidf)
         assert deeper.get("depth", 0) >= 1
         assert "construction_questions" in deeper
-        assert len(deeper["construction_questions"]) == 10
+        assert len(deeper["construction_questions"]) == 12  # 12 faces

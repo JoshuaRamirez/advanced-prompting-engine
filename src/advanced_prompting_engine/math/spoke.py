@@ -1,26 +1,25 @@
 """Spoke shape computation and central gem coherence.
 
-Authoritative source: Spec 05 §11-12, Spec 08.
+Authoritative source: CONSTRUCT-v2.md §9.4-9.6, DESIGN.md.
 5 classifications: coherent, dominant, fragmented, moderate, weakly_integrated.
-Empty spoke guard: returns strength=0, consistency=1.0 for empty gem list.
+12 spokes, 11 gems each. Empty spoke guard for edge cases.
 """
 
 from __future__ import annotations
 
 import numpy as np
 
-# Spoke thresholds (Spec 08, calibrated for 10-branch system)
+# Spoke thresholds (calibrated for 12-face system)
 SPOKE_THRESHOLDS = {
     "high_strength": 0.5,
     "high_consistency": 0.65,
-    "high_contribution": 0.15,
+    "high_contribution": 0.12,  # 1/12 baseline ≈ 0.083
     "low_strength": 0.25,
 }
 
 
 def compute_spoke_shape(gems: list[dict]) -> dict:
     """Compute the 4 spoke properties from gem magnitudes."""
-    # Empty guard (numpy.mean([]) = nan)
     if len(gems) == 0:
         return {
             "strength": 0.0,
@@ -35,9 +34,9 @@ def compute_spoke_shape(gems: list[dict]) -> dict:
 
     std = float(np.std(magnitudes))
     consistency = 1.0 - (std / max(strength, 1e-10))
-    consistency = max(0.0, min(1.0, consistency))  # clamp to [0, 1]
+    consistency = max(0.0, min(1.0, consistency))
 
-    tension_count = sum(1 for g in gems if g["type"] == "conflicting")
+    tension_count = sum(1 for g in gems if g.get("type") == "conflicting")
     polarity = tension_count / max(len(gems), 1)
 
     return {
@@ -74,27 +73,38 @@ def classify_spoke(spoke: dict) -> str:
 
 
 def compute_central_gem(spokes: dict[str, dict]) -> dict:
-    """Aggregate all spoke contributions into central gem coherence."""
-    contributions = [s.get("contribution", 0.0) for s in spokes.values()]
-    consistencies = [s.get("consistency", 0.0) for s in spokes.values()]
+    """Aggregate all spoke contributions into central gem coherence.
 
-    # Coherence = weighted mean of contributions weighted by consistency
-    weighted_sum = sum(c * w for c, w in zip(contributions, consistencies))
-    weight_total = sum(consistencies)
-    coherence = weighted_sum / max(weight_total, 1e-10)
+    Coherence measures differentiation across spoke strengths via the
+    coefficient of variation (CV = std / mean). Higher CV means the intent
+    has clear dimensional preferences (some spokes strong, others weak).
+    Low CV means all spokes are nearly identical (no differentiation).
+    """
+    strengths = np.array([s.get("strength", 0.0) for s in spokes.values()])
+
+    if len(strengths) == 0 or np.mean(strengths) < 1e-10:
+        return {
+            "coherence": 0.0,
+            "classification": "incoherent",
+        }
+
+    cv = float(np.std(strengths) / max(np.mean(strengths), 1e-10))
 
     return {
-        "coherence": coherence,
-        "classification": classify_coherence(coherence),
+        "coherence": cv,
+        "classification": classify_coherence(cv),
     }
 
 
-def classify_coherence(coherence: float) -> str:
-    """Classify central gem coherence. Thresholds deliberately low (max ~0.1)."""
-    if coherence >= 0.08:
+def classify_coherence(cv: float) -> str:
+    """Classify central gem coherence from coefficient of variation.
+
+    Higher CV = more spoke differentiation = more coherent intent signal.
+    """
+    if cv >= 0.5:
         return "highly_coherent"
-    if coherence >= 0.05:
+    if cv >= 0.3:
         return "moderately_coherent"
-    if coherence >= 0.02:
+    if cv >= 0.1:
         return "weakly_coherent"
     return "incoherent"

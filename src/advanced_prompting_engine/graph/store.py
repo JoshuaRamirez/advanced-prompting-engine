@@ -1,6 +1,6 @@
 """SQLite persistence layer — canonical/user separation with write protection.
 
-Authoritative source: Spec 04 (sqlite-schema.md), Spec 12 (data-integrity.md).
+Authoritative source: CONSTRUCT-v2.md, ADR-006.
 Triggers are created AFTER initial canonical data insertion.
 """
 
@@ -58,7 +58,7 @@ class SqliteStore:
         c.executescript("""
             CREATE TABLE IF NOT EXISTS canonical_nodes (
                 id          TEXT PRIMARY KEY,
-                type        TEXT NOT NULL CHECK(type IN ('branch', 'construct', 'nexus', 'central_gem')),
+                type        TEXT NOT NULL CHECK(type IN ('face', 'construct', 'nexus', 'central_gem')),
                 tier        INTEGER,
                 properties  TEXT NOT NULL,
                 created_at  TEXT NOT NULL DEFAULT (datetime('now'))

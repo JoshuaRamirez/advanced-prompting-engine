@@ -1,6 +1,6 @@
 """MCP Server — registers tools, prompts, resources. Manages startup.
 
-Authoritative source: Spec 10, Spec 09.
+Authoritative source: CONSTRUCT-v2.md, DESIGN.md.
 Startup: SQLite → canonical data → NetworkX graph → caches → pipeline → MCP.
 """
 
@@ -15,13 +15,12 @@ from mcp.server.fastmcp import FastMCP
 
 logger = logging.getLogger(__name__)
 
-from advanced_prompting_engine.cache.centrality import CentralityCache
 from advanced_prompting_engine.cache.embedding import EmbeddingCache
 from advanced_prompting_engine.cache.tfidf import TfidfCache
-from advanced_prompting_engine.graph.canonical import CANONICAL_VERSION, generate_all_canonical
+from advanced_prompting_engine.graph.canonical import CANONICAL_VERSION, build_canonical_graph
 from advanced_prompting_engine.graph.mutation import GraphMutationLayer
 from advanced_prompting_engine.graph.query import GraphQueryLayer
-from advanced_prompting_engine.graph.schema import ALL_BRANCHES, BRANCH_DEFINITIONS, SYMMETRIC_RELATIONS
+from advanced_prompting_engine.graph.schema import ALL_FACES, FACE_DEFINITIONS, GRID_SIZE, SYMMETRIC_RELATIONS
 from advanced_prompting_engine.graph.store import SqliteStore
 from advanced_prompting_engine.pipeline.runner import PipelineRunner
 from advanced_prompting_engine.tools.create_prompt_basis import handle_create_prompt_basis
@@ -32,14 +31,14 @@ from advanced_prompting_engine.tools.extend_schema import handle_extend_schema
 def create_server(db_path: str | None = None) -> FastMCP:
     """Create and configure the MCP server with all components."""
 
-    # --- Step 1-4: Database + Graph ---
+    # --- Database + Graph ---
     store = SqliteStore(db_path=db_path)
     store.create_tables()
     atexit.register(store.close)
 
     if store.needs_initialization():
         logger.info("First run — initializing canonical data...")
-        nodes, edges = generate_all_canonical()
+        nodes, edges = build_canonical_graph()
         store.initialize_canonical(nodes, edges, CANONICAL_VERSION)
         logger.info("Canonical data initialized: %d nodes, %d edges", len(nodes), len(edges))
 
@@ -64,28 +63,27 @@ def create_server(db_path: str | None = None) -> FastMCP:
 
     logger.info("Graph loaded: %d nodes, %d edges", len(G.nodes()), len(G.edges()))
 
-    # --- Step 5-7: Caches ---
+    # --- Caches ---
     embedding_cache = EmbeddingCache()
     embedding_cache.initialize(G)
 
     tfidf_cache = TfidfCache()
     tfidf_cache.initialize(G)
 
-    centrality_cache = CentralityCache()
-    centrality_cache.initialize(G)
-
     logger.info("Caches initialized")
 
-    # --- Step 8: Pipeline ---
+    # --- Pipeline ---
     query_layer = GraphQueryLayer(G)
-    mutation_layer = GraphMutationLayer(G, store, embedding_cache, tfidf_cache, centrality_cache)
-    pipeline = PipelineRunner(G, query_layer, embedding_cache, tfidf_cache, centrality_cache)
+    mutation_layer = GraphMutationLayer(G, store, tfidf_cache)
+    pipeline = PipelineRunner(G, query_layer, embedding_cache, tfidf_cache)
 
-    # --- Step 9-12: MCP Server ---
+    max_coord = GRID_SIZE - 1
+
+    # --- MCP Server ---
     mcp = FastMCP(
         "Advanced Prompting Engine",
         instructions=(
-            "A universal prompt creation engine. Measures intent across 10 philosophical "
+            "A universal prompt creation engine. Measures intent across 12 philosophical "
             "dimensions and returns a construction basis for prompt creation. "
             "Use create_prompt_basis as the primary tool."
         ),
@@ -99,14 +97,13 @@ def create_server(db_path: str | None = None) -> FastMCP:
         coordinate: dict | str | None = None,
         compact: bool = False,
     ) -> str:
-        """Measure intent across 10 philosophical dimensions and return a construction basis.
+        """Measure intent across 12 philosophical dimensions and return a construction basis.
 
         Use this before constructing any prompt where dimensional precision,
         philosophical coherence, or systematic completeness matters.
 
         Provide either 'intent' (natural language) or 'coordinate' (JSON object with
-        10 branches, each having x, y, weight). Set compact=true for ~2KB summary
-        instead of full ~52KB output.
+        12 faces, each having x, y, weight). Set compact=true for summary output.
         """
         coord_dict = None
         if coordinate:
@@ -126,10 +123,10 @@ def create_server(db_path: str | None = None) -> FastMCP:
     @mcp.tool()
     def explore_space(
         operation: str,
-        branch: str | None = None,
+        face: str | None = None,
         x: int | None = None,
         y: int | None = None,
-        target_branch: str | None = None,
+        target_face: str | None = None,
         target_x: int | None = None,
         target_y: int | None = None,
         coordinate: dict | str | None = None,
@@ -138,11 +135,11 @@ def create_server(db_path: str | None = None) -> FastMCP:
         classification: str | None = None,
         provenance: str = "merged",
     ) -> str:
-        """Explore the philosophical manifold. Operations: list_branches, list_constructs,
+        """Explore the philosophical manifold. Operations: list_faces, list_constructs,
         get_construct, get_neighborhood, find_path, get_spoke, stress_test, triangulate."""
         kwargs = {
-            "branch": branch, "x": x, "y": y,
-            "target_branch": target_branch, "target_x": target_x, "target_y": target_y,
+            "face": face, "x": x, "y": y,
+            "target_face": target_face, "target_x": target_x, "target_y": target_y,
             "classification": classification, "provenance": provenance,
         }
         if coordinate:
@@ -158,7 +155,7 @@ def create_server(db_path: str | None = None) -> FastMCP:
     @mcp.tool()
     def extend_schema(
         operation: str,
-        branch: str | None = None,
+        face: str | None = None,
         x: int | None = None,
         y: int | None = None,
         question: str | None = None,
@@ -174,7 +171,7 @@ def create_server(db_path: str | None = None) -> FastMCP:
 
         Operations: add_construct, add_relation."""
         kwargs = {
-            "branch": branch, "x": x, "y": y,
+            "face": face, "x": x, "y": y,
             "question": question,
             "tags": (json.loads(tags) if isinstance(tags, str) else tags) if tags else None,
             "description": description,
@@ -189,19 +186,19 @@ def create_server(db_path: str | None = None) -> FastMCP:
 
     @mcp.resource("ape://axiom_manifest")
     def axiom_manifest() -> str:
-        """The 10 philosophical branches with core questions and sub-dimensions."""
-        branches = []
-        for i, branch in enumerate(ALL_BRANCHES):
-            defn = BRANCH_DEFINITIONS[branch]
-            branches.append({
-                "id": branch,
+        """The 12 philosophical faces with core questions and sub-dimensions."""
+        faces = []
+        for i, face in enumerate(ALL_FACES):
+            defn = FACE_DEFINITIONS[face]
+            faces.append({
+                "id": face,
                 "core_question": defn["core_question"],
                 "construction_template": defn["construction_template"],
                 "x_axis": defn["x_axis_name"],
                 "y_axis": defn["y_axis_name"],
                 "causal_order": i,
             })
-        return json.dumps({"branches": branches})
+        return json.dumps({"faces": faces})
 
     @mcp.resource("ape://schema_manifest")
     def schema_manifest() -> str:
@@ -220,14 +217,14 @@ def create_server(db_path: str | None = None) -> FastMCP:
     def coordinate_schema() -> str:
         """Schema for a valid coordinate object."""
         schema = {
-            "description": "A coordinate positions the client in the 10-axis philosophical manifold.",
-            "format": "Each branch has {x: int (0-9), y: int (0-9), weight: float (0-1)}",
-            "branches": {
-                branch: {
-                    "x_axis": BRANCH_DEFINITIONS[branch]["x_axis_name"],
-                    "y_axis": BRANCH_DEFINITIONS[branch]["y_axis_name"],
+            "description": f"A coordinate positions the client in the 12-axis philosophical manifold.",
+            "format": f"Each face has {{x: int (0-{max_coord}), y: int (0-{max_coord}), weight: float (0-1)}}",
+            "faces": {
+                face: {
+                    "x_axis": FACE_DEFINITIONS[face]["x_axis_name"],
+                    "y_axis": FACE_DEFINITIONS[face]["y_axis_name"],
                 }
-                for branch in ALL_BRANCHES
+                for face in ALL_FACES
             },
         }
         return json.dumps(schema)
@@ -239,7 +236,7 @@ def create_server(db_path: str | None = None) -> FastMCP:
         """Understand the philosophical manifold before using it."""
         return (
             "To orient yourself in the philosophical manifold:\n"
-            "1. Read the axiom_manifest resource to understand the 10 branches\n"
+            "1. Read the axiom_manifest resource to understand the 12 faces\n"
             "2. Read the coordinate_schema resource to understand how positions are specified\n"
             "3. Read the schema_manifest resource to see current graph state\n"
             "4. Use create_prompt_basis with your intent to get a construction basis"
@@ -253,9 +250,10 @@ def create_server(db_path: str | None = None) -> FastMCP:
             "1. Call create_prompt_basis with your intent\n"
             "2. Review active_constructs and their epistemic questions\n"
             "3. Review spectrum_opposites to understand what your position is NOT\n"
-            "4. Review spoke profiles for per-branch behavioral signatures\n"
+            "4. Review spoke profiles for per-face behavioral signatures\n"
             "5. Review central_gem for overall coherence\n"
-            "6. Use construction_questions to guide prompt construction"
+            "6. Review harmonization_pairs for paired face resonance\n"
+            "7. Use construction_questions to guide prompt construction"
         )
 
     @mcp.prompt()
@@ -264,7 +262,7 @@ def create_server(db_path: str | None = None) -> FastMCP:
         return (
             "To compare two positions:\n"
             "1. Call explore_space with operation=triangulate, providing coordinate_a and coordinate_b\n"
-            "2. Review per-branch construct intersection\n"
+            "2. Review per-face construct intersection\n"
             "3. Review shared tensions and spoke comparison\n"
             "4. Check coordinate distance for overall separation"
         )
@@ -276,9 +274,9 @@ def create_server(db_path: str | None = None) -> FastMCP:
             "To resolve tensions before constructing:\n"
             "1. Call create_prompt_basis with your intent\n"
             "2. Review the tensions list\n"
-            "3. For each tension, check resolution_paths\n"
-            "4. If no resolution exists, consider adjusting the coordinate\n"
-            "5. Use explore_space with operation=stress_test to find improvements"
+            "3. For high positional tensions, consider adjusting the coordinate\n"
+            "4. Use explore_space with operation=stress_test to find improvements\n"
+            "5. Check harmonization_pairs for paired face alignment"
         )
 
     logger.info("MCP server configured: 3 tools, 4 prompts, 3 resources")

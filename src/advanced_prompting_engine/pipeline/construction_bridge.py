@@ -1,17 +1,29 @@
 """Stage 8 — Construction Bridge: assemble the full construction basis output.
 
-Authoritative source: Spec 06 §8.
+Authoritative source: CONSTRUCT-v2.md (8-stage forward pass, Stage 8).
 Combines all accumulated pipeline state into the final output dict.
+Includes harmonization pairs for the 6 complementary cube pairs.
 """
 
 from __future__ import annotations
 
+from advanced_prompting_engine.graph.grid import degree_label
 from advanced_prompting_engine.graph.schema import (
-    ALL_BRANCHES,
-    BRANCH_DEFINITIONS,
+    ALL_FACES,
+    FACE_DEFINITIONS,
+    FACE_PHASES,
     GENERATES,
+    GRID_SIZE,
     PipelineState,
 )
+
+# §6 meaning hierarchy: classification → meaning mechanism
+_MEANING_MECHANISMS: dict[str, str] = {
+    "corner": "integration",
+    "midpoint": "axial_balance",
+    "edge": "demarcation",
+    "center": "composition",
+}
 
 
 class ConstructionBridge:
@@ -26,20 +38,21 @@ class ConstructionBridge:
         spokes = state.spokes or {}
         central_gem = state.central_gem or {}
         gems = state.gems or []
+        harmonization_pairs = state.harmonization_pairs or []
         G = self._query.graph
 
         # Spectrum opposites
         spectrum_opposites = []
-        for branch, constructs in active.items():
+        for face, constructs in active.items():
             if not constructs:
                 continue
             primary = constructs[0]
             opp = self._query.get_spectrum_opposite(
-                branch, primary.get("x", 0), primary.get("y", 0)
+                face, primary.get("x", 0), primary.get("y", 0)
             )
             if opp:
                 spectrum_opposites.append({
-                    "branch": branch,
+                    "face": face,
                     "active": {
                         "position": [primary.get("x"), primary.get("y")],
                         "question": primary.get("question"),
@@ -48,22 +61,22 @@ class ConstructionBridge:
                         "position": [opp.get("x"), opp.get("y")],
                         "question": opp.get("question"),
                     },
-                    "spectrum_question": opp.get("spectrum_question"),
                 })
 
         # Structural profile
         edge_count = sum(
-            1 for b, cs in active.items() for c in cs
+            1 for f, cs in active.items() for c in cs
             if c.get("classification") in ("corner", "midpoint", "edge")
         )
         center_count = sum(
-            1 for b, cs in active.items() for c in cs
+            1 for f, cs in active.items() for c in cs
             if c.get("classification") == "center"
         )
         total = edge_count + center_count
         edge_ratio = edge_count / max(total, 1)
         mean_potency = (
-            sum(c.get("potency", 0.6) for b, cs in active.items() for c in cs) / max(total, 1)
+            sum(c.get("potency", 0.6) for f, cs in active.items() for c in cs)
+            / max(total, 1)
         )
 
         # Generative combinations
@@ -82,69 +95,72 @@ class ConstructionBridge:
 
         # Construction questions
         construction_questions = {}
-        for branch in ALL_BRANCHES:
-            defn = BRANCH_DEFINITIONS[branch]
-            constructs = active.get(branch, [])
+        for face in ALL_FACES:
+            defn = FACE_DEFINITIONS[face]
+            constructs = active.get(face, [])
             primary = constructs[0] if constructs else None
-            spoke = spokes.get(branch, {})
+            spoke = spokes.get(face, {})
 
-            # Spectrum opposite for this branch
+            # Spectrum opposite for this face
             opp_question = None
-            spectrum_question = None
             if primary:
                 opp = self._query.get_spectrum_opposite(
-                    branch, primary.get("x", 0), primary.get("y", 0)
+                    face, primary.get("x", 0), primary.get("y", 0)
                 )
                 if opp:
                     opp_question = opp.get("question")
-                    spectrum_question = opp.get("spectrum_question")
 
             # Tension note
-            branch_tensions = [
-                t for t in tensions.get("direct", [])
-                if any(b.split(".")[0] == branch for b in t.get("between", []))
+            positional_tensions = tensions.get("positional", [])
+            face_tensions = [
+                t for t in positional_tensions
+                if face in t.get("faces", [])
             ]
             tension_note = (
-                f"{len(branch_tensions)} direct tension(s) involving this branch"
-                if branch_tensions else None
+                f"{len(face_tensions)} positional tension(s) involving this face"
+                if face_tensions else None
             )
 
             # Generative note
-            branch_gens = [
+            face_gens = [
                 g for g in generatives
-                if any(c.split(".")[0] == branch for c in g.get("constructs", []))
+                if any(c.split(".")[0] == face for c in g.get("constructs", []))
             ]
             generative_note = (
-                f"{len(branch_gens)} generative combination(s) involving this branch"
-                if branch_gens else None
+                f"{len(face_gens)} generative combination(s) involving this face"
+                if face_gens else None
             )
 
-            # Sub-dimensional interpretation (mechanically derived)
-            x_interp = None
-            y_interp = None
+            # Sub-dimensional interpretation (mechanically derived via degree_label)
+            x_label = None
+            y_label = None
             position_summary = None
             if primary:
                 px = primary.get("x", 0)
                 py = primary.get("y", 0)
-                x_interp = _interpret_axis(px, defn["x_axis_low"], defn["x_axis_high"])
-                y_interp = _interpret_axis(py, defn["y_axis_low"], defn["y_axis_high"])
-                position_summary = f"{x_interp['label']} + {y_interp['label']}"
+                x_label = degree_label(px, defn["x_axis_low"], defn["x_axis_high"])
+                y_label = degree_label(py, defn["y_axis_low"], defn["y_axis_high"])
+                position_summary = f"{x_label} + {y_label}"
 
-            construction_questions[branch] = {
+            # §6 meaning hierarchy: classification determines meaning mechanism
+            classification = primary.get("classification") if primary else None
+            meaning_mechanism = _MEANING_MECHANISMS.get(classification) if classification else None
+
+            construction_questions[face] = {
                 "template": defn["construction_template"],
                 "active_question": primary.get("question") if primary else None,
-                "active_question_revisited": primary.get("question_revisited") if primary else None,
                 "opposite_question": opp_question,
-                "spectrum_question": spectrum_question,
-                "classification": primary.get("classification") if primary else None,
+                "phase": FACE_PHASES.get(face, "unknown"),
+                "classification": classification,
                 "potency": primary.get("potency") if primary else None,
                 "x": primary.get("x") if primary else None,
                 "y": primary.get("y") if primary else None,
                 "x_axis": defn["x_axis_name"],
-                "x_interpretation": x_interp,
+                "x_interpretation": x_label,
                 "y_axis": defn["y_axis_name"],
-                "y_interpretation": y_interp,
+                "y_interpretation": y_label,
                 "position_summary": position_summary,
+                "meaning_mechanism": meaning_mechanism,
                 "spoke_profile": spoke.get("classification"),
                 "spoke_strength": spoke.get("strength", 0.0),
                 "tension_note": tension_note,
@@ -154,7 +170,7 @@ class ConstructionBridge:
         state.construction_basis = {
             "coordinate": state.coordinate,
             "active_constructs": {
-                b: [
+                f: [
                     {
                         "position": [c.get("x"), c.get("y")],
                         "classification": c.get("classification"),
@@ -163,7 +179,7 @@ class ConstructionBridge:
                     }
                     for c in cs
                 ]
-                for b, cs in active.items()
+                for f, cs in active.items()
             },
             "spectrum_opposites": spectrum_opposites,
             "structural_profile": {
@@ -175,8 +191,9 @@ class ConstructionBridge:
             "tensions": tensions,
             "generative_combinations": generatives,
             "gems": gems,
+            "harmonization_pairs": harmonization_pairs,
             "spokes": {
-                b: {
+                f: {
                     "strength": s.get("strength", 0.0),
                     "consistency": s.get("consistency", 0.0),
                     "polarity": s.get("polarity", 0.0),
@@ -184,46 +201,10 @@ class ConstructionBridge:
                     "classification": s.get("classification"),
                     "gems": s.get("gems", []),
                 }
-                for b, s in spokes.items()
+                for f, s in spokes.items()
             },
             "central_gem": central_gem,
             "construction_questions": construction_questions,
         }
 
 
-def _interpret_axis(value: int, low_label: str, high_label: str) -> dict:
-    """Derive human-readable interpretation of a 0-9 axis position.
-
-    Pure arithmetic + string interpolation. No LLM inference.
-    """
-    ratio = value / 9.0
-    if ratio <= 0.15:
-        strength = "Strongly"
-        label = f"Strongly {low_label}"
-    elif ratio <= 0.35:
-        strength = "Leaning"
-        label = f"Leaning {low_label}"
-    elif ratio <= 0.45:
-        strength = "Slightly"
-        label = f"Slightly {low_label}"
-    elif ratio <= 0.55:
-        strength = "Balanced"
-        label = f"Balanced {low_label}/{high_label}"
-    elif ratio <= 0.65:
-        strength = "Slightly"
-        label = f"Slightly {high_label}"
-    elif ratio <= 0.85:
-        strength = "Leaning"
-        label = f"Leaning {high_label}"
-    else:
-        strength = "Strongly"
-        label = f"Strongly {high_label}"
-
-    return {
-        "value": value,
-        "ratio": round(ratio, 2),
-        "low_label": low_label,
-        "high_label": high_label,
-        "strength": strength,
-        "label": label,
-    }

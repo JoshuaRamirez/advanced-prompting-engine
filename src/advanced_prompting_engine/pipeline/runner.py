@@ -1,6 +1,6 @@
 """Pipeline Runner — orchestrates all 8 stages in sequence.
 
-Authoritative source: Spec 06.
+Authoritative source: CONSTRUCT-v2.md (8-stage forward pass).
 Ensures caches are valid before pipeline run.
 """
 
@@ -18,7 +18,7 @@ from advanced_prompting_engine.pipeline.tension_analyzer import TensionAnalyzer
 
 
 class PipelineRunner:
-    """Runs the 8-stage pipeline: intent → construction basis."""
+    """Runs the 8-stage pipeline: intent -> construction basis."""
 
     def __init__(self, graph, query_layer, embedding_cache, tfidf_cache, centrality_cache=None):
         self._graph = graph
@@ -27,20 +27,21 @@ class PipelineRunner:
         self._centrality_cache = centrality_cache
 
         self._stages = [
-            IntentParser(tfidf_cache, query_layer),        # Stage 1
-            CoordinateResolver(graph),                      # Stage 2
-            PositionComputer(embedding_cache, query_layer), # Stage 3
-            ConstructResolver(query_layer, embedding_cache),# Stage 4
-            TensionAnalyzer(graph),                         # Stage 5
-            NexusGemAnalyzer(graph),                        # Stage 6
-            SpokeAnalyzer(),                                # Stage 7
-            ConstructionBridge(query_layer),                # Stage 8
+            IntentParser(tfidf_cache, query_layer),         # Stage 1
+            CoordinateResolver(),                            # Stage 2
+            PositionComputer(),                              # Stage 3
+            ConstructResolver(query_layer),                  # Stage 4
+            TensionAnalyzer(graph, query_layer),             # Stage 5
+            NexusGemAnalyzer(graph, query_layer),            # Stage 6
+            SpokeAnalyzer(),                                 # Stage 7
+            ConstructionBridge(query_layer),                 # Stage 8
         ]
 
     def run(self, raw_input: str | dict) -> dict:
         """Execute the full pipeline and return the construction basis."""
         # Ensure caches are valid
-        self._embedding_cache.ensure_valid(self._graph)
+        if self._embedding_cache is not None:
+            self._embedding_cache.ensure_valid(self._graph)
         self._tfidf_cache.ensure_valid(self._graph)
         if self._centrality_cache:
             self._centrality_cache.ensure_valid(self._graph)

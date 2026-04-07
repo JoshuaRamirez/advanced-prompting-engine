@@ -46,9 +46,13 @@ def _compact(basis: dict) -> dict:
         "structural_profile": basis.get("structural_profile"),
         "tensions_summary": {
             "total": basis.get("tensions", {}).get("total_magnitude", 0),
-            "direct_count": len(basis.get("tensions", {}).get("direct", [])),
+            "positional_count": len(basis.get("tensions", {}).get("positional", [])),
             "spectrum_count": len(basis.get("tensions", {}).get("spectrum", [])),
         },
+        "harmonization": [
+            {"pair": h["pair"], "resonance": h["resonance"]}
+            for h in basis.get("harmonization_pairs", [])
+        ],
         "spokes": {
             b: {"classification": s.get("classification"), "strength": s.get("strength", 0)}
             for b, s in basis.get("spokes", {}).items()

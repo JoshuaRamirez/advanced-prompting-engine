@@ -1,64 +1,92 @@
-"""Stage 4 — Construct Resolver: determine active constructs per branch.
+"""Stage 4 — Construct Resolver: determine active constructs per face.
 
-Authoritative source: Spec 06 §4.
-Primary construct always active. Nearby within adaptive threshold also activate.
-Threshold: 60% of mean nearest-neighbor distance within each branch.
+Authoritative source: CONSTRUCT-v2.md (8-stage forward pass, Stage 4).
+
+Primary construct always active. Nearby constructs within Manhattan distance
+threshold also activate. 12 faces, 144 constructs per face.
+
+Activation radius varies by face weight from the coordinate:
+  weight >= 0.7 → radius 3 (strong commitment widens the activation field)
+  weight >= 0.4 → radius 2 (moderate commitment, default neighborhood)
+  weight <  0.4 → radius 1 (weak commitment, narrow activation)
+
+Each construct's potency is scaled by the face weight to produce
+``effective_potency``. Downstream stages (tension, gem) should prefer
+``effective_potency`` when available, falling back to ``potency``.
 """
 
 from __future__ import annotations
 
-import numpy as np
+from advanced_prompting_engine.graph.schema import ALL_FACES, GRID_SIZE, PipelineState
 
-from advanced_prompting_engine.graph.schema import ALL_BRANCHES, PipelineState
+
+def _activation_radius(weight: float) -> int:
+    """Determine activation radius from face weight."""
+    if weight >= 0.7:
+        return 3
+    if weight >= 0.4:
+        return 2
+    return 1
 
 
 class ConstructResolver:
-    """Stage 4: Resolve primary + nearby active constructs per branch."""
+    """Stage 4: Resolve primary + nearby active constructs per face."""
 
-    def __init__(self, query_layer, embedding_cache):
+    def __init__(self, query_layer):
         self._query = query_layer
-        self._embedding = embedding_cache
 
     def execute(self, state: PipelineState):
         if state.manifold_position is None:
             raise RuntimeError("Stage 4 requires manifold_position from Stage 3")
 
-        per_branch = state.manifold_position["per_branch"]
-        active_constructs = {}
+        per_face = state.manifold_position["per_face"]
+        active_constructs: dict[str, list[dict]] = {}
 
-        for branch in ALL_BRANCHES:
-            branch_data = per_branch.get(branch, {})
-            primary_id = branch_data.get("primary")
-            nearby = branch_data.get("nearby", [])
+        for face in ALL_FACES:
+            face_data = per_face.get(face, {})
+            primary_id = face_data.get("primary")
+            px = face_data.get("x", 0)
+            py = face_data.get("y", 0)
+
+            # Read face weight from the resolved coordinate
+            weight = 1.0
+            if state.coordinate and face in state.coordinate:
+                weight = state.coordinate[face].get("weight", 1.0)
+
+            radius = _activation_radius(weight)
 
             # Always include the primary construct
             primary = self._query.get_construct_by_id(primary_id)
             if primary is None:
-                active_constructs[branch] = []
+                active_constructs[face] = []
                 continue
 
+            # Add effective_potency scaled by face weight
+            primary["effective_potency"] = primary.get("potency", 0.6) * weight
+
             active = [primary]
+            seen = {primary_id}
 
-            # Compute activation threshold: 60% of mean nearest-neighbor distance
-            threshold = self._compute_activation_threshold(branch, nearby)
+            # Activate nearby constructs within Manhattan distance threshold
+            for dx in range(-radius, radius + 1):
+                for dy in range(-radius, radius + 1):
+                    if dx == 0 and dy == 0:
+                        continue
+                    if abs(dx) + abs(dy) > radius:
+                        continue
+                    nx_ = px + dx
+                    ny_ = py + dy
+                    if not (0 <= nx_ < GRID_SIZE and 0 <= ny_ < GRID_SIZE):
+                        continue
+                    neighbor_id = f"{face}.{nx_}_{ny_}"
+                    if neighbor_id in seen:
+                        continue
+                    seen.add(neighbor_id)
+                    neighbor = self._query.get_construct_by_id(neighbor_id)
+                    if neighbor is not None:
+                        neighbor["effective_potency"] = neighbor.get("potency", 0.6) * weight
+                        active.append(neighbor)
 
-            for n in nearby:
-                if n["distance"] < threshold:
-                    active.append(n)
-
-            active_constructs[branch] = active
+            active_constructs[face] = active
 
         state.active_constructs = active_constructs
-
-    def _compute_activation_threshold(self, branch: str, nearby: list[dict]) -> float:
-        """Adaptive threshold: 60% of mean nearest-neighbor distance in this branch."""
-        if len(nearby) < 2:
-            return 0.0  # no neighbors to activate
-
-        # Use the distances from the nearby list (already sorted)
-        distances = [n["distance"] for n in nearby if n["distance"] > 0]
-        if not distances:
-            return 0.0
-
-        mean_nn = float(np.mean(distances[:10]))  # use closest 10 as representative
-        return mean_nn * 0.6

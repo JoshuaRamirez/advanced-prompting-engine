@@ -1,150 +1,130 @@
-"""Potency-weighted tension computation — direct, spectrum, and cascading.
+"""Positional tension computation — coordinate distance + cube stratification.
 
-Authoritative source: Spec 05 §6.
+Authoritative source: CONSTRUCT-v2.md §9, §12, §14.
+
+v2 replaces v1's declared-edge traversal with positional correspondence:
+- Same position across faces = low tension (shared archetype)
+- Opposite position across faces = high tension (opposed archetype)
+- Cube stratification modulates: paired nexi dampen, opposite nexi amplify
 """
 
 from __future__ import annotations
 
-from collections import deque
-
-import networkx as nx
 import numpy as np
 
-from advanced_prompting_engine.graph.schema import REQUIRES, SPECTRUM_OPPOSITION, TENSIONS_WITH
+from advanced_prompting_engine.graph.schema import GRID_SIZE, NexusTier
+
+# Cube tier weights: how much the nexus tier modulates raw positional tension.
+# Paired faces are designed to harmonize (dampen tension).
+# Opposite faces are maximally distant (amplify tension).
+TIER_WEIGHTS: dict[str, float] = {
+    NexusTier.PAIRED.value: 0.4,
+    NexusTier.ADJACENT.value: 1.0,
+    NexusTier.OPPOSITE.value: 1.5,
+}
 
 
-def compute_decay_factor(G: nx.Graph) -> float:
-    """Derive cascade decay from mean REQUIRES edge strength. Default 0.7."""
-    strengths = [
-        d.get("strength", 0.5)
-        for _, _, d in G.edges(data=True)
-        if d.get("relation") == REQUIRES
-    ]
-    if not strengths:
-        return 0.7
-    return float(np.mean(strengths))
+def positional_distance(x1: int, y1: int, x2: int, y2: int) -> float:
+    """Normalized Euclidean distance between two grid positions.
 
-
-def compute_tensions(active_constructs: dict, G: nx.Graph) -> dict:
-    """Compute all tensions: direct, spectrum, and cascading.
-
-    active_constructs: branch → list of dicts with at minimum {branch, x, y, potency, id}.
-    Returns dict with total_magnitude, direct[], spectrum[], cascading[], resolution_paths[].
+    Returns 0.0 for identical positions, 1.0 for maximally distant (corners).
     """
-    all_active = []
-    for branch, constructs in active_constructs.items():
-        for c in constructs:
-            all_active.append(c)
+    max_dist = np.sqrt(2) * (GRID_SIZE - 1)
+    raw = np.sqrt((x1 - x2) ** 2 + (y1 - y2) ** 2)
+    return float(raw / max_dist)
 
-    active_ids = {c["id"] for c in all_active}
 
-    direct = []
-    spectrum = []
-    cascading = []
-    resolution_paths = []
+def positional_tension(
+    x1: int, y1: int, potency1: float,
+    x2: int, y2: int, potency2: float,
+    cube_tier: str,
+) -> float:
+    """Compute tension between two points on different faces.
 
-    # Direct tensions
-    for i, a in enumerate(all_active):
-        for b in all_active[i + 1 :]:
-            a_id = a["id"]
-            b_id = b["id"]
-            for u, v in [(a_id, b_id), (b_id, a_id)]:
-                if G.has_edge(u, v) and G.edges[u, v].get("relation") == TENSIONS_WITH:
-                    strength = G.edges[u, v].get("strength", 0.5)
-                    mag = strength * a["potency"] * b["potency"]
-                    direct.append({
-                        "between": [a_id, b_id],
-                        "magnitude": mag,
-                        "type": "declared",
-                        "potency_product": a["potency"] * b["potency"],
-                    })
-                    # Check for resolution
-                    _collect_resolutions(a_id, b_id, G, resolution_paths)
-                    break  # only count once per pair
+    Tension = positional_distance * potency_product * tier_weight.
+    """
+    dist = positional_distance(x1, y1, x2, y2)
+    tier_weight = TIER_WEIGHTS.get(cube_tier, 1.0)
+    return dist * potency1 * potency2 * tier_weight
 
-    # Spectrum oppositions (deduplicate — symmetric edges are stored both directions)
-    seen_spectrum_pairs: set[frozenset] = set()
-    for c in all_active:
-        c_id = c["id"]
-        if c.get("classification") in ("corner", "midpoint", "edge"):
-            for _, neighbor, data in G.edges(c_id, data=True):
-                if data.get("relation") == SPECTRUM_OPPOSITION:
-                    pair = frozenset([c_id, neighbor])
-                    if pair in seen_spectrum_pairs:
-                        continue
-                    seen_spectrum_pairs.add(pair)
-                    opp_potency = G.nodes[neighbor].get("potency", 0.6)
-                    mag = 0.6 * c["potency"] * opp_potency
-                    spectrum.append({
-                        "active": c_id,
-                        "opposite": neighbor,
-                        "magnitude": mag,
-                        "type": "spectrum_geometric",
-                        "spectrum_question": data.get("question"),
-                    })
 
-    # Cascading tensions
-    decay = compute_decay_factor(G)
-    for c in all_active:
-        cascade_results = _propagate_tension(c["id"], active_ids, G, decay, max_hops=5)
-        cascading.extend(cascade_results)
+def compute_tensions(
+    active_constructs: dict[str, list[dict]],
+    nexus_tiers: dict[tuple[str, str], str],
+) -> dict:
+    """Compute all inter-face tensions from activated positions.
 
-    total = (
-        sum(t["magnitude"] for t in direct)
-        + sum(t["magnitude"] for t in spectrum)
-        + sum(t["magnitude"] for t in cascading)
-    )
+    active_constructs: face → list of dicts with {face, x, y, potency, id}.
+    nexus_tiers: (face_a, face_b) → tier string.
+
+    Returns dict with total_magnitude, tensions[].
+    """
+    faces = list(active_constructs.keys())
+    tensions = []
+
+    for i, face_a in enumerate(faces):
+        for face_b in faces[i + 1:]:
+            tier_key = (face_a, face_b)
+            tier = nexus_tiers.get(tier_key, nexus_tiers.get((face_b, face_a), NexusTier.ADJACENT.value))
+
+            for ca in active_constructs[face_a]:
+                for cb in active_constructs[face_b]:
+                    t = positional_tension(
+                        ca["x"], ca["y"], ca.get("effective_potency", ca["potency"]),
+                        cb["x"], cb["y"], cb.get("effective_potency", cb["potency"]),
+                        tier,
+                    )
+                    if t >= 0.01:
+                        tensions.append({
+                            "between": [ca["id"], cb["id"]],
+                            "faces": [face_a, face_b],
+                            "magnitude": t,
+                            "cube_tier": tier,
+                            "positional_distance": positional_distance(
+                                ca["x"], ca["y"], cb["x"], cb["y"]
+                            ),
+                        })
+
+    total = sum(t["magnitude"] for t in tensions)
 
     return {
         "total_magnitude": total,
-        "direct": direct,
-        "spectrum": spectrum,
-        "cascading": cascading,
-        "resolution_paths": resolution_paths,
+        "tensions": tensions,
     }
 
 
-def _propagate_tension(
-    source_id: str, active_ids: set[str], G: nx.Graph, decay: float, max_hops: int
+def compute_spectrum_tensions(
+    active_constructs: dict[str, list[dict]],
+    G,
 ) -> list[dict]:
-    """Follow REQUIRES chains from source, check for tensions at each hop."""
-    results = []
-    visited = {source_id}
-    frontier = deque([(source_id, 0)])
+    """Compute intra-face spectrum tensions for edge-classified active constructs.
 
-    while frontier:
-        current, hops = frontier.popleft()
-        if hops >= max_hops:
-            continue
-        for _, neighbor, data in G.edges(current, data=True):
-            if data.get("relation") != REQUIRES or neighbor in visited:
+    An active edge point tensions with its geometric opposite on the same face.
+    """
+    from advanced_prompting_engine.graph.schema import SPECTRUM_OPPOSITION
+
+    spectrum_tensions = []
+    seen: set[frozenset] = set()
+
+    for face, constructs in active_constructs.items():
+        for c in constructs:
+            if c.get("classification") not in ("corner", "midpoint", "edge"):
                 continue
-            visited.add(neighbor)
-            # Check if this required node tensions with any active node
-            for _, tension_target, td in G.edges(neighbor, data=True):
-                if td.get("relation") == TENSIONS_WITH and tension_target in active_ids:
-                    mag = td.get("strength", 0.5) * (decay ** (hops + 1))
-                    if mag >= 0.05:  # negligible threshold
-                        results.append({
-                            "between": [source_id, tension_target],
-                            "magnitude": mag,
-                            "type": "inferred_cascade",
-                            "chain": [source_id, current, neighbor, tension_target],
-                        })
-            frontier.append((neighbor, hops + 1))
+            c_id = c["id"]
+            for _, neighbor, data in G.edges(c_id, data=True):
+                if data.get("relation") != SPECTRUM_OPPOSITION:
+                    continue
+                pair = frozenset([c_id, neighbor])
+                if pair in seen:
+                    continue
+                seen.add(pair)
+                opp_potency = G.nodes[neighbor].get("potency", 0.6)
+                mag = 0.6 * c["potency"] * opp_potency
+                spectrum_tensions.append({
+                    "active": c_id,
+                    "opposite": neighbor,
+                    "magnitude": mag,
+                    "type": "spectrum_geometric",
+                })
 
-    return results
-
-
-def _collect_resolutions(a_id: str, b_id: str, G: nx.Graph, resolution_paths: list):
-    """Check if any construct resolves the tension between a and b."""
-    from advanced_prompting_engine.graph.schema import RESOLVES
-
-    for node in G.nodes():
-        resolves_a = G.has_edge(node, a_id) and G.edges[node, a_id].get("relation") == RESOLVES
-        resolves_b = G.has_edge(node, b_id) and G.edges[node, b_id].get("relation") == RESOLVES
-        if resolves_a and resolves_b:
-            resolution_paths.append({
-                "resolver": node,
-                "tension_between": [a_id, b_id],
-            })
+    return spectrum_tensions

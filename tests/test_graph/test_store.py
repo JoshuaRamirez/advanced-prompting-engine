@@ -1,4 +1,4 @@
-"""Tests for SQLite persistence layer."""
+"""Tests for SQLite persistence layer (v2: faces, 12x12 grid)."""
 
 import json
 import os
@@ -7,7 +7,7 @@ import tempfile
 
 import pytest
 
-from advanced_prompting_engine.graph.canonical import generate_all_canonical, CANONICAL_VERSION
+from advanced_prompting_engine.graph.canonical import build_canonical_graph, CANONICAL_VERSION
 from advanced_prompting_engine.graph.store import SqliteStore
 
 
@@ -24,7 +24,7 @@ def tmp_db():
 def initialized_store(tmp_db):
     """Store with canonical data loaded."""
     store = SqliteStore(db_path=tmp_db)
-    nodes, edges = generate_all_canonical()
+    nodes, edges = build_canonical_graph()
     store.initialize_canonical(nodes, edges, CANONICAL_VERSION)
     return store
 
@@ -46,10 +46,10 @@ class TestInitialization:
         store.close()
 
     def test_canonical_node_count(self, initialized_store):
-        assert initialized_store.canonical_node_count() == 1101
+        assert initialized_store.canonical_node_count() == 1873
 
     def test_canonical_edge_count(self, initialized_store):
-        assert initialized_store.canonical_edge_count() == 1696
+        assert initialized_store.canonical_edge_count() == 2279
 
     def test_version_manifest(self, initialized_store):
         assert initialized_store.get_current_version() == CANONICAL_VERSION
@@ -62,6 +62,24 @@ class TestInitialization:
 
     def test_needs_initialization_after_init(self, initialized_store):
         assert initialized_store.needs_initialization() is False
+
+    def test_type_constraint_uses_face(self, tmp_db):
+        """The canonical_nodes type CHECK constraint accepts 'face' (not 'branch')."""
+        store = SqliteStore(db_path=tmp_db)
+        store.create_tables()
+        # 'face' should succeed
+        store.conn.execute(
+            "INSERT INTO canonical_nodes (id, type, tier, properties) VALUES (?, ?, ?, ?)",
+            ("test_face", "face", 1, "{}"),
+        )
+        store.conn.commit()
+        # 'branch' should fail
+        with pytest.raises(sqlite3.IntegrityError):
+            store.conn.execute(
+                "INSERT INTO canonical_nodes (id, type, tier, properties) VALUES (?, ?, ?, ?)",
+                ("test_branch", "branch", 1, "{}"),
+            )
+        store.close()
 
 
 class TestWriteProtection:
@@ -93,11 +111,11 @@ class TestWriteProtection:
 class TestRoundTrip:
     def test_load_canonical_nodes(self, initialized_store):
         nodes = initialized_store.load_canonical_nodes()
-        assert len(nodes) == 1101
+        assert len(nodes) == 1873
 
     def test_load_canonical_edges(self, initialized_store):
         edges = initialized_store.load_canonical_edges()
-        assert len(edges) == 1696
+        assert len(edges) == 2279
 
     def test_user_nodes_empty_initially(self, initialized_store):
         assert len(initialized_store.load_user_nodes()) == 0
@@ -108,7 +126,7 @@ class TestRoundTrip:
 
 class TestUserData:
     def test_insert_user_node(self, initialized_store):
-        node = {"id": "test.custom_1", "type": "construct", "tier": 2, "branch": "ontology"}
+        node = {"id": "test.custom_1", "type": "construct", "tier": 2, "face": "ontology"}
         initialized_store.insert_user_node(node)
         loaded = initialized_store.load_user_nodes()
         assert len(loaded) == 1

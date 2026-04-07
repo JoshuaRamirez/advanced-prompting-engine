@@ -1,7 +1,7 @@
 """Graph Mutation Layer — writes with contradiction detection.
 
-Authoritative source: Spec 12.
-Invalidates all 3 caches on any write.
+Authoritative source: CONSTRUCT-v2.md, ADR-006.
+Invalidates caches on any write.
 """
 
 from __future__ import annotations
@@ -9,7 +9,11 @@ from __future__ import annotations
 import networkx as nx
 
 from advanced_prompting_engine.graph.grid import classify, potency
-from advanced_prompting_engine.graph.schema import CONTRADICTION_MAP, SYMMETRIC_RELATIONS
+from advanced_prompting_engine.graph.schema import (
+    CONTRADICTION_MAP,
+    GRID_SIZE,
+    SYMMETRIC_RELATIONS,
+)
 from advanced_prompting_engine.graph.store import SqliteStore
 
 
@@ -37,13 +41,11 @@ class GraphMutationLayer:
         self,
         G: nx.DiGraph,
         store: SqliteStore,
-        embedding_cache=None,
         tfidf_cache=None,
-        centrality_cache=None,
     ):
         self._g = G
         self._store = store
-        self._caches = [c for c in [embedding_cache, tfidf_cache, centrality_cache] if c is not None]
+        self._caches = [c for c in [tfidf_cache] if c is not None]
 
     def _invalidate_caches(self):
         for cache in self._caches:
@@ -55,7 +57,7 @@ class GraphMutationLayer:
 
     def add_construct(
         self,
-        branch: str,
+        face: str,
         x: int,
         y: int,
         question: str,
@@ -64,16 +66,15 @@ class GraphMutationLayer:
         provenance: str = "user",
     ) -> dict:
         """Add a user construct at a grid position."""
-        # Validate branch
-        if branch not in self._g.nodes or self._g.nodes[branch].get("type") != "branch":
-            raise ValueError(f"Branch {branch!r} does not exist")
+        max_coord = GRID_SIZE - 1
 
-        # Validate grid position
-        if not (0 <= x <= 9 and 0 <= y <= 9):
-            raise ValueError(f"Grid position ({x}, {y}) out of range")
+        if face not in self._g.nodes or self._g.nodes[face].get("type") != "face":
+            raise ValueError(f"Face {face!r} does not exist")
 
-        # Check ID collision
-        node_id = f"{branch}.{x}_{y}"
+        if not (0 <= x <= max_coord and 0 <= y <= max_coord):
+            raise ValueError(f"Grid position ({x}, {y}) out of range (0-{max_coord})")
+
+        node_id = f"{face}.{x}_{y}"
         if node_id in self._g.nodes:
             raise ValueError(f"Construct {node_id!r} already exists")
 
@@ -84,27 +85,20 @@ class GraphMutationLayer:
             "id": node_id,
             "type": "construct",
             "tier": 2,
-            "branch": branch,
+            "face": face,
             "x": x,
             "y": y,
             "classification": cls,
             "potency": pot,
             "question": question,
-            "question_revisited": None,
             "description": description,
             "tags": tags,
-            "spectrum_ids": [],
-            "condensed_gems": [],
             "provenance": provenance,
             "mutable": True,
         }
 
-        # Write to graph
         self._g.add_node(node_id, **node)
-
-        # Write to SQLite
         self._store.insert_user_node(node)
-
         self._invalidate_caches()
 
         return {"status": "created", "id": node_id}
@@ -125,20 +119,17 @@ class GraphMutationLayer:
 
         Returns success dict or ContradictionWarning.
         """
-        # Validate nodes exist
         if source_id not in self._g.nodes:
             raise ValueError(f"Source node {source_id!r} does not exist")
         if target_id not in self._g.nodes:
             raise ValueError(f"Target node {target_id!r} does not exist")
 
-        # Contradiction check
         contradiction = self.check_contradiction(source_id, target_id, relation_type)
         if contradiction is not None and override_reason is None:
             return contradiction
 
         contradicts_canonical = contradiction is not None
 
-        # Write to graph
         self._g.add_edge(
             source_id, target_id,
             relation=relation_type,
@@ -147,7 +138,6 @@ class GraphMutationLayer:
             contradicts_canonical=contradicts_canonical,
         )
 
-        # Add reverse edge for symmetric relations
         if relation_type in SYMMETRIC_RELATIONS:
             self._g.add_edge(
                 target_id, source_id,
@@ -157,7 +147,6 @@ class GraphMutationLayer:
                 contradicts_canonical=contradicts_canonical,
             )
 
-        # Write to SQLite
         self._store.insert_user_edge(
             source_id, target_id, relation_type,
             properties={"strength": strength},
@@ -181,7 +170,6 @@ class GraphMutationLayer:
             return None
 
         for existing_relation in contradicts:
-            # Check both directions
             for u, v in [(source_id, target_id), (target_id, source_id)]:
                 if self._g.has_edge(u, v):
                     edge = self._g.edges[u, v]
@@ -208,9 +196,10 @@ class GraphMutationLayer:
 
     def validate_mutation(self, proposed: dict) -> dict:
         """Dry-run validation without writing."""
+        max_coord = GRID_SIZE - 1
         op = proposed.get("operation")
         if op == "add_construct":
-            node_id = f"{proposed['branch']}.{proposed['x']}_{proposed['y']}"
+            node_id = f"{proposed['face']}.{proposed['x']}_{proposed['y']}"
             if node_id in self._g.nodes:
                 return {"valid": False, "reason": f"ID collision: {node_id}"}
             return {"valid": True}

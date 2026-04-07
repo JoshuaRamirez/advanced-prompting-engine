@@ -1,12 +1,12 @@
 """TF-IDF vector cache — lifecycle-managed.
 
-Authoritative source: Spec 09.
+Authoritative source: CONSTRUCT-v2.md §14.
 Vectors built from construct question text + tags.
 Query projects intent into the same space; cosine similarity determines matches.
 
-Supports both global queries (all 1000 constructs) and per-branch queries
-(100 constructs within one branch). Per-branch matching eliminates cross-branch
-homogeneity that causes all branches to match the same position.
+Supports both global queries (all 1728 constructs) and per-face queries
+(144 constructs within one face). Per-face matching eliminates cross-face
+homogeneity that causes all faces to match the same position.
 """
 
 from __future__ import annotations
@@ -26,10 +26,10 @@ class TfidfCache:
         self._matrix: np.ndarray | None = None
         self._vocab: list[str] = []
         self._doc_ids: list[str] = []
-        # Per-branch matrices (100 constructs each)
-        self._branch_matrices: dict[str, np.ndarray] = {}
-        self._branch_vocabs: dict[str, list[str]] = {}
-        self._branch_doc_ids: dict[str, list[str]] = {}
+        # Per-face matrices (144 constructs each)
+        self._face_matrices: dict[str, np.ndarray] = {}
+        self._face_vocabs: dict[str, list[str]] = {}
+        self._face_doc_ids: dict[str, list[str]] = {}
         self._content_hash: str = ""
 
     def initialize(self, G: nx.Graph):
@@ -47,28 +47,28 @@ class TfidfCache:
         self._doc_ids = [node_id for node_id, _ in constructs]
         self._matrix, self._vocab = build_tfidf_matrix(documents)
 
-        # Per-branch matrices
-        self._branch_matrices = {}
-        self._branch_vocabs = {}
-        self._branch_doc_ids = {}
+        # Per-face matrices
+        self._face_matrices = {}
+        self._face_vocabs = {}
+        self._face_doc_ids = {}
 
-        branch_groups: dict[str, list[tuple[str, dict]]] = {}
+        face_groups: dict[str, list[tuple[str, dict]]] = {}
         for node_id, data in constructs:
-            branch = data.get("branch", "")
-            if branch not in branch_groups:
-                branch_groups[branch] = []
-            branch_groups[branch].append((node_id, data))
+            face = data.get("face", "")
+            if face not in face_groups:
+                face_groups[face] = []
+            face_groups[face].append((node_id, data))
 
-        for branch, branch_constructs in branch_groups.items():
-            branch_docs = [
+        for face, face_constructs in face_groups.items():
+            face_docs = [
                 f"{data.get('question', '')} {' '.join(data.get('tags', []))}"
-                for _, data in branch_constructs
+                for _, data in face_constructs
             ]
-            branch_ids = [nid for nid, _ in branch_constructs]
-            matrix, vocab = build_tfidf_matrix(branch_docs)
-            self._branch_matrices[branch] = matrix
-            self._branch_vocabs[branch] = vocab
-            self._branch_doc_ids[branch] = branch_ids
+            face_ids = [nid for nid, _ in face_constructs]
+            matrix, vocab = build_tfidf_matrix(face_docs)
+            self._face_matrices[face] = matrix
+            self._face_vocabs[face] = vocab
+            self._face_doc_ids[face] = face_ids
 
         self._content_hash = compute_tfidf_hash(G)
 
@@ -79,9 +79,9 @@ class TfidfCache:
         self._matrix = None
         self._vocab = []
         self._doc_ids = []
-        self._branch_matrices = {}
-        self._branch_vocabs = {}
-        self._branch_doc_ids = {}
+        self._face_matrices = {}
+        self._face_vocabs = {}
+        self._face_doc_ids = {}
         self._content_hash = ""
 
     def ensure_valid(self, G: nx.Graph):
@@ -91,7 +91,7 @@ class TfidfCache:
     def query(self, intent: str) -> list[tuple[str, float]]:
         """Return (construct_id, similarity) pairs sorted by similarity descending.
 
-        Global query across all 1000 constructs.
+        Global query across all 1728 constructs.
         """
         if self._matrix is None or len(self._doc_ids) == 0:
             return []
@@ -101,20 +101,20 @@ class TfidfCache:
         results.sort(key=lambda x: x[1], reverse=True)
         return results
 
-    def query_branch(self, intent: str, branch: str) -> list[tuple[str, float]]:
-        """Return (construct_id, similarity) pairs within ONE branch only.
+    def query_face(self, intent: str, face: str) -> list[tuple[str, float]]:
+        """Return (construct_id, similarity) pairs within ONE face only.
 
-        Uses a branch-specific TF-IDF matrix where IDF is computed from only
-        that branch's 100 constructs. This eliminates cross-branch homogeneity —
-        words that are common across all branches (structural template words)
-        get low IDF within each branch, while branch-differentiating words
+        Uses a face-specific TF-IDF matrix where IDF is computed from only
+        that face's 144 constructs. This eliminates cross-face homogeneity —
+        words that are common across all faces (structural template words)
+        get low IDF within each face, while face-differentiating words
         get high IDF.
         """
-        if branch not in self._branch_matrices:
+        if face not in self._face_matrices:
             return []
-        matrix = self._branch_matrices[branch]
-        vocab = self._branch_vocabs[branch]
-        doc_ids = self._branch_doc_ids[branch]
+        matrix = self._face_matrices[face]
+        vocab = self._face_vocabs[face]
+        doc_ids = self._face_doc_ids[face]
         if matrix is None or len(doc_ids) == 0:
             return []
         query_vec = vectorize_query(intent, vocab)

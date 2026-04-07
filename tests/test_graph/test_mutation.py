@@ -1,4 +1,4 @@
-"""Tests for Graph Mutation Layer — contradiction detection."""
+"""Tests for Graph Mutation Layer — contradiction detection (v2: faces, 12x12 grid)."""
 
 import os
 import tempfile
@@ -19,12 +19,12 @@ def mutation_env():
     store.create_tables()
 
     G = nx.DiGraph()
-    G.add_node("ontology", type="branch", tier=1)
-    G.add_node("ontology.0_0", type="construct", branch="ontology", x=0, y=0,
+    G.add_node("ontology", type="face", tier=1)
+    G.add_node("ontology.0_0", type="construct", face="ontology", x=0, y=0,
                classification="corner", potency=1.0, provenance="canonical")
-    G.add_node("ontology.9_9", type="construct", branch="ontology", x=9, y=9,
+    G.add_node("ontology.11_11", type="construct", face="ontology", x=11, y=11,
                classification="corner", potency=1.0, provenance="canonical")
-    G.add_edge("ontology.0_0", "ontology.9_9", relation="TENSIONS_WITH",
+    G.add_edge("ontology.0_0", "ontology.11_11", relation="TENSIONS_WITH",
                strength=0.5, provenance="canonical")
 
     layer = GraphMutationLayer(G, store)
@@ -36,40 +36,40 @@ def mutation_env():
 class TestContradictionDetection:
     def test_compatible_contradicts_tensions(self, mutation_env):
         layer, G, _, _ = mutation_env
-        result = layer.check_contradiction("ontology.0_0", "ontology.9_9", "COMPATIBLE_WITH")
+        result = layer.check_contradiction("ontology.0_0", "ontology.11_11", "COMPATIBLE_WITH")
         assert isinstance(result, ContradictionWarning)
         assert result.existing["relation"] == "TENSIONS_WITH"
 
     def test_no_contradiction_for_generates(self, mutation_env):
         layer, G, _, _ = mutation_env
-        result = layer.check_contradiction("ontology.0_0", "ontology.9_9", "GENERATES")
+        result = layer.check_contradiction("ontology.0_0", "ontology.11_11", "GENERATES")
         assert result is None
 
     def test_no_contradiction_for_resolves(self, mutation_env):
         layer, G, _, _ = mutation_env
-        result = layer.check_contradiction("ontology.0_0", "ontology.9_9", "RESOLVES")
+        result = layer.check_contradiction("ontology.0_0", "ontology.11_11", "RESOLVES")
         assert result is None
 
 
 class TestAddRelation:
     def test_returns_contradiction_without_override(self, mutation_env):
         layer, _, _, _ = mutation_env
-        result = layer.add_relation("ontology.0_0", "ontology.9_9", "COMPATIBLE_WITH")
+        result = layer.add_relation("ontology.0_0", "ontology.11_11", "COMPATIBLE_WITH")
         assert isinstance(result, ContradictionWarning)
 
     def test_override_writes_with_flag(self, mutation_env):
         layer, G, _, _ = mutation_env
         result = layer.add_relation(
-            "ontology.0_0", "ontology.9_9", "COMPATIBLE_WITH",
+            "ontology.0_0", "ontology.11_11", "COMPATIBLE_WITH",
             override_reason="Testing override"
         )
         assert result["status"] == "created"
         # Edge should exist with contradicts_canonical flag
-        assert G.has_edge("ontology.0_0", "ontology.9_9")
+        assert G.has_edge("ontology.0_0", "ontology.11_11")
 
     def test_add_generates_no_contradiction(self, mutation_env):
         layer, G, _, _ = mutation_env
-        result = layer.add_relation("ontology.0_0", "ontology.9_9", "GENERATES")
+        result = layer.add_relation("ontology.0_0", "ontology.11_11", "GENERATES")
         assert result["status"] == "created"
 
 
@@ -77,7 +77,7 @@ class TestAddConstruct:
     def test_add_user_construct(self, mutation_env):
         layer, G, _, _ = mutation_env
         result = layer.add_construct(
-            branch="ontology", x=3, y=3,
+            face="ontology", x=3, y=3,
             question="Test question?",
             tags=["test"],
             description="Test construct",
@@ -89,14 +89,22 @@ class TestAddConstruct:
         layer, _, _, _ = mutation_env
         with pytest.raises(ValueError, match="already exists"):
             layer.add_construct(
-                branch="ontology", x=0, y=0,
+                face="ontology", x=0, y=0,
                 question="Duplicate", tags=[], description="Dup",
             )
 
-    def test_invalid_branch_raises(self, mutation_env):
+    def test_invalid_face_raises(self, mutation_env):
         layer, _, _, _ = mutation_env
         with pytest.raises(ValueError, match="does not exist"):
             layer.add_construct(
-                branch="nonexistent", x=0, y=0,
+                face="nonexistent", x=0, y=0,
+                question="Q", tags=[], description="D",
+            )
+
+    def test_out_of_range_raises(self, mutation_env):
+        layer, _, _, _ = mutation_env
+        with pytest.raises(ValueError, match="out of range"):
+            layer.add_construct(
+                face="ontology", x=12, y=0,
                 question="Q", tags=[], description="D",
             )

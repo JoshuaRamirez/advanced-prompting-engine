@@ -1,6 +1,6 @@
 """MCP Tool: extend_schema — authoring with contradiction detection.
 
-Authoritative source: Spec 10.
+Authoritative source: CONSTRUCT-v2.md, ADR-006.
 2 operations: add_construct, add_relation.
 """
 
@@ -28,13 +28,16 @@ def handle_extend_schema(
         return {"status": "error", "message": f"Unknown operation: {operation}"}
 
 
-def _add_construct(mutation_layer, branch=None, x=None, y=None,
+def _add_construct(mutation_layer, face=None,
+                   branch=None,  # Deprecated: use 'face' instead (v1 backward compat)
+                   x=None, y=None,
                    question=None, tags=None, description=None, **kwargs):
-    if not all([branch, question]) or x is None or y is None:
-        return {"status": "error", "message": "branch, x, y, and question are required"}
+    f = face or branch  # accept either name
+    if not all([f, question]) or x is None or y is None:
+        return {"status": "error", "message": "face, x, y, and question are required"}
     try:
         result = mutation_layer.add_construct(
-            branch=branch,
+            face=f,
             x=int(x),
             y=int(y),
             question=question,

@@ -1,12 +1,12 @@
-# Universal Prompt Creation Engine — Design Specification
+# Universal Prompt Creation Engine — Design Specification v2
 
 ## Overview
 
-A universal prompt creation engine delivered as an MCP (Model Context Protocol) server. The engine provides a 10-dimensional philosophical manifold — grounded in a Construct of 10 planes, each a 10x10 grid of epistemic observation points — that any client can use to derive a principled construction basis for prompt creation.
+A universal prompt creation engine delivered as an MCP (Model Context Protocol) server. The engine provides a 12-dimensional philosophical manifold — grounded in a Construct of 12 faces, each a 12x12 grid of epistemic observation points — that any client can use to derive a principled construction basis for prompt creation.
 
-The engine does not generate prompts. It measures a client's intent across 10 philosophical axes and returns a precise, dimensionally-situated construction basis from which the client constructs.
+The engine does not generate prompts. It measures a client's intent across 12 philosophical axes and returns a precise, dimensionally-situated construction basis from which the client constructs.
 
-The Construct specification is defined in `CONSTRUCT.md`. The mapping of Construct elements to engine components is defined in `CONSTRUCT-INTEGRATION.md`.
+The Construct specification is defined in `CONSTRUCT-v2.md`. Construction question templates are defined in `CONSTRUCT-v2-questions.md`.
 
 ## Analog
 
@@ -15,12 +15,13 @@ The engine operates like a **spectrometer**. A spectrometer takes a sample, meas
 | Spectrometry | This Engine |
 |---|---|
 | The sample | The client's intent |
-| The 10 spectral bands | The 10 philosophical branches (planes) |
-| The spectral signature | The coordinate — a precise, reproducible grid position per branch |
+| The 12 spectral bands | The 12 philosophical faces (domains) |
+| The spectral signature | The coordinate — a precise, reproducible grid position per face |
 | Absorption peaks | Active constructs — what the sample registers strongly on |
 | Spectral interference | Tensions — geometric spectrum oppositions and declared conflicts |
 | Harmonic resonance | Generative combinations — constructs that amplify each other |
 | Nexus interactions | How different spectral bands influence each other |
+| Harmonization | Paired faces resonating through positional correspondence |
 | The spoke profile | The behavioral signature of one band across the full spectrum |
 | The chemist | The client — uses the signature to construct |
 | The compound synthesized | The prompt |
@@ -48,961 +49,524 @@ mcp         # MCP protocol SDK
 
 sqlite3 is in Python stdlib. scipy and scikit-learn are intentionally excluded — all needed operations (TF-IDF, Laplacian computation, cosine similarity, spoke statistics) are implemented directly with numpy. See ADR-005.
 
-### Deployment Topology
+---
 
-Single Python process. No external service dependencies. No daemon. No port. No network listener.
+## Architecture Layers
+
+The engine is organized as a strict layered architecture. Each layer depends only on the layers below it. No upward references.
 
 ```
-┌─────────────────────────────────────┐
-│  Single Python process              │
-│  ├── NetworkX (in-process compute)  │
-│  ├── numpy (in-process math)        │
-│  ├── SQLite (in-process, one file)  │
-│  └── MCP SDK (stdin/stdout)         │
-└─────────────────────────────────────┘
-         ↕ stdio (JSON-RPC)
-┌─────────────────────────────────────┐
-│  MCP Client (any)                   │
-└─────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────┐
+│  External Surface                                                    │
+│  3 MCP tools + 4 prompts + 3 resources                               │
+├──────────────────────────────────────────────────────────────────────┤
+│  Multi-Pass Orchestrator                                             │
+│  stress_test, triangulate, deepen                                    │
+├──────────────────────────────────────────────────────────────────────┤
+│  Pipeline (8 stages — single forward pass)                           │
+│  intent → coordinate → position → constructs → tensions →            │
+│  nexi/gems → spokes → construction basis                             │
+├──────────────────────────────────────────────────────────────────────┤
+│  Graph Query Layer              │  Graph Mutation Layer               │
+│  (structured read access)       │  (writes + contradiction detect.)  │
+├──────────────────────────────────────────────────────────────────────┤
+│  Embedding Cache  │  TF-IDF Cache  │  Centrality Cache               │
+│  (lifecycle-managed, auto-invalidate on graph mutation)               │
+├──────────────────────────────────────────────────────────────────────┤
+│  NetworkX (in-memory graph)     │  SQLite (durable persistence)      │
+│  ~1873 nodes, ~2000+ edges     │  canonical + user tables            │
+└──────────────────────────────────────────────────────────────────────┘
 ```
+
+### Layer 1: External Surface
+
+Three MCP tools, four prompts, three resources. This is the only layer visible to clients.
+
+**Tools:**
+
+| Tool | Purpose | Delegates to |
+|---|---|---|
+| `create_prompt_basis` | Primary tool — measures intent, returns construction basis | Pipeline (all 8 stages) |
+| `explore_space` | Expert tool — query the manifold, run orchestrator operations | Graph Query Layer + Orchestrator |
+| `extend_schema` | Authoring tool — add user constructs and relations | Graph Mutation Layer |
+
+**Resources:**
+
+| Resource | Content |
+|---|---|
+| `ape://axiom_manifest` | The 12 philosophical faces with core questions and sub-dimensions |
+| `ape://schema_manifest` | Current graph state — node/edge counts by type |
+| `ape://coordinate_schema` | Schema for a valid coordinate object (12 faces, each with x, y, weight) |
+
+**Prompts:**
+
+| Prompt | Guides the client through |
+|---|---|
+| `orient` | Understanding the manifold before using it |
+| `build_construction_basis` | Building a complete basis from an intent |
+| `compare_positions` | Comparing two intents dimensionally |
+| `resolve_and_construct` | Resolving tensions before constructing |
+
+### Layer 2: Multi-Pass Orchestrator
+
+Wraps the pipeline for operations that require multiple passes or comparative analysis.
+
+| Operation | What it does |
+|---|---|
+| `stress_test` | Runs the pipeline with perturbations to find coordinate sensitivity |
+| `triangulate` | Runs the pipeline on two coordinates and computes dimensional comparison |
+| `deepen` | Runs the pipeline, identifies weak branches, re-runs with targeted constraints |
+
+### Layer 3: Pipeline (8 Stages)
+
+A single forward pass through 8 sequential stages. Each stage reads from a shared `PipelineState` accumulator and writes its results into the next slot.
+
+See the "Pipeline Stages" section below for detailed stage descriptions.
+
+### Layer 4: Graph Query Layer and Graph Mutation Layer
+
+**Graph Query Layer** — Structured read access to the NetworkX graph. All pipeline stages and the orchestrator read through this layer. Provides grid-aware queries: find constructs by face, position, classification, potency; find nexi by face pair; traverse neighborhoods; compute paths.
+
+**Graph Mutation Layer** — All writes go through this layer. Provides contradiction detection (proposed relation checked against `CONTRADICTION_MAP`), provenance tagging for user extensions, and automatic cache invalidation on mutation.
+
+### Layer 5: Caches
+
+Three lifecycle-managed caches, computed at startup, invalidated on graph mutation, recomputed lazily.
+
+| Cache | Content | Used by |
+|---|---|---|
+| Embedding Cache | Spectral embedding of all graph nodes (Laplacian eigendecomposition) | Stage 3 (position computation) |
+| TF-IDF Cache | TF-IDF vectors for all 1728 construct questions | Stage 1 (intent parsing) |
+| Centrality Cache | Betweenness centrality and PageRank for all nodes | Stages 5–7 (tension/spoke weighting) |
+
+### Layer 6: NetworkX + SQLite
+
+**NetworkX** — In-memory directed graph. All nodes and edges loaded at startup. Symmetric relations stored as bidirectional edges. The graph is the authoritative runtime data structure.
+
+**SQLite** — Durable persistence. Two table families: canonical (read-only, protected by triggers) and user (read-write). Canonical data is loaded once and never modified at the DB level. User extensions are persisted and reloaded on restart.
 
 ---
 
-## The 3-Level Schema
+## Key Changes from v1
 
-The graph has an internal meta-structure. Each level is a schema for the level below it.
+### Structural expansion
 
-### Level 1 — Axiom Layer
-
-The philosophical axes. Immutable. Universal. Each defines a core question that every prompt must answer implicitly or explicitly. These are the laws of the space itself — not what things exist, but what kinds of things can exist.
-
-Each axiom branch corresponds to one **plane** in the Construct (see `CONSTRUCT.md`).
-
-The 10 axiom branches:
-
-#### 1. Epistemology (Knowledge, Belief, Justification)
-- **Core Question**: How do we know domain states, events, and conditions are true or justified?
-- **Content**: Foundational principles for establishing truth — criteria for correctness, validation methods, authoritative sources. Mechanisms for knowledge propagation and validation.
-
-#### 2. Teleology (Purpose, Ends, Goal-directedness)
-- **Core Question**: What ultimate purposes do each domain, event, or interaction serve?
-- **Content**: Intentionality behind interactions and events. Teleological justification for behaviors, communications, and state transitions.
-
-#### 3. Ontology (Being, Existence, Categories of Reality)
-- **Core Question**: What entities and relationships fundamentally exist?
-- **Content**: Essential entities, structures, boundaries, and hierarchical relationships. The essence of components and their categorical nature.
-
-#### 4. Axiology (Value — Ethical, Aesthetic, Practical)
-- **Core Question**: What is the value inherent in each choice?
-- **Content**: Value criteria — ethical correctness, system integrity, trust, maintainability. Axiological guidelines for evaluating decisions.
-
-#### 5. Phenomenology (Experience, Consciousness)
-- **Core Question**: How are experiences and interactions represented and realized?
-- **Content**: Experiential structures, consciousness representation, interaction flow management. How raw input becomes conscious experience without loss of intent.
-
-#### 6. Praxeology (Human Action, Purposeful Behavior)
-- **Core Question**: How are actions, behaviors, and intentions structured?
-- **Content**: Action-oriented structures and intentional interactions. The praxeological logic underpinning behavior invocation and delegation mechanisms.
-
-#### 7. Methodology (Methods of Inquiry or Practice)
-- **Core Question**: What processes and methodologies govern construction and evolution?
-- **Content**: Methodologies for designing, constructing, testing, and maintaining components. Workflows, decision-making protocols, and iteration guidelines.
-
-#### 8. Semiotics (Signs, Meaning, Communication)
-- **Core Question**: How are signals, events, and data meaningfully communicated?
-- **Content**: Communicative mechanisms, signs, and signals. Semantic conventions for signals, payload structures, and consistent interpretation of meaning.
-
-#### 9. Hermeneutics (Interpretation)
-- **Core Question**: What frameworks govern interpretation and understanding of events, signals, and gestures?
-- **Content**: Interpretative frameworks for events, meanings, and structural updates. How ambiguity and interpretation are managed consistently.
-
-#### 10. Heuristics (Practical Problem-solving Strategies)
-- **Core Question**: What practical strategies guide the handling of complexities and challenges?
-- **Content**: Heuristic methods for problem-solving, resolution, and managing operational complexities. Adaptive strategies, fallback solutions, and pragmatic approaches.
-
-#### Inter-Branch Ordering
-
-The branches have a causal/logical flow that constrains how Level 2 constructs relate across branches:
-
-```
-Ontology          → what exists
-    │
-Epistemology      → how we know what exists
-    │
-Axiology          → what's worth knowing/doing
-    │
-Teleology         → toward what end
-    │
-Phenomenology     → how it's experienced
-    │
-Praxeology        → how it's enacted
-    │
-Methodology       → how practice is systematized
-    │
-Semiotics         → how meaning is communicated
-    │
-Hermeneutics      → how meaning is interpreted
-    │
-Heuristics        → how practice adapts to the unknown
-```
-
-This ordering is encoded in the graph as Level 1 PRECEDES edges.
-
-#### Sub-Dimensions per Branch
-
-Each branch has two internal sub-dimensions corresponding to the x and y axes of its Construct grid. These define a 2D field of tension within each branch:
-
-| Branch | x-axis (0 → 9) | y-axis (0 → 9) |
+| Dimension | v1 | v2 |
 |---|---|---|
-| Ontology | Particular → Universal | Static → Dynamic |
-| Epistemology | Empirical → Rational | Certain → Provisional |
-| Axiology | Intrinsic → Instrumental | Individual → Collective |
-| Teleology | Immediate → Ultimate | Intentional → Emergent |
-| Phenomenology | Objective → Subjective | Surface → Deep |
-| Praxeology | Individual → Coordinated | Reactive → Proactive |
-| Methodology | Analytic → Synthetic | Deductive → Inductive |
-| Semiotics | Explicit → Implicit | Syntactic → Semantic |
-| Hermeneutics | Literal → Figurative | Author-intent → Reader-response |
-| Heuristics | Systematic → Intuitive | Conservative → Exploratory |
+| Domains | 10 ("branches") | 12 ("faces") |
+| Grid size | 10×10 (100 points) | 12×12 (144 points) |
+| Total constructs | 1000 | 1728 |
+| Coordinate range | 0–9 per axis | 0–11 per axis |
+| New domains | — | Ethics, Aesthetics |
+| Organizing geometry | Tetractys (triangular hierarchy) | Vector Equilibrium / cuboctahedron (polyhedral equipoise) |
+| Outer shell | — | Rhombic dodecahedron (dual of cuboctahedron) |
 
-#### Construction Question Templates
+### Axis meta-meaning
 
-Each axiom branch carries a parameterizable question template as a node property. These are canonical and immutable — authored as part of the Axiom Layer:
+v1 had per-branch axis names with no cross-branch invariant. v2 introduces invariant meta-meaning across all faces:
 
-| Branch | Template |
-|---|---|
-| Ontology | What entities and relationships does this prompt assume exist? |
-| Epistemology | How does this prompt establish and verify truth? |
-| Axiology | What does this prompt value, and by what criteria does it evaluate? |
-| Teleology | What outcome is this prompt directed toward? |
-| Phenomenology | How is the user's experience represented in this prompt's output? |
-| Praxeology | What actions and behaviors does this prompt structure? |
-| Methodology | What method of reasoning or inquiry does this prompt employ? |
-| Semiotics | How does this prompt signal and encode meaning? |
-| Hermeneutics | How should ambiguity and interpretation be handled? |
-| Heuristics | What strategies does this prompt use when facing the unknown? |
+* **X-axis**: Constitutive character — what kind of thing this is within the domain. x=0 is elemental/foundational; x=11 is comprehensive/expansive.
+* **Y-axis**: Dispositional orientation — how the thing moves or engages within the domain. y=0 is stable/grounded; y=11 is fluid/exploratory.
 
-The Construction Bridge parameterizes these with active constructs, spectrum opposites, tension context, spoke profiles, and generative context at runtime.
+Each face's sub-dimensions are specific instantiations of these meta-axes.
 
-### Level 2 — Schema Layer
+### Polarity convention
 
-The observation points that inhabit each branch's 10x10 grid. Each point is a **specific possibility of observation** — a site where potential becomes articulated. See `CONSTRUCT.md` for the full point specification.
+v1 had no constraint on which sub-dimensional pole sat at which coordinate extreme. v2 enforces:
 
-Each branch contains exactly **100 constructs** arranged in a 10x10 grid addressed by (x, y) coordinates.
+* Low (0) = constrained, foundational, structurally anchored
+* High (11) = expansive, synthetic, exploratory
 
-#### Point Classification
+This ensures the 4 corner archetypes (Alpha/Beta/Gamma/Delta) hold invariantly across all 12 faces and enables positional correspondence.
 
-| Classification | Positions | Count per branch | Potency |
+### Cube pairing model
+
+The 12 faces are organized as 6 complementary pairs, each pair sharing a cube face:
+
+| Cube Face | Inward (theoretical) | Outward (applied) | Shared concern |
 |---|---|---|---|
-| Corner | (0,0), (9,0), (0,9), (9,9) | 4 | 1.0 |
-| Midpoint | (4,0), (5,0), (9,4), (9,5), (4,9), (5,9), (0,4), (0,5) | 8 | 0.9 |
-| Edge (remaining) | All other perimeter positions | 24 | 0.8 |
-| Center | All interior positions | 64 | 0.5 |
+| 1 | Ontology | Praxeology | Being ↔ Doing |
+| 2 | Epistemology | Methodology | Knowing ↔ Proceeding |
+| 3 | Axiology | Ethics | Valuing ↔ Judging |
+| 4 | Teleology | Heuristics | Purpose ↔ Strategy |
+| 5 | Phenomenology | Aesthetics | Experiencing ↔ Recognizing form |
+| 6 | Semiotics | Hermeneutics | Encoding ↔ Decoding |
 
-The 36 edge points (corners + midpoints + remaining edge) encapsulate the 64 center points. Edge points define the field boundary; center points exist within it.
+### Nexus stratification
 
-The 4 corners are organizational bounds for the 32 non-corner edge points. Corners carry maximum potency as combined extremes of both sub-dimensions.
+v1 had 45 unique nexus pairs (C(10,2)) with 90 directional participations, all treated uniformly. v2 has 66 unique pairs (C(12,2)) with 132 directional participations, stratified by geometric relationship:
 
-#### Construct Properties
-
-Properties on a Level 2 node:
-
-| Property | Type | Description |
+| Kind | Count | Character |
 |---|---|---|
-| `id` | string | Unique identifier: `branch.x_y` (e.g., `epistemology.3_0`) |
-| `branch` | string | Parent axiom branch |
-| `x` | int (0-9) | Grid x-coordinate (position on first sub-dimension) |
-| `y` | int (0-9) | Grid y-coordinate (position on second sub-dimension) |
-| `classification` | string | `corner`, `midpoint`, `edge`, or `center` |
-| `potency` | float | Position-derived: corner=1.0, midpoint=0.9, edge=0.8, center=0.6 |
-| `question` | string | The Construct's epistemic question for this grid position, parameterized by branch |
-| `description` | string | Expanded description combining positional role with branch domain |
-| `tags` | list[str] | Keywords for TF-IDF intent matching |
-| `spectrum_ids` | list[str] | IDs of spectrums this point participates in |
-| `provenance` | string | `canonical` or `user` |
-| `mutable` | boolean | `false` for canonical constructs |
+| Paired | 6 | Complementary reflection between theoretical/applied counterparts |
+| Adjacent | 48 | Proximal concerns on neighboring cube faces |
+| Opposite | 12 | Distal concerns across the cube |
 
-#### Canonical Content
+Total: 6 + 48 + 12 = 66 unique pairs. Stratification affects gem magnitude computation and tension weighting.
 
-The 1000 canonical constructs are derived from the Construct specification's 100 positional epistemic questions, parameterized across the 10 branches. See ADR-010.
+### Positional correspondence replaces cross-face edges
 
-Each grid position carries a structurally-defined epistemic question. The same structural question at the same position adapts to each branch's philosophical domain:
+v1 connected constructs across branches with explicit point-to-point edges (cross-branch edges). v2 eliminates these. Inter-face relationships are determined by **positional correspondence** via the polarity convention:
 
-- Position (0,0) on Ontology: *"What foundational possibility anchors the origin of ontological existence?"*
-- Position (0,0) on Epistemology: *"What foundational possibility anchors the origin of epistemological truth?"*
+* Same position on two faces = shared structural archetype (compatible)
+* Opposite position on two faces = opposed structural archetype (tension)
 
-The questions serve triple duty: they are **content** (TF-IDF vectorizable), **structure** (grid-positioned with classification and potency), and **guidance** (epistemic probes that direct prompt construction).
+This is a property of the shared coordinate system, not an edge in the graph. The graph no longer needs O(n^2) cross-face edges. Correspondence is computed at query time from coordinates.
 
-#### Spectrums
+### Harmonization
 
-Each branch contains **20 spectrums** auto-generated from grid geometry — structured oppositions between pairs of edge points:
+Paired faces (inside/outside of the same cube face) are structurally tuned to receive each other's activations. When the pipeline activates position (x,y) on one face, the paired face's (x,y) position is a natural correspondent. This is not an algorithm — it is a consequence of the shared surface and polarity convention.
 
-- 10 spectrums from diagonal pairings: (0,0)↔(9,9), (0,1)↔(9,8), ..., (0,9)↔(9,0)
-- 10 spectrums from cross-diagonal pairings: (1,0)↔(8,9), (2,0)↔(7,9), ..., (8,0)↔(1,9)
+### Terminology
 
-Total: **180 spectrums** across all 10 branches (18 computed edge↔edge reflection pairs per branch; the Construct's semantic count of 20 per plane remains the intended upper bound, see CONSTRUCT.md §8.5). These exist by virtue of grid geometry — no manual authoring required.
+"Branch" becomes "Face." "Plane" becomes "Face." The organizing geometry moves from Tetractys to Vector Equilibrium.
 
-### Level 3 — Coordinate Layer
+### Question templates
 
-The mathematical structure that allows a client to take a precise, measurable position in the space. Computed on demand from the Schema Layer — never stored.
-
-A coordinate is a 10-dimensional vector of grid positions:
-
-```json
-{
-  "ontology":       { "x": 0, "y": 0, "weight": 0.0 },
-  "epistemology":   { "x": 0, "y": 0, "weight": 0.0 },
-  "axiology":       { "x": 0, "y": 0, "weight": 0.0 },
-  "teleology":      { "x": 0, "y": 0, "weight": 0.0 },
-  "phenomenology":  { "x": 0, "y": 0, "weight": 0.0 },
-  "praxeology":     { "x": 0, "y": 0, "weight": 0.0 },
-  "methodology":    { "x": 0, "y": 0, "weight": 0.0 },
-  "semiotics":      { "x": 0, "y": 0, "weight": 0.0 },
-  "hermeneutics":   { "x": 0, "y": 0, "weight": 0.0 },
-  "heuristics":     { "x": 0, "y": 0, "weight": 0.0 }
-}
-```
-
-Each position is an (x, y) grid coordinate. Each `weight` is dimensional emphasis ∈ [0, 1]. The position carries structural information: classification, potency, spectrum membership, sub-dimensional meaning.
-
-The `create_prompt_basis` tool accepts either:
-- Natural language intent (mapped to grid positions via TF-IDF colocation)
-- A pre-formed coordinate object with (x, y) positions per branch
+v1 had 100 unique questions per branch (1000 total). v2 has 144 position-specific question templates, each parameterized with `{domain}`, producing 12 domain-specific questions each (1728 total). Templates are organized by zone: 4 corners + 8 edge midpoints + 32 other edge + 36 near-edge interior + 64 deep interior = 144.
 
 ---
 
-## The Space
+## Graph Schema
 
-The space is the **relationally-constrained manifold of all constructible philosophical positions across the 10 axiom branches, and the engine exists to situate a client within it.**
+### Node types
 
-### What the Space Does
-
-1. **Bounds** — not every combination of positions across 10 grids is constructible. EXCLUDES edges eliminate entire regions. Edge points encapsulate center points — the extremes define the envelope.
-2. **Constrains** — within the bounded space, TENSIONS_WITH, SPECTRUM_OPPOSITION, and REQUIRES edges create topography. Some positions are easy to construct from (low tension, high compatibility), others are costly (high tension, requiring resolution). Potency amplifies or dampens these effects.
-3. **Generates** — GENERATES edges and cross-community constructs identify positions where combinations produce emergent quality. The space has peaks.
-4. **Integrates** — nexi mediate inter-branch interactions, producing gems. Spokes aggregate gems into behavioral signatures. The central gem reflects system-wide coherence.
-
-### Relation Types
-
-| Edge Type | Meaning | Source | Transitivity |
+| Type | ID format | Count | Description |
 |---|---|---|---|
-| `COMPATIBLE_WITH` | Two constructs reinforce each other | Declared | Transitive |
-| `TENSIONS_WITH` | Two constructs pull against each other | Declared | Propagates via REQUIRES chains |
-| `SPECTRUM_OPPOSITION` | Geometric opposition between edge points | Auto-generated from grid | Symmetric, not transitive |
-| `REQUIRES` | One construct demands another be present | Declared | Transitive |
-| `EXCLUDES` | Two constructs cannot coexist | Declared | Symmetric, not transitive |
-| `GENERATES` | Combination produces emergent quality | Declared | Not transitive |
-| `RESOLVES` | One construct mediates a known tension | Declared | Not transitive |
-| `PRECEDES` | One construct must be established before another | Declared | Transitive |
+| `face` | `face.{domain}` | 12 | Axiom-level node representing a philosophical domain |
+| `construct` | `{domain}.{x}_{y}` | 1728 | A point on a face's 12×12 grid |
+| `nexus` | `nexus.{source}.{target}` | 132 | Directional nexus participation (66 pairs × 2 directions) |
+| `gem` | `gem.{source}.{target}` | 132 | Condensed state of a directional nexus interaction |
+| `central_gem` | `central_gem` | 1 | Convergence point of all inter-face relations |
 
-Edge properties: `relation_type`, `strength` ∈ [0, 1], `directionality`, `provenance`, `source` (declared or geometric).
+Total canonical nodes: 12 + 1728 + 132 + 132 + 1 = 2005
 
----
+### Edge types
 
-## Inter-Branch Architecture: Nexi, Gems, Spokes
+**Structural edges (canonical, auto-generated):**
 
-Cross-branch connections are mediated through a nexus-gem-spoke architecture. See ADR-011 and ADR-012.
+| Relation | From → To | Count | Symmetric | Description |
+|---|---|---|---|---|
+| `HAS_CONSTRUCT` | face → construct | 1728 | No | Face contains this construct |
+| `PRECEDES` | face → face | 11 | No | Causal ordering chain |
+| `SPECTRUM_OPPOSITION` | construct ↔ construct | varies | Yes | Opposed edge positions on the same face |
+| `NEXUS_SOURCE` | nexus → face | 132 | No | Source face of a directional nexus |
+| `NEXUS_TARGET` | nexus → face | 132 | No | Target face of a directional nexus |
+| `CENTRAL_GEM_LINK` | gem → central_gem | 132 | No | Gem contributes to central gem |
 
-### Nexi (90 nodes)
+**Declared edges (canonical or user-authored):**
 
-A nexus is a **mediating locus between two branches** — a graph node (not an edge) sitting in the subspace between two branch subgraphs. See `CONSTRUCT.md` for the full nexus specification.
-
-- Each branch connects to each of the other 9 branches via a unique directional nexus
-- 10 branches × 9 connections = **90 nexi**
-- Each nexus receives the 36 edge-point energies from both connected branches
-- Each nexus computes an integration — the harmonic juxtaposition of both sets of extremes
-- Each nexus produces a **gem**
-
-Nexus node properties: `id` (`nexus.source_branch.target_branch`), `source_branch`, `target_branch`, `provenance: canonical`.
-
-### Gems (90 values)
-
-A gem is the **condensed state of a nexus interaction** — the product, not the process. See `CONSTRUCT.md`.
-
-- Each nexus produces one gem
-- A gem has at minimum a `magnitude` (strength of integration)
-- Gems are returned in the construction basis output
-- Gems are the entities available for recursive condensation into center points of uninvolved branches
-
-### Spokes (10 profiles)
-
-A spoke is the **complete set of one branch's interactions with all other branches** — a behavioral signature. See ADR-012.
-
-Each spoke contains 9 gems (one from each nexus) plus the shared central gem = 10 gems per spoke.
-
-A spoke's distribution has measurable shape:
-
-| Property | Computation | What it reveals |
-|---|---|---|
-| **Strength** | `mean(gem_magnitudes)` | Overall magnitude of this branch's interactions |
-| **Consistency** | `1 - (std(gem_magnitudes) / max(mean, epsilon))` | Whether interaction quality is uniform or scattered |
-| **Polarity** | `tension_flagged_gems / total_gems` | Ratio of conflicting to harmonious interactions |
-| **Contribution** | `sum(this_spoke) / sum(all_spokes)` | This branch's share of system-wide coherence |
-
-Spoke classification:
-
-| Condition | Classification |
-|---|---|
-| High strength + high consistency | **Coherent** |
-| High strength + low consistency | **Fragmented** |
-| High strength + high contribution | **Dominant** |
-| Low strength overall | **Weakly integrated** |
-
-### Central Gem (1 node)
-
-The unified convergence of all nexus interactions. Connected to all 90 nexus nodes. Its value aggregates all 10 spoke contributions into a system-wide coherence score.
-
-The central gem reflects whether the entire coordinate position is harmonious across all 10 branches simultaneously.
-
-### Dual View
-
-The same 90 nexi support two complementary views:
-
-| View | Structure | Unit | Question |
+| Relation | Semantics | Symmetric | Contradiction pair |
 |---|---|---|---|
-| **Network** | Fully connected graph | Nexus | What happens between these two branches? |
-| **Radial** | 10 spokes converging to center | Spoke | What is the total behavior of this branch across the system? |
+| `COMPATIBLE_WITH` | Constructs that reinforce each other | Yes | TENSIONS_WITH, EXCLUDES |
+| `TENSIONS_WITH` | Constructs that create productive tension | Yes | COMPATIBLE_WITH |
+| `REQUIRES` | Construct A presupposes construct B | No | EXCLUDES |
+| `EXCLUDES` | Constructs that are mutually incompatible | Yes | COMPATIBLE_WITH, REQUIRES |
+| `GENERATES` | Construct A gives rise to construct B | Yes | — |
+| `RESOLVES` | Construct A resolves a tension in construct B | Yes | — |
 
-Both views are computed and returned in the construction basis.
+### Edge weights
 
----
+Each relation type has a default weight used for graph distance computation:
 
-## External Surface
-
-### MCP Tools (3)
-
-| Tool | Purpose | When |
+| Relation | Weight | Semantics |
 |---|---|---|
-| `create_prompt_basis` | Full pipeline — intent in, construction basis out. Accepts natural language or pre-formed coordinate with (x,y) positions. | Primary use. Every time. |
-| `explore_space` | Direct graph traversal, neighborhood inspection, path finding, stress testing, triangulation | When the client wants to understand the space itself |
-| `extend_schema` | Add constructs, relations with contradiction detection | When the client has domain knowledge to contribute |
-
-### MCP Prompts (4)
-
-| Name | Sequence | Output |
-|---|---|---|
-| `orient` | Reads axiom_manifest + coordinate_schema + schema_manifest | Client understands the space |
-| `build_construction_basis` | build_coordinate → validate → compute | Complete construction foundation |
-| `compare_positions` | validate × 2 → compute_distance → triangulate | Dimensional relationship between two intents |
-| `resolve_and_construct` | compute_basis → resolve_tensions → get_generative | Construction basis with tensions resolved |
-
-### MCP Resources (3)
-
-| Name | Contents |
-|---|---|
-| `axiom_manifest` | The Level 1 axiom layer — the 10 branches, core questions, sub-dimensions |
-| `schema_manifest` | Current state of Level 2 — all grids, constructs, spectrums, nexi |
-| `coordinate_schema` | Formal schema of a valid coordinate object with (x,y) positions |
+| HAS_CONSTRUCT | 0.0 | Structural containment (zero cost) |
+| PRECEDES | 0.0 | Ordering (zero cost) |
+| COMPATIBLE_WITH | 0.2 | Easy traversal between compatible constructs |
+| REQUIRES | 0.1 | Very easy — prerequisite is close |
+| GENERATES | 0.3 | Moderate — generative relationship |
+| NEXUS_SOURCE / NEXUS_TARGET | 0.4 | Cross-face traversal cost |
+| CENTRAL_GEM_LINK | 0.5 | Central convergence cost |
+| SPECTRUM_OPPOSITION | 0.6 | Substantial — spectrum poles are far apart |
+| TENSIONS_WITH | 0.8 | High — tension means distance |
+| EXCLUDES | infinity | Impassable — mutual exclusion |
 
 ---
 
-## Internal Architecture
+## Pipeline Stages
 
-```
-EXTERNAL (3 tools + 4 prompts + 3 resources)
-┌──────────────────────────────────────────────────────┐
-│  create_prompt_basis · explore_space · extend_schema  │
-└──────────────────┬───────────────────────────────────┘
-                   │
-┌──────────────────┴───────────────────────────────────┐
-│  Multi-Pass Orchestrator                              │
-│  stress_test, triangulate, deepen                     │
-├───────────────────────────────────────────────────────┤
-│  Pipeline (8 stages — single forward pass)            │
-│  Intent Parser → Coordinate Resolver → Position Comp  │
-│  → Construct Resolver → Tension Analyzer              │
-│  → Nexus/Gem Analyzer → Spoke Analyzer                │
-│  → Construction Bridge                                │
-├───────────────────────────────────────────────────────┤
-│  Graph Query Layer          Graph Mutation Layer       │
-│  list, get, find,           add, validate,            │
-│  subgraph, path,            contradict check,         │
-│  grid, spoke, nexus         grid-position validate    │
-├───────────────────────────────────────────────────────┤
-│  Embedding Cache            TF-IDF Cache              │
-│  spectral, lifecycle-       construct question         │
-│  managed, auto-invalidate   vectors, pre-computed     │
-├───────────────────────────────────────────────────────┤
-│  NetworkX (compute)         SQLite (persist)           │
-│  1101 nodes, 1696 edges    canonical | user tables    │
-└───────────────────────────────────────────────────────┘
-```
+The pipeline runs as a single forward pass through 8 stages. Each stage reads from and writes to a shared `PipelineState` accumulator.
 
-### Graph Query Layer
+### Stage 1: Intent Parser
 
-Internal API that all pipeline operators and external tools use to access graph data. No direct NetworkX access elsewhere in the codebase.
+**Input:** Natural language intent string or raw coordinate dict.
+**Output:** Partial coordinate — a sparse mapping of face names to (x, y, weight) tuples.
 
-| Method | Returns |
+For natural language input: tokenizes the intent, removes stop words, stems tokens, computes TF-IDF similarity against all 1728 construct questions, and resolves the top matches into face-level positions. Tags from the top-matching constructs provide the initial face-position signal.
+
+For coordinate input: validates and passes through directly.
+
+### Stage 2: Coordinate Resolver
+
+**Input:** Partial coordinate (may have gaps — not all 12 faces populated).
+**Output:** Full coordinate — all 12 faces populated with (x, y, weight).
+
+Uses constraint satisfaction to fill gaps. Arc consistency propagates constraints from populated faces to empty ones via declared edges (REQUIRES, GENERATES, COMPATIBLE_WITH). Candidate positions are scored by compatibility with already-resolved faces. Gap-filling uses the PRECEDES chain to propagate from neighboring faces.
+
+### Stage 3: Position Computer
+
+**Input:** Full coordinate.
+**Output:** Manifold position — spectral embedding centroid plus per-face positions.
+
+Looks up each face's (x, y) in the spectral embedding cache (Laplacian eigendecomposition of the full graph). Computes the weighted centroid across all 12 face positions. The manifold position places the intent in continuous embedding space.
+
+### Stage 4: Construct Resolver
+
+**Input:** Full coordinate.
+**Output:** Active constructs per face — the specific grid points activated by the coordinate, with classification and potency.
+
+For each face, identifies the construct at the coordinate's (x, y) position. Assigns classification (corner, edge_midpoint, other_edge, near_edge_interior, deep_interior) and potency (position-derived weight). Returns the 12 active constructs along with their epistemic questions, tags, and positional metadata.
+
+### Stage 5: Tension Analyzer
+
+**Input:** Active constructs, full coordinate.
+**Output:** Tensions — potency-weighted tension scores between active constructs.
+
+Three tension sources:
+
+1. **Direct tensions**: Declared TENSIONS_WITH edges between active constructs.
+2. **Spectrum tensions**: Active constructs that sit at spectrum-opposed positions on the same face.
+3. **Positional tensions**: Via positional correspondence — when active constructs on different faces occupy opposed positions (high constitutive on one, low on another), the polarity convention creates natural tension. Computed from coordinates, not from edges.
+
+Tensions are weighted by both constructs' potency values. Higher-potency constructs (edge/corner positions) produce stronger tensions.
+
+### Stage 6: Nexus/Gem Analyzer
+
+**Input:** Active constructs, full coordinate.
+**Output:** Nexus details and gem values for all relevant face pairs.
+
+For each pair of faces that have active constructs: computes the nexus interaction using both faces' active constructs, their potency, and the nexus stratification (paired/adjacent/opposite). Paired nexi produce gems with complementary resonance character. Adjacent and opposite nexi produce gems with varying degrees of tension and affinity.
+
+Gem magnitude is computed from the potency-weighted interaction of the two faces' active positions. Nexus stratification modulates the magnitude: paired nexi amplify (resonance), adjacent nexi pass through, opposite nexi attenuate.
+
+### Stage 7: Spoke Analyzer
+
+**Input:** Gems, nexus details.
+**Output:** Per-face spoke profiles and central gem.
+
+For each face, aggregates its 11 gem values into a spoke — a 4-property behavioral signature:
+
+| Property | What it measures |
 |---|---|
-| `list_branches()` | All Level 1 axiom branch nodes |
-| `list_constructs(branch, provenance?, classification?)` | Level 2 constructs, filterable by provenance and classification |
-| `get_construct(branch, x, y)` | Full construct at grid position with properties and edges |
-| `get_construct_by_id(id)` | Full construct by ID (`branch.x_y`) |
-| `list_relation_types()` | All valid relation types |
-| `get_edges(node, relation_type?)` | Edges from a node, optionally filtered by type |
-| `get_spectrum_opposite(branch, x, y)` | The opposite edge point for a given position |
-| `get_edge_constructs(branch)` | All 36 edge-classified constructs for a branch |
-| `get_nexus(source_branch, target_branch)` | The nexus node between two branches |
-| `get_spoke(branch)` | All 9 nexi originating from a branch + central gem |
-| `find_path(source, target, weight_fn?)` | Shortest path with optional weight function |
-| `find_all_paths(source, target, max_depth?)` | All paths up to depth |
-| `get_subgraph(nodes)` | Induced subgraph for a set of nodes |
-
-### Graph Mutation Layer
-
-Internal API for schema authoring with integrity enforcement.
-
-| Method | Behavior |
-|---|---|
-| `add_construct(branch, x, y, question, tags, description, provenance)` | Validates grid position is valid, checks ID collision, writes to graph and user SQLite table, invalidates caches |
-| `add_relation(source, target, relation_type, strength)` | Validates nodes exist, checks for contradictory inverse edges, returns `ContradictionWarning` if found, writes to graph and user SQLite table, invalidates caches |
-| `validate_mutation(proposed_change)` | Dry-run validation without write |
-
-Contradiction map:
-
-| Proposed | Contradicts |
-|---|---|
-| `COMPATIBLE_WITH` | existing `TENSIONS_WITH` between same pair |
-| `TENSIONS_WITH` | existing `COMPATIBLE_WITH` between same pair |
-| `REQUIRES` | existing `EXCLUDES` between same pair |
-| `EXCLUDES` | existing `REQUIRES` between same pair |
-
-### Embedding Cache
-
-Pre-computed spectral embedding of the full graph (including nexus nodes). Lifecycle-managed.
-
-- Computed at server startup via graph Laplacian eigendecomposition (numpy, no scipy)
-- Cached in memory as dict of `{node_id: np.ndarray}`
-- Graph hash (node count + edge count + edge list checksum) checked before each pipeline run
-- Recomputed only when graph has mutated (user added constructs/relations)
-- Embedding dimensionality: min(20, n_nodes - 1) non-trivial eigenvectors
-
-```
-A = nx.to_numpy_array(G)
-L = np.diag(A.sum(axis=1)) - A
-eigenvalues, eigenvectors = np.linalg.eigh(L)
-embedding[node_i] = eigenvectors[i, 1:k+1]
-```
-
-### TF-IDF Cache
-
-Pre-computed TF-IDF vectors for all 1000 construct questions. Used by the Intent Parser for natural language → grid position matching via vector colocation.
-
-- Computed at server startup from all Level 2 construct `question` and `tags` fields
-- Implemented directly with numpy (~50 lines) — no scikit-learn dependency
-- Cached as matrix of `(1000, vocabulary_size)` float vectors
-- Client intent is projected into the same vector space; cosine similarity determines which grid positions activate
-- Invalidated and recomputed on graph mutation (same lifecycle as Embedding Cache)
-
----
-
-## Pipeline Detail
-
-The pipeline has **8 stages** (expanded from 7 to include nexus/gem and spoke analysis).
-
-### Data Flow Trace
-
-```
-Stage 0  INPUT           string | coordinate object
-            │
-Stage 1  Intent Parser   string → Dict[branch, Optional[{x, y, weight, confidence}]]
-            │                     partial coordinate (some axes null)
-            │
-Stage 2  Coord Resolver  partial → Dict[branch, {x, y, weight}]
-            │                     complete coordinate (all 10 axes)
-            │
-Stage 3  Position Comp   grid coord → {centroid: float[], per_branch: {primary, embedding, nearby[]}}
-            │                     continuous embedding space
-            │
-Stage 4  Construct Res   continuous → Dict[branch, List[{x, y, classification, potency, question}]]
-            │                     back to discrete, enriched with neighbors
-            │
-Stage 5  Tension Anal    construct sets → {magnitude, direct[], cascading[], spectrums[], resolutions[]}
-            │                     scalar tensions with cascade paths + spectrum oppositions
-            │
-Stage 6  Nexus/Gem Anal  active constructs → {gems[], nexus_details[]}
-            │                     gem values for each active branch-pair nexus
-            │
-Stage 7  Spoke Analyzer  gems → {spokes[], central_gem}
-            │                     behavioral signatures + system coherence
-            │
-Stage 8  Constr Bridge   all accumulated → full construction basis output
-            │
-         OUTPUT          construction basis with grid positions, questions, spectrums,
-                         gems, spokes, central gem, and 10 parameterized questions
-```
-
-### Stage 1 — Intent Parser
-
-Transforms natural language to a raw partial coordinate of grid positions. Two-tier matching against the 1000 predefined epistemic questions:
-
-1. **Tag overlap** (fast, high confidence): Each construct carries `tags[]`. Tokenize input, score overlap per construct per branch.
-2. **TF-IDF cosine similarity** (catches synonyms): Pre-computed TF-IDF vectors for all construct questions. Cosine similarity against input vector in shared vector space.
-
-Combined score: `tag_score * 0.6 + tfidf_score * 0.4`
-
-The highest-scoring construct per branch (if above `MATCH_THRESHOLD`) determines the (x, y) position for that branch.
-
-**Weight vs confidence are separate derivations:**
-- `confidence` = match quality (combined score)
-- `weight` = token emphasis (proportion of matched tokens that matched this branch relative to all matched tokens)
-
-If the input is a pre-formed coordinate object with (x, y) positions, this stage is bypassed entirely.
-
-### Stage 2 — Coordinate Resolver
-
-Fills null axes and validates the partial coordinate via Constraint Satisfaction Problem (CSP):
-
-1. **Exclusion check**: Verify no EXCLUDES edges between specified positions
-2. **Requirements check**: Verify all REQUIRES chains from specified positions are satisfied
-3. **Candidate generation**: For each null axis, enumerate valid grid positions (no EXCLUDES violations, all REQUIRES satisfied)
-4. **Candidate scoring**: COMPATIBLE_WITH count × 1.0 + REQUIRES pull × 2.0 + potency bonus (edge positions score higher)
-5. **Tiebreaker**: Betweenness centrality from pre-computed centrality cache
-6. **Auto-fill weight**: Base 0.15, ceiling 0.4, scaled by compatibility pull ratio
-
-Output: Complete 10-axis coordinate with (x, y) positions and weights. No nulls. All constraints satisfied.
-
-### Stage 3 — Position Computer
-
-Projects the discrete grid coordinate into continuous embedding space:
-
-1. Look up each construct's pre-computed spectral embedding vector by grid position
-2. Compute weighted centroid: `P = Σᵢ wᵢ · embedding(branch.x_y) / Σᵢ wᵢ`
-3. Compute distance from centroid to every construct in the graph (including nexus nodes)
-
-Output: Continuous manifold position with per-branch neighborhood distances.
-
-### Stage 4 — Construct Resolver
-
-Determines the full set of active constructs per branch:
-
-1. Primary construct = the coordinate's specified (x, y) position (always active)
-2. Nearby constructs in embedding space within activation threshold are also activated
-3. Activation threshold is adaptive: 60% of mean nearest-neighbor distance within each branch
-4. Each active construct carries its classification, potency, and predefined question
-
-Output: Dict of active construct lists per branch. Each entry includes grid position, classification, potency, and the epistemic question.
-
-### Stage 5 — Tension Analyzer
-
-Computes direct tensions, cascading tensions, and spectrum oppositions:
-
-**Direct**: For every pair of active constructs across all branches, check for TENSIONS_WITH edges. Weight by potency product of the pair.
-
-**Spectrum oppositions**: For every active edge construct, retrieve its geometric opposite. The spectrum opposition is structural — it exists by grid geometry. Report the active question and the opposite question.
-
-**Cascading**: Follow REQUIRES chains outward. At each hop, check for TENSIONS_WITH edges. Apply decay per hop:
-
-```
-tension_at_hop_n = direct_tension_strength × potency_product × decay^n
-```
-
-Decay factor derived from mean REQUIRES edge strength. Cascade stops when magnitude < 0.05.
-
-**Resolution paths**: For each tension, check for RESOLVES edges.
-
-Output: Total magnitude + direct tensions + spectrum oppositions + cascading tensions + resolution paths.
-
-### Stage 6 — Nexus/Gem Analyzer
-
-Computes inter-branch integration for all active branch pairs:
-
-1. For each pair of branches that have active constructs, locate the nexus node
-2. Gather the edge constructs (36 per branch) from both branches
-3. Compute the gem magnitude: integration function over both sets of edge energies, weighted by which edge constructs are active vs. inactive
-4. Flag the gem as harmonious or conflicting based on the tension state between the two branches
-
-Output: List of gems with magnitudes and harmony flags. List of nexus details (which branches, which edge constructs contributed).
-
-### Stage 7 — Spoke Analyzer
-
-Aggregates nexus results into per-branch behavioral signatures:
-
-1. For each branch, gather its 9 gems (one from each nexus originating at this branch)
-2. Compute the 4 spoke shape properties: strength, consistency, polarity, contribution
-3. Derive spoke classification from thresholds
-4. Aggregate all 10 spoke contributions into the central gem coherence score
-
-Output: 10 spoke profiles + central gem coherence score and classification.
-
-### Stage 8 — Construction Bridge
-
-Transforms all accumulated analysis into the construction basis output:
-
-1. For each of the 10 axiom branches:
-   - Look up the construction question template
-   - Attach the active construct's predefined epistemic question
-   - Attach the spectrum opposite's predefined question
-   - Attach the spoke profile for this branch
-   - If tensions touch this branch, attach tension context
-   - If generative combinations touch this branch, attach generative context
-2. Attach the central gem coherence score
-3. Assemble the full output
-
-Output: The final `create_prompt_basis` response.
-
----
-
-## Multi-Pass Orchestrator
-
-Operations that invoke the pipeline multiple times. These live above the pipeline, not inside it. Accessed via `explore_space` tool or MCP prompt workflows.
-
-### stress_test(coordinate)
-
-Perturbs each axis to nearby grid positions. Runs the pipeline for each perturbation. Compares tension deltas, spoke shape changes, and central gem shifts against the baseline.
-
-Returns: baseline + breakpoints + improvements + spoke stability analysis.
-
-### triangulate(coordinate_a, coordinate_b)
-
-Runs the pipeline twice. Computes intersection of active constructs, shared tensions, spoke profile comparison, and coordinate distance.
-
-### deepen(construction_basis)
-
-Recursive gem condensation:
-
-1. Takes a completed construction basis
-2. Selects gems for condensation
-3. Projects each gem into a center-point position on an uninvolved branch
-4. Runs the pipeline again with the modified coordinate
-5. Returns the deeper construction basis
-
-Each pass produces a construction basis at a deeper level of philosophical integration.
+| Strength | Total outward engagement magnitude |
+| Consistency | Variance across the face's 11 gem values (low variance = consistent) |
+| Polarity | Whether the face's outward engagement is predominantly resonant or tense |
+| Contribution | This face's share of the total system engagement |
+
+The central gem is computed from the convergence of all 12 spokes — the aggregate state when every face's outward profile is held together.
+
+### Stage 8: Construction Bridge
+
+**Input:** All accumulated pipeline state.
+**Output:** Construction basis — the full output returned to the client.
+
+Assembles the final output:
+* **Coordinate**: The fully resolved 12-face coordinate
+* **Active constructs**: Per-face construct with question, classification, potency, sub-dimensional interpretation
+* **Tensions**: Ranked list with resolution paths
+* **Gems**: Per-nexus interaction summaries
+* **Spokes**: Per-face behavioral signatures
+* **Central gem**: System-wide coherence measure
+* **Construction questions**: The domain-specific questions at each active position, for the client to use in prompt construction
+* **Harmonization pairs**: For each of the 6 complementary pairs, the correspondence between the active construct on the theoretical face and its counterpart on the applied face
 
 ---
 
 ## Mathematical Operations
 
-### Vector Construction (Intent Parser)
+All mathematical operations live in the `math/` module. No pipeline stage or cache performs raw computation directly.
 
-```
-C = [(x₁, y₁, w₁), (x₂, y₂, w₂), ..., (x₁₀, y₁₀, w₁₀)]
-where (xᵢ, yᵢ) ∈ {0..9} × {0..9}
-and   wᵢ ∈ [0, 1]
-```
-
-### TF-IDF Matching (Intent Parser)
-
-The 1000 predefined questions are vectorized into TF-IDF space. The client's intent is projected into the same space. Cosine similarity determines colocation:
-
-```
-TF(term, doc) = count(term in doc) / len(doc)
-IDF(term) = log(N / docs_containing(term))
-similarity = dot(tfidf_intent, tfidf_construct) / (norm(a) * norm(b))
-```
-
-### Constraint Propagation (Coordinate Resolver)
-
-Boolean constraint satisfaction with potency-weighted scoring:
-
-```
-For each unspecified axis i:
-  Candidates(i) = {(x,y) ∈ grid(branch_i) |
-    ∀ specified (xⱼ,yⱼ): ¬EXCLUDES((x,y), (xⱼ,yⱼ))
-    ∧ all REQUIRES chains satisfied
-  }
-  Score(x,y) = COMPATIBLE_count × 1.0 + REQUIRES_count × 2.0 + potency(x,y) × 0.5
-```
-
-### Graph Distance Metric (Position Computer)
-
-Weighted path distance:
-
-```
-d_rel(a, b) = min Σ edge_weight(eᵢ) along all paths from a to b
-
-where edge_weight:
-  COMPATIBLE_WITH     = 0.2
-  TENSIONS_WITH       = 0.8
-  SPECTRUM_OPPOSITION = 0.6
-  REQUIRES            = 0.1
-  EXCLUDES            = ∞
-```
-
-Coordinate distance:
-
-```
-D(C₁, C₂) = Σᵢ wᵢ · d_rel(C₁.(xᵢ,yᵢ), C₂.(xᵢ,yᵢ))
-```
-
-### Spectral Embedding (Position Computer)
-
-Graph Laplacian eigendecomposition over the full graph (1101 nodes including nexus nodes):
-
-```
-A = nx.to_numpy_array(G)
-L = np.diag(A.sum(axis=1)) - A
-eigenvalues, eigenvectors = np.linalg.eigh(L)
-k = min(20, n - 1)
-embedding[node_i] = eigenvectors[i, 1:k+1]
-```
-
-### Potency-Weighted Tension (Tension Analyzer)
-
-```
-T_direct(C) = Σ strength(e) × potency(a) × potency(b)
-              for all TENSIONS_WITH edges between active constructs a, b
-
-T_spectrum(C) = Σ 0.6 × potency(active) × potency(opposite)
-                for all SPECTRUM_OPPOSITION pairs where one endpoint is active
-
-T_cascade(C) = Σ strength(e) × potency_product × decay^(hops)
-
-T(C) = T_direct(C) + T_spectrum(C) + T_cascade(C)
-```
-
-### Gem Magnitude (Nexus/Gem Analyzer)
-
-```
-gem(A→B) = f(edge_energies_A, edge_energies_B, active_constructs)
-```
-
-The gem computation integrates the 36 edge-point potencies from both branches, weighted by which edge constructs are currently active in the coordinate. The specific integration function is an open design item (see ADR-011 consequences).
-
-### Spoke Shape (Spoke Analyzer)
-
-```
-strength(spoke)     = mean(gem_magnitudes)
-consistency(spoke)  = 1 - std(gem_magnitudes) / max(mean(gem_magnitudes), ε)
-polarity(spoke)     = tension_flagged_count / 9
-contribution(spoke) = sum(spoke_gems) / sum(all_gems)
-```
-
-### Central Gem Coherence
-
-```
-coherence = weighted_mean(spoke_contributions)
-          = Σ spoke_contribution × spoke_consistency / 10
-```
-
-### Community Detection (Generative Analyzer within Construct Resolver)
-
-Louvain modularity optimization (pure Python in NetworkX 2.8+):
-
-```
-Q = (1/2m) Σᵢⱼ [Aᵢⱼ - (kᵢkⱼ/2m)] · δ(cᵢ, cⱼ)
-```
-
-### Centrality Analysis
-
-Betweenness centrality for bridge constructs. PageRank for influence hubs. Both native NetworkX.
-
-### Transitive Closure
-
-```
-TC(R) = R ∪ R² ∪ R³ ∪ ... ∪ Rⁿ
-```
-
-Applied to COMPATIBLE_WITH and REQUIRES edges.
-
-### Pareto Optimization (Multi-Pass Orchestrator)
-
-```
-Minimize: T(C)
-Maximize: |generative_edges(C)|
-Subject to: verify_compatibility(C) = True
-```
-
----
-
-## Data Integrity
-
-### Canonical vs User Data
-
-Data is separated at the persistence layer and merged at query time.
-
-```
-SQLite:
-  canonical_nodes    (read-only, enforced by DB trigger)
-    — 10 branch nodes
-    — 1000 construct nodes (10 branches × 100 grid positions)
-    — 90 nexus nodes
-    — 1 central gem node
-  canonical_edges    (read-only, enforced by DB trigger)
-    — 1000 HAS_CONSTRUCT edges
-    — 9 PRECEDES edges
-    — 200 SPECTRUM_OPPOSITION edges
-    — 90 NEXUS_SOURCE edges
-    — 90 NEXUS_TARGET edges
-    — 90 CENTRAL_GEM_LINK edges
-  user_nodes         (read-write)
-  user_edges         (read-write, FK → canonical OR user nodes)
-```
-
-### Integrity Rules
-
-| Rule | Enforcement |
-|---|---|
-| Canonical nodes cannot be modified or deleted | `mutable: False`, DB-level write protection |
-| User nodes can connect to canonical nodes freely | Cross-provenance edges are valid |
-| Canonical edges cannot be removed | Provenance check on edge deletion |
-| User can add edges between canonical nodes | Cross-provenance edges are legitimate |
-| Contradiction detection at authoring time | Inverse relation check via Graph Mutation Layer |
-| Version stability | Canonical node IDs are permanent across versions (`branch.x_y`) |
-
-### Version Migration
-
-On server startup after upgrade:
-1. Version manifest compares user edge references against new canonical IDs
-2. Orphaned edges are flagged, not deleted
-3. User decides remap or removal
-
-### Provenance-Scoped Queries
-
-Every operation supports a `provenance` filter:
-- `canonical` — shipped graph only
-- `user` — user extensions only
-- `merged` (default) — full combined space
-
----
-
-## Enrichment Use Cases
-
-### Enrichment Modes
-
-| Mode | Nature | Trigger |
+| Module | Operations | Used by |
 |---|---|---|
-| **Intentional** | Client arrives with domain knowledge to add | Deliberate extension before use |
-| **Reactive** | Gap discovered during active use | Intent Parser returns low-confidence matches |
-| **Corrective** | Contradiction or inconsistency surfaces | Graph Mutation Layer returns ContradictionWarning |
-| **Reconciliatory** | Version upgrade breaks references | Migration check flags orphaned edges |
-
-### Contradiction Resolution
-
-When a user adds an edge that contradicts a canonical edge:
-1. Graph Mutation Layer detects the contradiction
-2. Returns `ContradictionWarning` with existing canonical edge and proposed user edge
-3. User chooses: cancel, override with reason, or add a resolution path
-4. If override: edge written with `contradicts_canonical: True` flag
-5. If resolution path: new construct created that RESOLVES the tension
+| `embedding.py` | Spectral embedding via Laplacian eigendecomposition (numpy only) | Embedding Cache, Stage 3 |
+| `tfidf.py` | TF-IDF vectorization and cosine similarity (numpy only) | TF-IDF Cache, Stage 1 |
+| `distance.py` | Graph distance metrics (weighted shortest path, coordinate distance) | Stages 2, 5 |
+| `csp.py` | Constraint satisfaction (arc consistency, candidate scoring) | Stage 2 |
+| `tension.py` | Potency-weighted tension propagation (direct, spectrum, positional) | Stage 5 |
+| `gem.py` | Gem magnitude computation with nexus stratification modulation | Stage 6 |
+| `spoke.py` | Spoke shape computation (strength, consistency, polarity, contribution) | Stage 7 |
+| `community.py` | Community detection (Louvain wrapper) | Orchestrator |
+| `centrality.py` | Centrality measures (betweenness, PageRank) | Centrality Cache |
+| `optimization.py` | Pareto front computation | Orchestrator |
 
 ---
 
-## Construction Output
+## Canonical Content
 
-The `create_prompt_basis` tool returns:
+The engine ships with canonical (read-only) content that is generated at first run and never modified.
 
-```json
-{
-  "coordinate": {
-    "ontology":       { "x": 0, "y": 0, "weight": 0.0 },
-    "epistemology":   { "x": 0, "y": 0, "weight": 0.0 },
-    "axiology":       { "x": 0, "y": 0, "weight": 0.0 },
-    "teleology":      { "x": 0, "y": 0, "weight": 0.0 },
-    "phenomenology":  { "x": 0, "y": 0, "weight": 0.0 },
-    "praxeology":     { "x": 0, "y": 0, "weight": 0.0 },
-    "methodology":    { "x": 0, "y": 0, "weight": 0.0 },
-    "semiotics":      { "x": 0, "y": 0, "weight": 0.0 },
-    "hermeneutics":   { "x": 0, "y": 0, "weight": 0.0 },
-    "heuristics":     { "x": 0, "y": 0, "weight": 0.0 }
-  },
-  "active_constructs": {
-    "epistemology": [
-      {
-        "position": [3, 0],
-        "classification": "edge",
-        "potency": 0.8,
-        "question": "What initiating polarity lies within..."
-      }
-    ]
-  },
-  "spectrum_opposites": [
-    {
-      "branch": "epistemology",
-      "active": { "position": [3, 0], "question": "..." },
-      "opposite": { "position": [6, 9], "question": "..." }
-    }
-  ],
-  "structural_profile": {
-    "edge_count": 0,
-    "center_count": 0,
-    "edge_ratio": 0.0,
-    "mean_potency": 0.0
-  },
-  "tensions": [
-    {
-      "between": ["branch.x_y", "branch.x_y"],
-      "magnitude": 0.0,
-      "type": "declared | spectrum_geometric | inferred_cascade",
-      "potency_product": 0.0,
-      "resolution_paths": []
-    }
-  ],
-  "generative_combinations": [
-    {
-      "constructs": ["branch.x_y", "branch.x_y"],
-      "source": "declared | community_detected"
-    }
-  ],
-  "gems": [
-    {
-      "nexus": "nexus.epistemology.methodology",
-      "magnitude": 0.0,
-      "type": "harmonious | conflicting"
-    }
-  ],
-  "spokes": {
-    "epistemology": {
-      "strength": 0.0,
-      "consistency": 0.0,
-      "polarity": 0.0,
-      "contribution": 0.0,
-      "classification": "coherent | fragmented | dominant | weakly_integrated",
-      "gems": []
-    }
-  },
-  "central_gem": {
-    "coherence": 0.0,
-    "classification": "..."
-  },
-  "construction_questions": {
-    "epistemology": {
-      "template": "How does this prompt establish and verify truth?",
-      "active_question": "What initiating polarity lies within...",
-      "opposite_question": "What reversal of directional...",
-      "classification": "edge",
-      "potency": 0.8,
-      "spoke_profile": "coherent",
-      "spoke_strength": 0.0
-    }
-  }
-}
+### Faces (12 nodes)
+
+The 12 philosophical domains with core questions, sub-dimensions, construction templates, and domain replacement strings. Organized in three phases:
+
+* **Comprehension** (5): Ontology, Epistemology, Axiology, Teleology, Phenomenology
+* **Evaluation** (2): Ethics, Aesthetics
+* **Application** (5): Praxeology, Methodology, Semiotics, Hermeneutics, Heuristics
+
+Connected by 11 PRECEDES edges forming the causal chain.
+
+### Constructs (1728 nodes)
+
+One construct per grid position per face (144 positions × 12 faces). Each construct carries:
+
+* **Question**: Domain-specific question from the 144 parameterized templates
+* **Tags**: Derived from the question text via stop-word removal and stemming
+* **Classification**: corner, edge_midpoint, other_edge, near_edge_interior, deep_interior
+* **Potency**: Position-derived weight (corners highest, deep interior lowest)
+
+Connected to their face via HAS_CONSTRUCT edges. Connected to spectrum-opposed constructs via SPECTRUM_OPPOSITION edges.
+
+### Question templates (144)
+
+Position-specific templates organized by zone:
+
+| Zone | Template count | Positions |
+|---|---|---|
+| Corners | 4 | (0,0), (11,0), (0,11), (11,11) |
+| Edge midpoints | 8 | (5,0), (6,0), (5,11), (6,11), (0,5), (0,6), (11,5), (11,6) |
+| Other edge | 32 | Remaining perimeter positions |
+| Near-edge interior | 36 | At least one coordinate is 1 or 10 |
+| Deep interior | 64 | Both coordinates in range 2–9 |
+
+Each template contains `{domain}` which is replaced with the face's domain replacement string to produce the final construct question.
+
+### Nexi (132 directional nodes)
+
+One directional nexus node for each ordered pair of faces. Stratified by cube model relationship:
+
+* 6 paired nexus pairs (12 directional) — complementary counterparts
+* 48 adjacent nexus pairs (96 directional) — neighboring concerns
+* 12 opposite nexus pairs (24 directional) — distant concerns
+
+### Gems (132 nodes)
+
+One gem per directional nexus participation. Connected to the central gem via CENTRAL_GEM_LINK edges.
+
+### Central gem (1 node)
+
+The convergence point of all inter-face relations.
+
+### Cube pairing metadata
+
+The 6 complementary pairs and their cube face assignments are stored as face-level attributes, enabling the harmonization computation in Stage 8.
+
+---
+
+## Canonical Data Protection
+
+Canonical data is protected at the SQLite level:
+
+* Canonical tables have INSERT/UPDATE/DELETE triggers that raise errors after initialization
+* User extensions go into separate user tables with provenance tagging
+* The NetworkX graph merges both canonical and user data at load time
+* User data can never shadow or modify canonical nodes/edges — only extend
+
+---
+
+## Startup Sequence
+
+1. Open or create SQLite database
+2. Create tables if needed
+3. Check if canonical data needs initialization
+4. If first run: generate all canonical nodes and edges, persist to SQLite
+5. Load all canonical + user data into NetworkX graph
+6. Initialize embedding cache (spectral decomposition)
+7. Initialize TF-IDF cache (vectorize all 1728 construct questions)
+8. Initialize centrality cache (betweenness + PageRank)
+9. Create Graph Query and Mutation layers
+10. Create Pipeline Runner
+11. Register MCP tools, resources, prompts
+12. Begin accepting requests via stdio
+
+---
+
+## Project Structure
+
+```
+advanced-prompting-engine/
+├── CLAUDE.md
+├── docs/
+│   ├── DESIGN.md                              # This document
+│   ├── CONSTRUCT-v2.md                        # Standalone Construct specification
+│   ├── CONSTRUCT-v2-questions.md              # 144 parameterized question templates
+│   └── adr/                                   # Architecture Decision Records
+├── src/
+│   └── advanced_prompting_engine/
+│       ├── __init__.py
+│       ├── __main__.py                        # Entry point
+│       ├── server.py                          # MCP server setup, tool/resource/prompt registration
+│       ├── graph/
+│       │   ├── __init__.py
+│       │   ├── store.py                       # SQLite persistence (canonical + user tables)
+│       │   ├── query.py                       # Graph Query Layer — grid-aware read access
+│       │   ├── mutation.py                    # Graph Mutation Layer — writes with contradiction detection
+│       │   ├── canonical.py                   # Canonical graph data (1728 constructs, 132 nexi, 1 central gem)
+│       │   ├── grid.py                        # Grid structure — classification, potency, spectrum generation
+│       │   └── schema.py                      # Schema definitions, node/edge types, face definitions
+│       ├── cache/
+│       │   ├── __init__.py
+│       │   ├── embedding.py                   # Spectral embedding cache (lifecycle-managed)
+│       │   ├── tfidf.py                       # TF-IDF vector cache (1728 questions, lifecycle-managed)
+│       │   └── centrality.py                  # Centrality cache (betweenness, PageRank)
+│       ├── pipeline/
+│       │   ├── __init__.py
+│       │   ├── runner.py                      # Pipeline orchestration — runs stages 1-8 in sequence
+│       │   ├── intent_parser.py               # Stage 1: NL → raw partial coordinate
+│       │   ├── coordinate_resolver.py         # Stage 2: CSP, constraint propagation, gap-filling
+│       │   ├── position_computer.py           # Stage 3: spectral embedding lookup, centroid
+│       │   ├── construct_resolver.py          # Stage 4: active constructs per face
+│       │   ├── tension_analyzer.py            # Stage 5: potency-weighted tension + spectrum oppositions
+│       │   ├── nexus_gem_analyzer.py          # Stage 6: nexus integration, gem computation
+│       │   ├── spoke_analyzer.py              # Stage 7: spoke behavioral signatures, central gem
+│       │   └── construction_bridge.py         # Stage 8: construction questions + full output assembly
+│       ├── orchestrator/
+│       │   ├── __init__.py
+│       │   └── multi_pass.py                  # stress_test, triangulate, deepen
+│       ├── math/
+│       │   ├── __init__.py
+│       │   ├── distance.py                    # Graph distance metrics
+│       │   ├── embedding.py                   # Spectral embedding (Laplacian, eigendecomposition)
+│       │   ├── csp.py                         # Constraint satisfaction
+│       │   ├── tension.py                     # Potency-weighted tension propagation
+│       │   ├── community.py                   # Community detection
+│       │   ├── centrality.py                  # Centrality measures
+│       │   ├── tfidf.py                       # TF-IDF implementation (numpy only)
+│       │   ├── spoke.py                       # Spoke shape computation
+│       │   ├── gem.py                         # Gem magnitude computation
+│       │   └── optimization.py                # Pareto front computation
+│       └── tools/
+│           ├── __init__.py
+│           ├── create_prompt_basis.py         # Primary tool — invokes pipeline
+│           ├── explore_space.py               # Expert tool — delegates to query layer + orchestrator
+│           └── extend_schema.py               # Authoring tool — delegates to mutation layer
+├── tests/
+│   ├── __init__.py
+│   ├── test_pipeline/                         # Per-stage unit tests (8 stages)
+│   ├── test_math/                             # Mathematical operation tests
+│   ├── test_graph/                            # Graph query/mutation/grid tests
+│   └── test_tools/                            # MCP tool integration tests
+├── pyproject.toml
+└── README.md
 ```
 
-The construction questions are the **bridge** between dimensional analysis and prompt construction. Each entry includes the branch template, the active construct's predefined epistemic question, the spectrum opposite's question, the position's classification and potency, and the spoke profile for that branch. The client reads these and constructs a prompt informed by the dimensional foundation.
-
 ---
 
-## Performance Characteristics
+## Conventions
 
-| Operation | Expected scale | Expected time |
-|---|---|---|
-| Spectral embedding (startup) | 1101 nodes, ~1101×1101 matrix | ~50ms |
-| TF-IDF pre-computation (startup) | 1000 construct questions | ~30ms |
-| Community detection | 1101 nodes | ~10ms |
-| CSP coordinate resolution | 10 branches × 100 grid positions | ~2ms |
-| Nexus/gem computation | 90 nexi | ~5ms |
-| Spoke computation | 10 spokes × 4 properties | ~1ms |
-| Single pipeline run | All 8 stages | ~100-150ms |
-| Stress test (multi-pass) | ~100 pipeline runs | ~10-15s |
-| Memory footprint | Graph + embeddings + TF-IDF vectors | < 75MB |
-
-### Shipped Graph Size
-
-| Node type | Count |
-|---|---|
-| Axiom branch nodes | 10 |
-| Construct nodes | 1000 |
-| Nexus nodes | 90 |
-| Central gem node | 1 |
-| **Total** | **1101** |
-
-| Edge type | Count |
-|---|---|
-| HAS_CONSTRUCT | 1000 |
-| PRECEDES | 9 |
-| SPECTRUM_OPPOSITION | 180 |
-| NEXUS_SOURCE | 90 |
-| NEXUS_TARGET | 90 |
-| CENTRAL_GEM_LINK | 90 |
-| **Total** | **1696** |
+- Each class in its own file
+- Pipeline stages are internal — never exposed as MCP tools
+- All graph access goes through Graph Query Layer or Graph Mutation Layer — no direct NetworkX calls elsewhere
+- Canonical graph data is read-only at the DB level (SQLite triggers)
+- Canonical node IDs are permanent across versions (format: `{domain}.{x}_{y}` for constructs, `nexus.{source}.{target}` for nexi)
+- User extensions use provenance tagging, never modify canonical tables
+- Caches (embedding, TF-IDF, centrality) are lifecycle-managed: computed at startup, invalidated on graph mutation, recomputed lazily
+- Mathematical operations live in `math/` module, imported by pipeline stages and caches
+- Grid structure logic (classification, potency derivation, spectrum generation) lives in `graph/grid.py`
+- Nexus, gem, and spoke computations are separate math modules (`math/gem.py`, `math/spoke.py`)
+- Potency weighting is applied in tension, gem, and spoke computations — never ignored
+- Contradiction detection lives in Graph Mutation Layer, not in individual tools
+- The Construct specification (`CONSTRUCT-v2.md`) is the source of truth for what faces, points, spectrums, nexi, gems, spokes, and the central gem ARE — use engine-specific language only in engine code, not in the Construct spec
+- "Face" terminology replaces "branch" throughout the codebase. Schema constants and API parameters use `face` (not `branch`)
+- Positional correspondence is computed from coordinates at query time, not stored as graph edges
+- Nexus stratification (paired/adjacent/opposite) modulates gem computation and tension weighting

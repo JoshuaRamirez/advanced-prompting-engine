@@ -1,48 +1,36 @@
-"""Spectral embedding cache — lifecycle-managed.
+"""Spectral embedding cache — DEPRECATED in v2.
 
-Authoritative source: Spec 09.
-Computed at startup, invalidated on graph mutation, recomputed lazily.
+v2 positions are grid coordinates, not graph embeddings.
+Every point already HAS a position — its (x, y) on the 12x12 grid.
+Spectral embedding computed continuous positions from graph topology;
+the regular v2 grid makes this unnecessary.
+
+This module is retained as a stub for backwards compatibility.
+The compute function is not called by any v2 pipeline stage.
 """
 
 from __future__ import annotations
 
-import networkx as nx
-import numpy as np
-
-from advanced_prompting_engine.cache.hashing import compute_graph_hash
-from advanced_prompting_engine.math.embedding import compute_spectral_embedding
-
 
 class EmbeddingCache:
-    """Lifecycle-managed cache for spectral node embeddings."""
+    """Stub — v2 does not use spectral embedding."""
 
     def __init__(self):
-        self._embeddings: dict[str, np.ndarray] = {}
-        self._graph_hash: str = ""
+        self._initialized = False
 
-    def initialize(self, G: nx.Graph):
-        self._embeddings = compute_spectral_embedding(G)
-        self._graph_hash = compute_graph_hash(G)
+    def initialize(self, G):
+        self._initialized = True
 
-    def validate(self, G: nx.Graph) -> bool:
-        return compute_graph_hash(G) == self._graph_hash
+    def validate(self, G) -> bool:
+        return self._initialized
 
     def invalidate(self):
-        self._embeddings = {}
-        self._graph_hash = ""
+        self._initialized = False
 
-    def ensure_valid(self, G: nx.Graph):
-        if not self._graph_hash or not self.validate(G):
+    def ensure_valid(self, G):
+        if not self._initialized:
             self.initialize(G)
-
-    def get(self, node_id: str) -> np.ndarray:
-        if node_id not in self._embeddings:
-            raise KeyError(f"Embedding not found for {node_id!r}. Cache may need rebuild.")
-        return self._embeddings[node_id]
-
-    def all_embeddings(self) -> dict[str, np.ndarray]:
-        return self._embeddings
 
     @property
     def is_initialized(self) -> bool:
-        return bool(self._graph_hash)
+        return self._initialized

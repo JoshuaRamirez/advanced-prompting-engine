@@ -1,6 +1,6 @@
 """MCP Tool: explore_space — expert access to the graph.
 
-Authoritative source: Spec 10.
+Authoritative source: CONSTRUCT-v2.md, DESIGN.md.
 8 operations routing to GraphQueryLayer or MultiPassOrchestrator.
 """
 
@@ -23,7 +23,7 @@ def handle_explore_space(
 ) -> dict:
     """Route to the appropriate operation."""
     handlers = {
-        "list_branches": _list_branches,
+        "list_faces": _list_faces,
         "list_constructs": _list_constructs,
         "get_construct": _get_construct,
         "get_neighborhood": _get_neighborhood,
@@ -31,6 +31,8 @@ def handle_explore_space(
         "get_spoke": _get_spoke,
         "stress_test": _stress_test,
         "triangulate": _triangulate,
+        # Deprecated: v1 alias retained for backward compatibility
+        "list_branches": _list_faces,
     }
 
     handler = handlers.get(operation)
@@ -43,35 +45,43 @@ def handle_explore_space(
         return {"status": "error", "message": str(e)}
 
 
-def _list_branches(query_layer, pipeline, **kwargs):
-    branches = query_layer.list_branches()
-    return {"status": "success", "branches": branches}
+def _list_faces(query_layer, pipeline, **kwargs):
+    faces = query_layer.list_faces()
+    return {"status": "success", "faces": faces}
 
 
-def _list_constructs(query_layer, pipeline, branch=None, classification=None,
-                     provenance="merged", **kwargs):
-    if not branch:
-        return {"status": "error", "message": "branch is required"}
-    constructs = query_layer.list_constructs(branch, provenance=provenance,
+def _list_constructs(query_layer, pipeline, face=None,
+                     branch=None,  # Deprecated: use 'face' instead (v1 backward compat)
+                     classification=None, provenance="merged", **kwargs):
+    f = face or branch  # accept either name
+    if not f:
+        return {"status": "error", "message": "face is required"}
+    constructs = query_layer.list_constructs(f, provenance=provenance,
                                               classification=classification)
     return {"status": "success", "count": len(constructs), "constructs": constructs}
 
 
-def _get_construct(query_layer, pipeline, branch=None, x=None, y=None, **kwargs):
-    if not branch or x is None or y is None:
-        return {"status": "error", "message": "branch, x, and y are required"}
-    c = query_layer.get_construct(branch, int(x), int(y))
+def _get_construct(query_layer, pipeline, face=None,
+                   branch=None,  # Deprecated: use 'face' instead (v1 backward compat)
+                   x=None, y=None, **kwargs):
+    f = face or branch
+    if not f or x is None or y is None:
+        return {"status": "error", "message": "face, x, and y are required"}
+    c = query_layer.get_construct(f, int(x), int(y))
     if c is None:
-        return {"status": "error", "message": f"Construct not found: {branch}.{x}_{y}"}
+        return {"status": "error", "message": f"Construct not found: {f}.{x}_{y}"}
     return {"status": "success", "construct": c}
 
 
-def _get_neighborhood(query_layer, pipeline, branch=None, x=None, y=None, **kwargs):
-    if not branch or x is None or y is None:
-        return {"status": "error", "message": "branch, x, and y are required"}
-    construct_id = f"{branch}.{x}_{y}"
+def _get_neighborhood(query_layer, pipeline, face=None,
+                      branch=None,  # Deprecated: use 'face' instead (v1 backward compat)
+                      x=None, y=None, **kwargs):
+    f = face or branch
+    if not f or x is None or y is None:
+        return {"status": "error", "message": "face, x, and y are required"}
+    construct_id = f"{f}.{x}_{y}"
     edges = query_layer.get_edges(construct_id)
-    opp = query_layer.get_spectrum_opposite(branch, int(x), int(y))
+    opp = query_layer.get_spectrum_opposite(f, int(x), int(y))
     return {
         "status": "success",
         "construct_id": construct_id,
@@ -80,20 +90,29 @@ def _get_neighborhood(query_layer, pipeline, branch=None, x=None, y=None, **kwar
     }
 
 
-def _find_path(query_layer, pipeline, branch=None, x=None, y=None,
-               target_branch=None, target_x=None, target_y=None, **kwargs):
-    if not all([branch, target_branch]) or any(v is None for v in [x, y, target_x, target_y]):
-        return {"status": "error", "message": "source and target branch/x/y required"}
-    source = f"{branch}.{x}_{y}"
-    target = f"{target_branch}.{target_x}_{target_y}"
+def _find_path(query_layer, pipeline, face=None,
+               branch=None,  # Deprecated: use 'face' instead (v1 backward compat)
+               x=None, y=None,
+               target_face=None,
+               target_branch=None,  # Deprecated: use 'target_face' instead (v1 backward compat)
+               target_x=None, target_y=None, **kwargs):
+    src = face or branch
+    tgt = target_face or target_branch
+    if not all([src, tgt]) or any(v is None for v in [x, y, target_x, target_y]):
+        return {"status": "error", "message": "source and target face/x/y required"}
+    source = f"{src}.{x}_{y}"
+    target = f"{tgt}.{target_x}_{target_y}"
     path = query_layer.find_path(source, target)
     return {"status": "success", "path": path}
 
 
-def _get_spoke(query_layer, pipeline, branch=None, **kwargs):
-    if not branch:
-        return {"status": "error", "message": "branch is required"}
-    spoke = query_layer.get_spoke(branch)
+def _get_spoke(query_layer, pipeline, face=None,
+               branch=None,  # Deprecated: use 'face' instead (v1 backward compat)
+               **kwargs):
+    f = face or branch
+    if not f:
+        return {"status": "error", "message": "face is required"}
+    spoke = query_layer.get_spoke(f)
     return {"status": "success", "spoke": spoke}
 
 

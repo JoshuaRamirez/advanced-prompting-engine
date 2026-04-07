@@ -1,42 +1,38 @@
-"""Centrality cache — lifecycle-managed.
+"""Centrality cache — DEPRECATED in v2.
 
-Authoritative source: Spec 09.
-Used by Coordinate Resolver (tiebreaker) and Generative Analyzer.
+v2 potency is position-derived on a regular grid (CONSTRUCT-v2.md §5.4).
+Centrality computed graph-theoretic importance from topology;
+the regular v2 grid makes this unnecessary — corners are most potent,
+center points are most compositional, by definition.
+
+This module is retained as a stub for backwards compatibility.
 """
 
 from __future__ import annotations
 
-import networkx as nx
-
-from advanced_prompting_engine.cache.hashing import compute_graph_hash
-from advanced_prompting_engine.math.centrality import compute_centralities
-
 
 class CentralityCache:
-    """Lifecycle-managed cache for betweenness centrality and PageRank."""
+    """Stub — v2 does not use graph centrality."""
 
     def __init__(self):
-        self._centralities: dict[str, dict[str, float]] = {}
-        self._graph_hash: str = ""
+        self._initialized = False
 
-    def initialize(self, G: nx.Graph):
-        self._centralities = compute_centralities(G)
-        self._graph_hash = compute_graph_hash(G)
+    def initialize(self, G):
+        self._initialized = True
 
-    def validate(self, G: nx.Graph) -> bool:
-        return compute_graph_hash(G) == self._graph_hash
+    def validate(self, G) -> bool:
+        return self._initialized
 
     def invalidate(self):
-        self._centralities = {}
-        self._graph_hash = ""
+        self._initialized = False
 
-    def ensure_valid(self, G: nx.Graph):
-        if not self._graph_hash or not self.validate(G):
+    def ensure_valid(self, G):
+        if not self._initialized:
             self.initialize(G)
 
     def get(self, node_id: str) -> dict[str, float]:
-        return self._centralities.get(node_id, {"betweenness": 0.0, "pagerank": 0.0})
+        return {"betweenness": 0.0, "pagerank": 0.0}
 
     @property
     def is_initialized(self) -> bool:
-        return bool(self._graph_hash)
+        return self._initialized
