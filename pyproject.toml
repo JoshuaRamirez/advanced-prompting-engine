@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "advanced-prompting-engine"
-version = "0.2.0"
-description = "Universal prompt creation engine — MCP server with 10-axis philosophical manifold"
+version = "0.3.0"
+description = "Universal prompt creation engine — MCP server with 12-axis philosophical manifold"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.10"

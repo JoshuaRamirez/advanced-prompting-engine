@@ -1,3 +1,3 @@
-"""Universal Prompt Creation Engine — MCP server with 10-axis philosophical manifold."""
+"""Universal Prompt Creation Engine — MCP server with 12-axis philosophical manifold."""
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
