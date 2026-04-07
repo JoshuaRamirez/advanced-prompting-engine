@@ -76,15 +76,18 @@ POLE_SYNONYMS: dict[str, list[str]] = {
     "certain": ["definite", "assured", "confident", "established", "proven", "absolute", "verified"],
     "provisional": ["tentative", "temporary", "conditional", "preliminary", "revisable", "uncertain"],
     # Axiology
-    "absolute": ["unconditional", "fixed", "invariant", "universal", "objective", "inherent"],
-    "relative": ["conditional", "contextual", "comparative", "dependent", "situated", "variable"],
+    # Axiology — evaluation-specific. Avoid "objective"/"subjective" (overlaps Phenomenology),
+    # "contextual"/"situated" (overlaps Aesthetics), "universal" (overlaps Ontology).
+    "absolute": ["unconditional", "invariant", "inherent", "intrinsic", "categorical", "non-negotiable"],
+    "relative": ["conditional", "comparative", "dependent", "variable", "proportional", "graduated"],
     "quantitative": ["measurable", "numerical", "counted", "metric", "scored", "statistical"],
-    "qualitative": ["descriptive", "interpretive", "subjective", "narrative", "textured", "nuanced"],
-    # Teleology
-    "immediate": ["proximate", "instant", "direct", "short", "tactical", "urgent", "present"],
-    "ultimate": ["final", "long", "distant", "strategic", "enduring", "fundamental", "terminal"],
-    "intentional": ["deliberate", "purposeful", "planned", "designed", "conscious", "directed", "willed"],
-    "emergent": ["spontaneous", "arising", "unplanned", "organic", "evolving", "unexpected"],
+    "qualitative": ["descriptive", "interpretive", "narrative", "textured", "nuanced", "holistic"],
+    # Teleology — purpose-specific. Avoid common/broad words ("direct", "short", "present",
+    # "final", "long", "fundamental", "designed", "conscious") that attract all text.
+    "immediate": ["proximate", "near", "tactical", "urgent", "pressing", "momentary"],
+    "ultimate": ["destiny", "culmination", "telos", "paramount", "supreme", "terminal"],
+    "intentional": ["deliberate", "purposeful", "willed", "motivated", "purposive", "teleological"],
+    "emergent": ["spontaneous", "arising", "unplanned", "organic", "serendipitous", "unexpected"],
     # Phenomenology — experience-specific. Avoid "independent" (overlaps Praxeology/Aesthetics),
     # "fundamental" (overlaps Teleology), "structural" (overlaps Methodology).
     "objective": ["external", "observable", "measurable", "public", "factual", "verifiable"],
