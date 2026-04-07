@@ -2,7 +2,7 @@
 """Build the geometric semantic bridge artifacts from GloVe word vectors.
 
 This script runs on the DEVELOPER machine at build time — never at runtime.
-It downloads GloVe 6B 50d vectors (~70MB), loads ALL 400K vectors, selects a
+It downloads GloVe 6B 100d vectors (~130MB), loads ALL 400K vectors, selects a
 ~16K runtime vocabulary (top 15K frequent + face/domain/axis/pole words), builds
 12 face centroids from AUTHORED LAYERS ONLY (core questions, sub-dimension labels,
 domain replacement strings, face names — NOT the 144 derived question templates),
@@ -50,8 +50,8 @@ from advanced_prompting_engine.graph.schema import (
 GLOVE_URL = "https://nlp.stanford.edu/data/glove.6B.zip"
 GLOVE_CACHE_DIR = Path.home() / ".cache" / "glove"
 GLOVE_ZIP_PATH = GLOVE_CACHE_DIR / "glove.6B.zip"
-GLOVE_TXT_PATH = GLOVE_CACHE_DIR / "glove.6B.50d.txt"
-VECTOR_DIM = 50
+GLOVE_TXT_PATH = GLOVE_CACHE_DIR / "glove.6B.100d.txt"
+VECTOR_DIM = 100
 TOP_K_FREQUENT = 15000  # Top 15K most frequent GloVe words
 MAX_GLOVE_WORDS = 400000  # Load all 400K GloVe vectors for centroid/axis construction
 
@@ -152,9 +152,9 @@ def download_glove() -> None:
     else:
         print(f"[OK] GloVe zip already cached at {GLOVE_ZIP_PATH}")
 
-    print(f"[EXTRACT] Extracting glove.6B.50d.txt from zip ...")
+    print(f"[EXTRACT] Extracting glove.6B.100d.txt from zip ...")
     with zipfile.ZipFile(str(GLOVE_ZIP_PATH), "r") as zf:
-        target_name = "glove.6B.50d.txt"
+        target_name = "glove.6B.100d.txt"
         zf.extract(target_name, str(GLOVE_CACHE_DIR))
     print(f"[OK] Extracted to {GLOVE_TXT_PATH}")
 
