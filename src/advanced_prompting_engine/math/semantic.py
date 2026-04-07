@@ -20,7 +20,7 @@ from pathlib import Path
 
 import numpy as np
 
-from advanced_prompting_engine.graph.schema import ALL_FACES
+from advanced_prompting_engine.graph.schema import ALL_FACES, CUBE_PAIRS
 
 
 class GeometricBridge:
@@ -105,7 +105,42 @@ class GeometricBridge:
 
         weighted_avg = (rows * weights[:, np.newaxis]).sum(axis=0) / total_weight  # shape (12,)
 
-        return {face: float(weighted_avg[i]) for i, face in enumerate(self._faces)}
+        raw_scores = {face: float(weighted_avg[i]) for i, face in enumerate(self._faces)}
+
+        # Contrastive cube-pair dampening: within each complementary pair,
+        # if one face scores higher than the other, boost the winner and
+        # dampen the loser. This uses the cube model's theoretical/applied
+        # distinction to disambiguate paired faces.
+        return self._apply_cube_contrast(raw_scores)
+
+    def _apply_cube_contrast(self, scores: dict[str, float]) -> dict[str, float]:
+        """Dampen the weaker member of each cube pair.
+
+        For each of the 6 complementary pairs, if one face scores higher,
+        transfer a fraction of the loser's score to the winner. This enforces
+        the cube model's prediction that paired faces should not co-activate
+        equally — the intent is either more theoretical or more applied.
+        """
+        result = dict(scores)
+        contrast_strength = 0.3  # fraction of difference to transfer
+
+        for face_a, face_b in CUBE_PAIRS:
+            if face_a not in result or face_b not in result:
+                continue
+            sa = result[face_a]
+            sb = result[face_b]
+            if sa == sb:
+                continue
+            diff = abs(sa - sb)
+            transfer = diff * contrast_strength
+            if sa > sb:
+                result[face_a] += transfer
+                result[face_b] -= transfer
+            else:
+                result[face_b] += transfer
+                result[face_a] -= transfer
+
+        return result
 
     def axis_projection(self, tokens: list[str], face: str, axis: str) -> tuple[float, float]:
         """Phase 2: IDF-weighted average of pre-computed axis projections.
