@@ -1,156 +1,72 @@
 """Stage 1 — Intent Parser: natural language -> partial coordinate.
 
 Authoritative source: CONSTRUCT-v2.md (8-stage forward pass, Stage 1).
-Two-phase matching:
-  Phase 1: Determine face relevance by matching intent against face
-           core questions and domain terms.
-  Phase 2: Within each face, find the best grid position via tag overlap
-           and per-face TF-IDF.
+Geometry-integral parsing built from the Construct's own authored layers:
+
+  Phase 1: Face relevance via GeometricBridge discriminative face similarity
+           (IDF-weighted GloVe cosine to authored-layer centroids minus mean)
+  Phase 2: Axis projection via GeometricBridge pre-computed direction vectors
+           (IDF-weighted dot product onto high_pole - low_pole direction)
+  Phase 3: Scalar-to-grid mapping via polarity convention (0.0 -> 0, 1.0 -> 11)
 """
 
 from __future__ import annotations
 
-from advanced_prompting_engine.graph.canonical import stem
 from advanced_prompting_engine.graph.schema import (
     ALL_FACES,
-    DOMAIN_REPLACEMENTS,
     GRID_SIZE,
     PipelineState,
 )
 
-MATCH_THRESHOLD = 0.03  # lowered for v2: 144 parameterized templates produce lower tag/TF-IDF overlap
+# Minimum face relevance (discriminative) to consider a face actively matched.
+# Discriminative scores can be negative; only positive scores indicate above-average relevance.
+RELEVANCE_THRESHOLD = 0.0
 
-# Stop words for tokenization (same as tag derivation)
+# Minimum combined confidence (average of x and y axis confidence) to emit a coordinate
+CONFIDENCE_THRESHOLD = 0.05
+
+# Stop words for tokenization — functional words that carry no domain signal in GloVe space.
+# Expanded beyond the original stemmed set: GloVe needs full word forms, so we must
+# filter out common function words, pronouns, modals, and auxiliaries that dilute
+# discriminative face relevance when left in the token set.
 _STOP_WORDS = frozenset({
-    "what", "is", "the", "of", "a", "an", "at", "in", "from", "how", "does",
-    "do", "that", "this", "which", "for", "to", "and", "or", "by", "with",
-    "its", "are", "be", "into", "as", "when", "where", "can", "has", "have",
-    "through", "between", "within", "upon", "along", "across",
+    # Determiners and articles
+    "a", "an", "the", "this", "that", "these", "those",
+    # Prepositions
+    "at", "in", "on", "of", "from", "to", "into", "as", "by", "with",
+    "through", "between", "within", "upon", "along", "across", "about",
+    "over", "under", "after", "before", "during", "against", "toward",
+    "towards", "among", "around", "without",
+    # Conjunctions
+    "and", "or", "but", "nor", "yet", "so", "if", "then", "than",
+    # Pronouns
+    "it", "its", "he", "she", "we", "us", "me", "my", "our", "your",
+    "you", "they", "them", "their", "his", "her",
+    # Question words
+    "what", "how", "which", "where", "when", "who", "whom", "why",
+    # Auxiliaries and modals
+    "is", "are", "was", "were", "be", "been", "being",
+    "has", "have", "had", "having",
+    "do", "does", "did", "doing",
+    "can", "could", "will", "would", "shall", "should",
+    "may", "might", "must", "need", "ought",
+    # Common low-signal verbs and adverbs
+    "not", "no", "also", "just", "only", "very", "too", "more", "most",
+    "some", "any", "all", "each", "every", "both", "such",
+    "here", "there", "now", "already", "still", "even",
 })
-
-# Face semantic keywords — terms that signal relevance to a specific face
-# beyond just the face name. Domain-specific, not structural.
-# Include common inflections (singular + plural + gerund) to guard against
-# stemmer inconsistency (e.g., stem("duty")="duty" but stem("duties")="duti").
-def _build_keywords(*words: str) -> set[str]:
-    """Stem each word and collect all stems into a set."""
-    return {stem(w) for w in words}
-
-_FACE_KEYWORDS: dict[str, set[str]] = {
-    "ontology": _build_keywords(
-        "entity", "entities", "exist", "exists", "existence", "existing",
-        "real", "reality", "being", "beings", "object", "objects",
-        "structure", "structures", "category", "categories",
-        "relationship", "relationships", "boundary", "boundaries",
-        "hierarchy", "component", "thing", "things", "nature", "essence",
-    ),
-    "epistemology": _build_keywords(
-        "know", "knows", "knowing", "knowledge", "known",
-        "truth", "truths", "true", "verify", "verification", "verified",
-        "evidence", "proof", "proofs", "belief", "beliefs", "believe",
-        "justify", "justification", "justified",
-        "valid", "validity", "certain", "certainty",
-        "empirical", "rational", "fact", "facts", "correct", "correctness",
-    ),
-    "axiology": _build_keywords(
-        "value", "values", "valued", "valuing",
-        "worth", "worthy", "good", "quality", "qualities",
-        "evaluate", "evaluates", "evaluation", "criteria", "criterion",
-        "measure", "measures", "rank", "ranking", "priority", "priorities",
-        "standard", "standards", "merit", "significant", "significance",
-    ),
-    "teleology": _build_keywords(
-        "purpose", "purposes", "purposeful",
-        "goal", "goals", "end", "ends", "aim", "aims",
-        "target", "targets", "outcome", "outcomes", "result", "results",
-        "intent", "intention", "intentions", "direct", "direction",
-        "achieve", "achievement", "objective", "objectives",
-        "why", "reason", "reasons", "cause", "causes",
-    ),
-    "phenomenology": _build_keywords(
-        "experience", "experiences", "experiencing", "experiential",
-        "conscious", "consciousness", "perceive", "perception", "perceived",
-        "feel", "feeling", "feelings", "aware", "awareness",
-        "sense", "senses", "sensing", "sensory",
-        "interact", "interaction", "interactions",
-        "user", "gesture", "interface", "subjective", "subjectivity",
-        "represent", "representation", "present", "flow",
-    ),
-    "ethics": _build_keywords(
-        "obligation", "obligations", "obligated",
-        "duty", "duties", "moral", "morals", "morality", "morally",
-        "right", "rights", "wrong", "wrongs",
-        "permissible", "impermissible", "permission",
-        "forbidden", "responsible", "responsibility", "responsibilities",
-        "accountable", "accountability",
-        "fair", "fairness", "just", "justice", "harm", "harms", "harmful",
-        "consent", "trust", "ethical", "unethical",
-    ),
-    "aesthetics": _build_keywords(
-        "beauty", "beautiful", "form", "forms", "formal",
-        "elegance", "elegant", "harmony", "harmonious",
-        "proportion", "proportional", "style", "styles", "stylistic",
-        "taste", "sensory", "perception", "perceptual",
-        "design", "designs", "artistic", "art", "arts",
-        "grace", "graceful", "sublime", "sublimity", "ugly", "ugliness",
-    ),
-    "praxeology": _build_keywords(
-        "action", "actions", "behavior", "behaviors", "behavioural",
-        "act", "acts", "acting", "do", "doing",
-        "perform", "performance", "execute", "execution",
-        "practice", "practices", "practical",
-        "delegate", "invoke", "response", "responses", "respond",
-        "initiative", "coordinate", "coordination",
-        "react", "reactive", "operate", "operation",
-    ),
-    "methodology": _build_keywords(
-        "method", "methods", "methodical", "methodology", "methodologies",
-        "process", "processes", "system", "systems", "systematic", "systematically",
-        "approach", "approaches", "technique", "techniques",
-        "procedure", "procedures", "procedural",
-        "workflow", "framework", "frameworks",
-        "construct", "design", "build", "building",
-        "test", "testing", "analyze", "analysis", "analytical",
-        "iterate", "iteration",
-    ),
-    "semiotics": _build_keywords(
-        "sign", "signs", "signal", "signals", "signaling",
-        "meaning", "meanings", "meaningful",
-        "communicate", "communicates", "communication",
-        "message", "messages", "encode", "encoding", "encoded",
-        "decode", "decoding", "symbol", "symbols", "symbolic",
-        "semantic", "semantics", "syntax", "syntactic",
-        "format", "payload", "convention", "conventions",
-    ),
-    "hermeneutics": _build_keywords(
-        "interpret", "interprets", "interpretation", "interpretive",
-        "understand", "understanding", "understood",
-        "ambiguity", "ambiguous", "context", "contextual",
-        "read", "reading", "translate", "translation",
-        "clarify", "clarification", "meaning", "meanings",
-        "frame", "framing", "perspective", "perspectives",
-        "narrative", "narratives", "exegesis", "text", "texts", "textual",
-        "nuance", "nuances", "nuanced",
-    ),
-    "heuristics": _build_keywords(
-        "strategy", "strategies", "strategic",
-        "heuristic", "heuristics", "solve", "solving", "solution",
-        "problem", "problems", "adapt", "adaptation", "adaptive",
-        "fallback", "pragmatic", "pragmatism",
-        "rule", "rules", "shortcut", "shortcuts",
-        "approximate", "approximation", "trial", "error",
-        "explore", "exploration", "exploratory", "robust", "robustness",
-    ),
-}
 
 
 class IntentParser:
-    """Stage 1: Map natural language intent to partial grid coordinates."""
+    """Stage 1: Map natural language intent to partial grid coordinates.
 
-    def __init__(self, tfidf_cache, query_layer, semantic_bridge=None):
-        self._tfidf = tfidf_cache
-        self._query = query_layer
-        self._semantic = semantic_bridge
+    Uses the GeometricBridge to determine face relevance and axis positions
+    from pre-computed GloVe-derived artifacts. No TF-IDF cache or query layer
+    needed — all geometry is baked into the bridge at build time.
+    """
+
+    def __init__(self, geometric_bridge):
+        self._bridge = geometric_bridge
 
     def execute(self, state: PipelineState):
         raw = state.raw_input
@@ -169,123 +85,88 @@ class IntentParser:
 
         tokens = self._tokenize(intent)
 
+        # Graceful degradation: if bridge not loaded, all faces get None
+        if self._bridge is None or not self._bridge.is_loaded:
+            state.partial_coordinate = {f: None for f in ALL_FACES}
+            return
+
         # --- Phase 1: Face relevance ---
-        # Pre-compute semantic scores once for all faces (avoids redundant work in loop)
-        semantic_scores: dict[str, float] = {}
-        if self._semantic is not None and self._semantic.is_loaded:
-            semantic_scores = self._semantic.face_relevance(tokens)
+        face_scores = self._bridge.face_relevance(tokens)
 
-        face_relevance: dict[str, float] = {}
+        # Normalize face scores to weights in [0.1, 1.0]
+        # Discriminative scores can be negative; shift so minimum maps to 0
+        score_values = list(face_scores.values())
+        min_score = min(score_values) if score_values else 0.0
+        max_score = max(score_values) if score_values else 0.0
+        score_range = max_score - min_score
+
+        face_weights: dict[str, float] = {}
         for face in ALL_FACES:
-            keywords = _FACE_KEYWORDS.get(face, set())
-            face_name_stem = stem(face)
-            domain_stems = {stem(w) for w in DOMAIN_REPLACEMENTS[face].split()}
-
-            keyword_overlap = len(tokens & keywords)
-            name_match = 1.0 if face_name_stem in tokens else 0.0
-            domain_match = len(tokens & domain_stems)
-
-            relevance = keyword_overlap * 1.0 + name_match * 2.0 + domain_match * 1.5
-
-            # Semantic bridge signal (broadest matcher — catches words keywords miss)
-            relevance += semantic_scores.get(face, 0.0) * 3.0
-
-            face_relevance[face] = relevance
-
-        max_relevance = max(face_relevance.values()) if face_relevance else 0.0
-
-        # --- Phase 2: Position matching within each face ---
-        partial: dict[str, dict | None] = {}
-        face_matched_tokens: dict[str, list[str]] = {f: [] for f in ALL_FACES}
-
-        for face in ALL_FACES:
-            relevance = face_relevance[face]
-
-            # Per-face TF-IDF for position selection
-            face_tfidf = {
-                cid: sim for cid, sim in self._tfidf.query_face(intent, face)
-            }
-
-            best_id = None
-            best_score = 0.0
-
-            constructs = self._query.list_constructs(face)
-            for c in constructs:
-                # Tag score
-                c_tags = set(c.get("tags", []))
-                if not c_tags:
-                    tag_score = 0.0
-                else:
-                    overlap = len(tokens & c_tags)
-                    tag_score = overlap / len(c_tags)
-
-                # TF-IDF score (per-face)
-                tfidf_score = face_tfidf.get(c["id"], 0.0)
-
-                combined = tag_score * 0.6 + tfidf_score * 0.4
-
-                if combined > best_score:
-                    best_score = combined
-                    best_id = c["id"]
-
-            if best_score >= MATCH_THRESHOLD and best_id is not None:
-                pos_part = best_id.split(".")[1]
-                x, y = map(int, pos_part.split("_"))
-
-                # Weight from face relevance (Phase 1) + match confidence (Phase 2)
-                if max_relevance > 0:
-                    relevance_weight = relevance / max_relevance
-                else:
-                    relevance_weight = 0.0
-
-                weight = max(0.1, (relevance_weight * 0.7 + best_score * 0.3))
-
-                # Track matched tokens
-                c_data = self._query.get_construct_by_id(best_id)
-                if c_data:
-                    c_tags = set(c_data.get("tags", []))
-                    matched = list(tokens & c_tags)
-                    face_matched_tokens[face] = matched
-
-                partial[face] = {
-                    "x": x,
-                    "y": y,
-                    "weight": weight,
-                    "confidence": best_score,
-                }
+            raw_score = face_scores.get(face, 0.0)
+            if score_range > 1e-9:
+                normalized = (raw_score - min_score) / score_range  # [0, 1]
             else:
+                normalized = 0.5  # uniform if no differentiation
+            # Map to [0.1, 1.0] — every face gets at least 0.1 base weight
+            face_weights[face] = 0.1 + 0.9 * normalized
+
+        # --- Phase 2 & 3: Axis projection + scalar-to-grid ---
+        partial: dict[str, dict | None] = {}
+
+        for face in ALL_FACES:
+            x_scalar, x_conf = self._bridge.axis_projection(tokens, face, "x")
+            y_scalar, y_conf = self._bridge.axis_projection(tokens, face, "y")
+
+            avg_confidence = (x_conf + y_conf) / 2.0
+
+            # If discriminative relevance is below threshold AND confidence is
+            # very low, let coordinate resolver fill this face
+            disc_score = face_scores.get(face, 0.0)
+            if disc_score < RELEVANCE_THRESHOLD and avg_confidence < CONFIDENCE_THRESHOLD:
                 partial[face] = None
+                continue
 
-        # Phase 3: Diversification — if low-relevance faces landed on the
-        # same position as high-relevance ones, mark them as None so the
-        # coordinate resolver can fill them with structurally appropriate defaults.
-        if max_relevance > 0:
-            filled = {f: v for f, v in partial.items() if v is not None}
-            if filled:
-                from collections import Counter
-                pos_counts = Counter((v["x"], v["y"]) for v in filled.values())
-                most_common_pos, most_common_count = pos_counts.most_common(1)[0]
+            x = self._scalar_to_grid(x_scalar)
+            y = self._scalar_to_grid(y_scalar)
 
-                # If > 60% of faces share the same position, it is a degenerate result.
-                # Null out low-relevance faces so coordinate resolver can diversify.
-                if most_common_count > len(filled) * 0.6:
-                    relevance_threshold = max_relevance * 0.3
-                    for face in list(partial.keys()):
-                        if partial[face] is None:
-                            continue
-                        entry = partial[face]
-                        if (entry["x"], entry["y"]) == most_common_pos:
-                            if face_relevance[face] < relevance_threshold:
-                                partial[face] = None
+            # Weight combines face relevance (Phase 1) with axis confidence (Phase 2)
+            weight = face_weights[face] * (0.7 + 0.3 * avg_confidence)
+            weight = max(0.1, min(1.0, weight))
+
+            partial[face] = {
+                "x": x,
+                "y": y,
+                "weight": weight,
+                "confidence": avg_confidence,
+            }
 
         state.partial_coordinate = partial
 
-    def _tokenize(self, text: str) -> set[str]:
-        """Tokenize and stem to match the stemmed tags in canonical constructs."""
-        words = text.lower().replace("?", "").replace(",", "").replace("'", "").split()
-        return {stem(w) for w in words if w not in _STOP_WORDS and len(w) > 1}
+    def _tokenize(self, text: str) -> list[str]:
+        """Tokenize: lowercased, unstemmed, stop-word filtered.
+
+        GloVe needs actual word forms, not stems. Punctuation is stripped
+        but word morphology is preserved.
+        """
+        cleaned = text.lower()
+        for ch in "?.,;:!'\"()[]{}—-–/":
+            cleaned = cleaned.replace(ch, " ")
+        words = cleaned.split()
+        return [w for w in words if w not in _STOP_WORDS and len(w) > 1]
+
+    def _scalar_to_grid(self, scalar: float) -> int:
+        """Map a [0, 1] scalar to grid position 0–11 via polarity convention.
+
+        0.0 (low pole) -> 0
+        1.0 (high pole) -> 11
+        Linear mapping with clamping.
+        """
+        max_coord = GRID_SIZE - 1
+        pos = round(scalar * max_coord)
+        return max(0, min(max_coord, pos))
 
     def _validate_coordinate(self, coord: dict):
+        """Validate a pre-formed coordinate dictionary."""
         max_coord = GRID_SIZE - 1
         for face in ALL_FACES:
             if face not in coord:

@@ -7,7 +7,7 @@ Ensures caches are valid before pipeline run.
 from __future__ import annotations
 
 from advanced_prompting_engine.graph.schema import PipelineState
-from advanced_prompting_engine.math.semantic import SemanticBridge
+from advanced_prompting_engine.math.semantic import GeometricBridge
 from advanced_prompting_engine.pipeline.construction_bridge import ConstructionBridge
 from advanced_prompting_engine.pipeline.construct_resolver import ConstructResolver
 from advanced_prompting_engine.pipeline.coordinate_resolver import CoordinateResolver
@@ -27,19 +27,19 @@ class PipelineRunner:
         self._tfidf_cache = tfidf_cache
         self._centrality_cache = centrality_cache
 
-        # Initialize semantic bridge (degrades gracefully if artifacts missing)
-        semantic_bridge = SemanticBridge()
-        semantic_bridge.load()
+        # Initialize geometric bridge (degrades gracefully if artifacts missing)
+        geometric_bridge = GeometricBridge()
+        geometric_bridge.load()
 
         self._stages = [
-            IntentParser(tfidf_cache, query_layer, semantic_bridge),  # Stage 1
-            CoordinateResolver(),                            # Stage 2
-            PositionComputer(),                              # Stage 3
-            ConstructResolver(query_layer),                  # Stage 4
-            TensionAnalyzer(graph, query_layer),             # Stage 5
-            NexusGemAnalyzer(graph, query_layer),            # Stage 6
-            SpokeAnalyzer(),                                 # Stage 7
-            ConstructionBridge(query_layer),                 # Stage 8
+            IntentParser(geometric_bridge),                     # Stage 1
+            CoordinateResolver(),                               # Stage 2
+            PositionComputer(),                                 # Stage 3
+            ConstructResolver(query_layer),                     # Stage 4
+            TensionAnalyzer(graph, query_layer),                # Stage 5
+            NexusGemAnalyzer(graph, query_layer),               # Stage 6
+            SpokeAnalyzer(),                                    # Stage 7
+            ConstructionBridge(query_layer),                    # Stage 8
         ]
 
     def run(self, raw_input: str | dict) -> dict:
