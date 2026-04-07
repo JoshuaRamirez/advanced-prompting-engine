@@ -85,23 +85,26 @@ POLE_SYNONYMS: dict[str, list[str]] = {
     "ultimate": ["final", "long", "distant", "strategic", "enduring", "fundamental", "terminal"],
     "intentional": ["deliberate", "purposeful", "planned", "designed", "conscious", "directed", "willed"],
     "emergent": ["spontaneous", "arising", "unplanned", "organic", "evolving", "unexpected"],
-    # Phenomenology
-    "objective": ["external", "observable", "measurable", "public", "factual", "independent"],
+    # Phenomenology — experience-specific. Avoid "independent" (overlaps Praxeology/Aesthetics),
+    # "fundamental" (overlaps Teleology), "structural" (overlaps Methodology).
+    "objective": ["external", "observable", "measurable", "public", "factual", "verifiable"],
     "subjective": ["internal", "personal", "felt", "experienced", "private", "perceived", "lived"],
     "surface": ["apparent", "visible", "shallow", "exterior", "obvious", "manifest", "overt"],
-    "deep": ["hidden", "underlying", "profound", "interior", "fundamental", "latent", "structural"],
-    # Ethics
-    "deontological": ["duty", "rule", "obligation", "principle", "categorical", "rights", "imperative"],
-    "consequential": ["outcome", "result", "consequence", "utility", "welfare", "impact", "effect"],
-    "agent": ["character", "virtue", "person", "disposition", "integrity", "moral", "identity"],
-    "act": ["action", "behavior", "deed", "conduct", "doing", "performance", "execution"],
-    # Aesthetics
-    "autonomous": ["independent", "intrinsic", "pure", "isolated", "inherent", "self-contained"],
-    "contextual": ["situated", "environmental", "cultural", "relational", "embedded", "social"],
-    "sensory": ["perceptual", "felt", "tactile", "visual", "auditory", "embodied", "immediate"],
-    "conceptual": ["intellectual", "abstract", "ideational", "theoretical", "cognitive", "mental"],
-    # Praxeology
-    "individual": ["solo", "personal", "autonomous", "singular", "independent", "alone"],
+    "deep": ["hidden", "underlying", "profound", "interior", "latent", "buried", "unconscious"],
+    # Ethics — morally specific vocabulary only. Avoid general action/outcome words
+    # that also describe physics or drama (no "action", "impact", "effect", "performance").
+    "deontological": ["duty", "obligation", "principle", "commandment", "rights", "imperative", "law"],
+    "consequential": ["welfare", "happiness", "suffering", "harm", "benefit", "utilitarian", "good"],
+    "agent": ["character", "virtue", "conscience", "integrity", "moral", "righteous", "noble"],
+    "act": ["deed", "conduct", "wrongdoing", "transgression", "sin", "justice", "judgment"],
+    # Aesthetics — art/beauty/form specific. Avoid generic intellectual vocabulary
+    # that overlaps with Epistemology or Methodology (no "intellectual", "theoretical", "cognitive").
+    "autonomous": ["intrinsic", "pure", "self-contained", "formalist", "disinterested", "absolute"],
+    "contextual": ["cultural", "historical", "situated", "institutional", "social", "tradition"],
+    "sensory": ["perceptual", "beautiful", "visual", "auditory", "tactile", "sublime", "elegant"],
+    "conceptual": ["artistic", "creative", "imaginative", "symbolic", "expressive", "aesthetic"],
+    # Praxeology — action-structure specific. "individual" means solo agent, not philosophical individuality.
+    "individual": ["solo", "singular", "alone", "solitary", "unilateral", "lone"],
     "coordinated": ["collaborative", "collective", "organized", "synchronized", "joint", "team"],
     "reactive": ["responsive", "defensive", "adapting", "following", "triggered", "passive"],
     "proactive": ["initiating", "anticipating", "planning", "leading", "preemptive", "forward"],
