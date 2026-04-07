@@ -63,10 +63,25 @@ class IntentParser:
     Uses the GeometricBridge to determine face relevance and axis positions
     from pre-computed GloVe-derived artifacts. No TF-IDF cache or query layer
     needed — all geometry is baked into the bridge at build time.
+
+    Enhanced with greedy longest-match phrase detection: trigrams are checked
+    before bigrams before unigrams. Matched phrases consume their component
+    words (no double-counting).
     """
 
     def __init__(self, geometric_bridge):
         self._bridge = geometric_bridge
+        # Pre-compute phrase lookup structures from the bridge
+        self._phrase_vocab: set[str] = set()
+        self._surface_to_canonical: dict[str, str] = {}
+        self._max_phrase_len: int = 0
+        if geometric_bridge is not None and geometric_bridge.is_loaded:
+            self._phrase_vocab = geometric_bridge.phrase_keys
+            self._surface_to_canonical = geometric_bridge.surface_to_canonical
+            if self._phrase_vocab:
+                self._max_phrase_len = max(
+                    len(p.split()) for p in self._phrase_vocab
+                )
 
     def execute(self, state: PipelineState):
         raw = state.raw_input
@@ -141,16 +156,70 @@ class IntentParser:
         state.partial_coordinate = partial
 
     def _tokenize(self, text: str) -> list[str]:
-        """Tokenize: lowercased, unstemmed, stop-word filtered.
+        """Tokenize with greedy longest-match phrase detection.
 
-        GloVe needs actual word forms, not stems. Punctuation is stripped
-        but word morphology is preserved.
+        Processing order:
+          1. Lowercase, strip punctuation, split into raw words
+          2. Forward scan with greedy longest-match: for each position, try
+             trigrams then bigrams (both canonical and surface forms). Matched
+             phrases consume their component words.
+          3. Unmatched words pass through standard stop-word filtering.
+
+        Phrases are emitted as their canonical form (stop words already removed
+        at build time). Component words of matched phrases are NOT emitted
+        individually — no double-counting.
         """
         cleaned = text.lower()
         for ch in "?.,;:!'\"()[]{}—-–/":
             cleaned = cleaned.replace(ch, " ")
-        words = cleaned.split()
-        return [w for w in words if w not in _STOP_WORDS and len(w) > 1]
+        raw_words = cleaned.split()
+
+        if not self._phrase_vocab or not raw_words:
+            return [w for w in raw_words if w not in _STOP_WORDS and len(w) > 1]
+
+        # Phase stop words used during build for canonical forms
+        phrase_stop_words = {"and", "of", "the", "or", "a", "an", "in", "on", "to", "for"}
+
+        tokens: list[str] = []
+        i = 0
+        n = len(raw_words)
+
+        while i < n:
+            matched = False
+            # Try longest phrases first (up to max_phrase_len words)
+            max_len = min(self._max_phrase_len, n - i)
+
+            for length in range(max_len, 1, -1):
+                window = raw_words[i:i + length]
+                surface = " ".join(window)
+
+                # Check surface form -> canonical mapping
+                canonical = self._surface_to_canonical.get(surface)
+                if canonical and canonical in self._phrase_vocab:
+                    tokens.append(canonical)
+                    i += length
+                    matched = True
+                    break
+
+                # Check canonical form directly (stop words removed from window)
+                canonical_words = [
+                    w for w in window if w not in phrase_stop_words
+                ]
+                if len(canonical_words) >= 2:
+                    canonical = " ".join(canonical_words)
+                    if canonical in self._phrase_vocab:
+                        tokens.append(canonical)
+                        i += length
+                        matched = True
+                        break
+
+            if not matched:
+                w = raw_words[i]
+                if w not in _STOP_WORDS and len(w) > 1:
+                    tokens.append(w)
+                i += 1
+
+        return tokens
 
     def _scalar_to_grid(self, scalar: float) -> int:
         """Map a [0, 1] scalar to grid position 0–11 via polarity convention.

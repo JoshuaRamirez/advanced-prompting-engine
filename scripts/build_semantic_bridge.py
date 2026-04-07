@@ -40,6 +40,7 @@ sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
 from advanced_prompting_engine.graph.schema import (
     ALL_FACES,
+    CUBE_PAIRS,
     DOMAIN_REPLACEMENTS,
     FACE_DEFINITIONS,
 )
@@ -132,6 +133,582 @@ POLE_SYNONYMS: dict[str, list[str]] = {
     "conservative": ["cautious", "safe", "careful", "traditional", "risk", "preserving", "stable"],
     "exploratory": ["adventurous", "experimental", "innovative", "searching", "creative", "bold"],
 }
+
+
+# ---------------------------------------------------------------------------
+# Algorithm 1: Retrofitting + Counter-fitting (Faruqui 2015 / Mrksic 2016)
+# ---------------------------------------------------------------------------
+
+def _build_constraint_graph(
+    full_vocab: dict[str, int],
+) -> tuple[dict[int, set[int]], dict[int, set[int]], dict[int, set[int]]]:
+    """Build three constraint sets from POLE_SYNONYMS for retrofitting.
+
+    Returns:
+        S: synonym attract sets (word_idx -> set of synonym word indices)
+        F: face cohort attract sets (word_idx -> set of same-face, different-pole indices)
+        A: antonym repel sets (word_idx -> set of opposing-pole word indices)
+    """
+    S: dict[int, set[int]] = {}
+    F: dict[int, set[int]] = {}
+    A: dict[int, set[int]] = {}
+
+    # Group poles by face and axis for F and A construction
+    face_axis_poles: dict[str, dict[str, dict[str, list[str]]]] = {}
+    for face in ALL_FACES:
+        defn = FACE_DEFINITIONS[face]
+        face_axis_poles[face] = {}
+        for axis_prefix, (low_key, high_key) in [
+            ("x", ("x_axis_low", "x_axis_high")),
+            ("y", ("y_axis_low", "y_axis_high")),
+        ]:
+            low_label = defn[low_key].lower()
+            high_label = defn[high_key].lower()
+            low_words = [low_label] + POLE_SYNONYMS.get(low_label, [])
+            high_words = [high_label] + POLE_SYNONYMS.get(high_label, [])
+            face_axis_poles[face][axis_prefix] = {
+                "low": [w for w in low_words if w in full_vocab],
+                "high": [w for w in high_words if w in full_vocab],
+            }
+
+    # S: synonym constraints — words in the same POLE_SYNONYMS entry attract
+    for pole_word, synonyms in POLE_SYNONYMS.items():
+        group = [pole_word] + synonyms
+        group_indices = [full_vocab[w] for w in group if w in full_vocab]
+        for idx in group_indices:
+            if idx not in S:
+                S[idx] = set()
+            S[idx].update(j for j in group_indices if j != idx)
+
+    # F: face cohort constraints — words in the same face but different poles weakly attract
+    # A: antonym constraints — words in opposing poles of the same axis repel
+    for face in ALL_FACES:
+        for axis_prefix in ("x", "y"):
+            poles = face_axis_poles[face][axis_prefix]
+            low_indices = [full_vocab[w] for w in poles["low"]]
+            high_indices = [full_vocab[w] for w in poles["high"]]
+
+            # A: low vs high on same axis = antonyms
+            for idx in low_indices:
+                if idx not in A:
+                    A[idx] = set()
+                A[idx].update(high_indices)
+            for idx in high_indices:
+                if idx not in A:
+                    A[idx] = set()
+                A[idx].update(low_indices)
+
+        # F: all words in the same face (across all poles/axes) but NOT in the same
+        # synonym group attract weakly
+        all_face_indices: set[int] = set()
+        for axis_prefix in ("x", "y"):
+            poles = face_axis_poles[face][axis_prefix]
+            all_face_indices.update(full_vocab[w] for w in poles["low"])
+            all_face_indices.update(full_vocab[w] for w in poles["high"])
+
+        for idx in all_face_indices:
+            if idx not in F:
+                F[idx] = set()
+            # Face cohort = same face, but exclude own synonym group (already in S)
+            own_synonyms = S.get(idx, set())
+            cohort = all_face_indices - {idx} - own_synonyms
+            F[idx].update(cohort)
+
+    return S, F, A
+
+
+def retrofit_vectors(
+    full_vocab: dict[str, int],
+    full_vectors: np.ndarray,
+) -> None:
+    """Retrofit GloVe vectors in-place using combined attract/repel constraints.
+
+    Update rule (per iteration, per constrained word i):
+        v_i = (alpha*q_i + beta_s*sum_S(v_j) + beta_f*sum_F(v_j) + gamma*sum_A(push(v_i, v_j)))
+              / (alpha + beta_s*|S_i| + beta_f*|F_i|)
+
+    Where push(v_i, v_j) = (v_i - v_j) / ||v_i - v_j|| if ||v_i - v_j|| < delta, else 0.
+
+    Parameters: alpha=1.0, beta_s=1.0, beta_f=0.2, gamma=0.3, delta=1.0, T=10.
+    Re-normalizes to unit length after each iteration.
+    Modifies full_vectors in-place for constrained words only.
+    """
+    alpha = 1.0
+    beta_s = 1.0
+    beta_f = 0.2
+    gamma = 0.3
+    delta = 1.0
+    T = 10
+
+    print(f"\n[RETROFIT] Building constraint graph ...")
+    S, F, A = _build_constraint_graph(full_vocab)
+
+    # All constrained word indices
+    constrained = set(S.keys()) | set(F.keys()) | set(A.keys())
+    print(f"[RETROFIT] {len(constrained)} constrained words, "
+          f"{sum(len(v) for v in S.values())//2} synonym pairs, "
+          f"{sum(len(v) for v in A.values())//2} antonym pairs")
+
+    # Save original vectors for regularization
+    q = full_vectors[list(constrained)].copy()
+    idx_map = {orig_idx: i for i, orig_idx in enumerate(sorted(constrained))}
+    constrained_sorted = sorted(constrained)
+
+    # Measure before metrics
+    def _measure_coherence() -> tuple[float, float]:
+        """Measure average synonym cosine and average antonym cosine."""
+        syn_cos = []
+        ant_cos = []
+        for idx in constrained_sorted:
+            vi = full_vectors[idx]
+            vi_norm = np.linalg.norm(vi)
+            if vi_norm < 1e-9:
+                continue
+            vi_unit = vi / vi_norm
+            for j in S.get(idx, set()):
+                if j > idx:  # count each pair once
+                    vj = full_vectors[j]
+                    vj_norm = np.linalg.norm(vj)
+                    if vj_norm < 1e-9:
+                        continue
+                    syn_cos.append(float(np.dot(vi_unit, vj / vj_norm)))
+            for j in A.get(idx, set()):
+                if j > idx:
+                    vj = full_vectors[j]
+                    vj_norm = np.linalg.norm(vj)
+                    if vj_norm < 1e-9:
+                        continue
+                    ant_cos.append(float(np.dot(vi_unit, vj / vj_norm)))
+        avg_syn = float(np.mean(syn_cos)) if syn_cos else 0.0
+        avg_ant = float(np.mean(ant_cos)) if ant_cos else 0.0
+        return avg_syn, avg_ant
+
+    syn_before, ant_before = _measure_coherence()
+    print(f"[RETROFIT] BEFORE: synonym coherence = {syn_before:.4f}, "
+          f"antonym separation = {1.0 - ant_before:.4f} (lower cosine = more separated)")
+
+    # Run T iterations
+    for t in range(T):
+        for i, idx in enumerate(constrained_sorted):
+            vi = full_vectors[idx]
+            qi = q[i]
+
+            # Synonym attraction: sum of synonym vectors
+            syn_sum = np.zeros(VECTOR_DIM, dtype=np.float32)
+            s_count = 0
+            for j in S.get(idx, set()):
+                syn_sum += full_vectors[j]
+                s_count += 1
+
+            # Face cohort attraction: sum of cohort vectors
+            f_sum = np.zeros(VECTOR_DIM, dtype=np.float32)
+            f_count = 0
+            for j in F.get(idx, set()):
+                f_sum += full_vectors[j]
+                f_count += 1
+
+            # Antonym repulsion: push vectors
+            a_push = np.zeros(VECTOR_DIM, dtype=np.float32)
+            for j in A.get(idx, set()):
+                diff = vi - full_vectors[j]
+                dist = np.linalg.norm(diff)
+                if dist < delta and dist > 1e-9:
+                    a_push += diff / dist
+
+            # Combined update
+            numerator = alpha * qi + beta_s * syn_sum + beta_f * f_sum + gamma * a_push
+            denominator = alpha + beta_s * s_count + beta_f * f_count
+
+            full_vectors[idx] = numerator / denominator
+
+        # Re-normalize all constrained vectors to unit length
+        for idx in constrained_sorted:
+            norm = np.linalg.norm(full_vectors[idx])
+            if norm > 1e-9:
+                full_vectors[idx] /= norm
+
+        if (t + 1) % 5 == 0 or t == 0:
+            syn_t, ant_t = _measure_coherence()
+            print(f"  iteration {t+1}/{T}: syn={syn_t:.4f}, ant_cos={ant_t:.4f}")
+
+    syn_after, ant_after = _measure_coherence()
+    print(f"[RETROFIT] AFTER:  synonym coherence = {syn_after:.4f}, "
+          f"antonym separation = {1.0 - ant_after:.4f}")
+    print(f"[RETROFIT] Delta:  synonym +{syn_after - syn_before:.4f}, "
+          f"antonym separation +{(1.0 - ant_after) - (1.0 - ant_before):.4f}")
+
+
+# ---------------------------------------------------------------------------
+# Algorithm 2: Contextual Disambiguation Table
+# ---------------------------------------------------------------------------
+
+DISAMBIGUATION_ENTRIES: dict[str, list[dict]] = {
+    "state": [
+        {"context_words": {"quantum", "particle", "energy", "wave", "matter", "electron", "physics", "atom", "field", "rest", "motion"},
+         "target_face": "ontology", "seed_words": ["quantum", "particle", "energy", "wave", "configuration", "system"]},
+        {"context_words": {"government", "nation", "political", "law", "power", "sovereignty", "country", "federal"},
+         "target_face": "praxeology", "seed_words": ["government", "nation", "political", "sovereignty", "institution"]},
+    ],
+    "compelled": [
+        {"context_words": {"force", "motion", "acceleration", "gravity", "momentum", "pressure", "velocity", "physics", "body", "rest"},
+         "target_face": "praxeology", "seed_words": ["force", "motion", "compulsion", "necessity", "driven"]},
+    ],
+    "right": [
+        {"context_words": {"left", "turn", "side", "direction", "hand", "angle", "north", "south"},
+         "override_type": "suppress"},
+    ],
+    "deep": [
+        {"context_words": {"water", "ocean", "sea", "hole", "cave", "dig", "feet", "meters", "underground"},
+         "override_type": "suppress"},
+    ],
+    "forces": [
+        {"context_words": {"gravity", "electromagnetic", "nuclear", "field", "particle", "newton", "acceleration", "mass", "motion", "body"},
+         "target_face": "ontology", "seed_words": ["gravity", "electromagnetic", "field", "fundamental", "interaction"]},
+        {"context_words": {"military", "army", "police", "special", "armed", "troops", "personnel"},
+         "target_face": "praxeology", "seed_words": ["military", "coordinated", "organized", "deployment"]},
+    ],
+    "heaven": [
+        {"context_words": {"earth", "sky", "creation", "cosmos", "universe", "genesis", "firmament", "celestial", "beginning"},
+         "target_face": "ontology", "seed_words": ["cosmos", "creation", "existence", "celestial", "realm"]},
+    ],
+    "tragedy": [
+        {"context_words": {"drama", "aristotle", "plot", "catharsis", "theater", "comedy", "poetics", "stage", "genre", "imitation"},
+         "target_face": "aesthetics", "seed_words": ["drama", "catharsis", "theatrical", "artistic", "genre"]},
+    ],
+    "action": [
+        {"context_words": {"drama", "scene", "play", "performance", "theater", "film", "actor", "stage", "screenplay", "imitation"},
+         "target_face": "aesthetics", "seed_words": ["dramatic", "performance", "theatrical", "scene", "staging"]},
+    ],
+}
+
+
+def compute_disambiguation_table(
+    full_vocab: dict[str, int],
+    full_vectors: np.ndarray,
+    centroids: np.ndarray,
+    directions: np.ndarray,
+    cal_low: np.ndarray,
+    cal_high: np.ndarray,
+    runtime_vocab: dict[str, int],
+) -> tuple[np.ndarray, np.ndarray, dict]:
+    """Compute override face_sim and axis_proj for polysemous words.
+
+    For each disambiguation entry with seed_words:
+      1. Average GloVe vectors of seed words -> sense vector
+      2. Compute face_sim through standard pipeline (cosine - mean)
+      3. Compute axis_proj through standard pipeline (dot, calibrate, clamp)
+
+    For suppress entries: override with zeros (no face signal).
+
+    Returns:
+        disambig_face_sim: shape (N_senses, 12) — override face similarity per sense
+        disambig_axis_proj: shape (N_senses, 24) — override axis projection per sense
+        disambig_meta: {trigger_word: [{context_words, sense_idx, override_type, target_face, threshold}]}
+    """
+    print(f"\n[DISAMBIG] Computing disambiguation table ...")
+
+    sense_face_sims = []
+    sense_axis_projs = []
+    disambig_meta: dict[str, list[dict]] = {}
+    sense_idx = 0
+
+    for trigger_word, entries in DISAMBIGUATION_ENTRIES.items():
+        disambig_meta[trigger_word] = []
+
+        for entry in entries:
+            override_type = entry.get("override_type", "redirect")
+            context_words = sorted(entry["context_words"])  # sort for determinism
+            threshold = 2
+
+            if override_type == "suppress":
+                # Suppress: zeros for face_sim, 0.5 for axis_proj (neutral)
+                sense_face_sims.append(np.zeros(12, dtype=np.float32))
+                sense_axis_projs.append(np.full(24, 0.5, dtype=np.float32))
+            else:
+                # Redirect: compute from seed words
+                seed_words = entry["seed_words"]
+                seed_indices = [full_vocab[w] for w in seed_words if w in full_vocab]
+
+                if seed_indices:
+                    sense_vec = np.mean(full_vectors[seed_indices], axis=0)
+                else:
+                    sense_vec = np.zeros(VECTOR_DIM, dtype=np.float32)
+
+                # Face sim: cosine(sense_vec, centroid) - mean
+                norm = np.linalg.norm(sense_vec)
+                if norm > 1e-9:
+                    sense_unit = sense_vec / norm
+                else:
+                    sense_unit = np.zeros(VECTOR_DIM, dtype=np.float32)
+
+                raw_sim = sense_unit @ centroids.T  # (12,)
+                disc_sim = raw_sim - np.mean(raw_sim)
+
+                # Axis proj: dot(sense_vec, direction) calibrated
+                raw_proj = sense_vec @ directions.T  # (24,)
+                cal_range = cal_high - cal_low
+                cal_range = np.where(np.abs(cal_range) < 1e-8, 1.0, cal_range)
+                normalized = (raw_proj - cal_low) / cal_range
+                clamped = np.clip(normalized, 0.0, 1.0)
+
+                sense_face_sims.append(disc_sim.astype(np.float32))
+                sense_axis_projs.append(clamped.astype(np.float32))
+
+            meta_entry = {
+                "context_words": context_words,
+                "sense_idx": sense_idx,
+                "override_type": override_type,
+                "threshold": threshold,
+            }
+            if "target_face" in entry:
+                meta_entry["target_face"] = entry["target_face"]
+
+            disambig_meta[trigger_word].append(meta_entry)
+            sense_idx += 1
+
+    disambig_face_sim = np.stack(sense_face_sims) if sense_face_sims else np.zeros((0, 12), dtype=np.float32)
+    disambig_axis_proj = np.stack(sense_axis_projs) if sense_axis_projs else np.zeros((0, 24), dtype=np.float32)
+
+    print(f"[DISAMBIG] {len(DISAMBIGUATION_ENTRIES)} trigger words, "
+          f"{sense_idx} total senses, arrays shape {disambig_face_sim.shape}")
+
+    return disambig_face_sim, disambig_axis_proj, disambig_meta
+
+
+# ---------------------------------------------------------------------------
+# Algorithm 3: N-gram/Phrase Embeddings
+# ---------------------------------------------------------------------------
+
+# Curated phrase lists organized by source
+QUESTION_PHRASES: list[str] = [
+    "fundamentally exist",
+    "true or justified",
+    "worth determined",
+    "ultimate purposes",
+    "represented and realized",
+    "right action",
+    "aesthetic recognition",
+    "actions and intentions",
+    "construction and evolution",
+    "meaningfully communicated",
+    "govern interpretation",
+    "practical strategies",
+    "moral warrants",
+    "moral obligations",
+]
+
+POLE_PAIR_PHRASES: list[str] = [
+    # Ontology
+    "particular universal",
+    "static dynamic",
+    # Epistemology
+    "empirical rational",
+    "certain provisional",
+    # Axiology
+    "absolute relative",
+    "quantitative qualitative",
+    # Teleology
+    "immediate ultimate",
+    "intentional emergent",
+    # Phenomenology
+    "objective subjective",
+    "surface deep",
+    # Ethics
+    "deontological consequential",
+    "agent act",
+    # Aesthetics
+    "autonomous contextual",
+    "sensory conceptual",
+    # Praxeology
+    "individual coordinated",
+    "reactive proactive",
+    # Methodology
+    "analytic synthetic",
+    "deductive inductive",
+    # Semiotics
+    "explicit implicit",
+    "syntactic semantic",
+    # Hermeneutics
+    "literal figurative",
+    "author intent",
+    "reader response",
+    # Heuristics
+    "systematic intuitive",
+    "conservative exploratory",
+]
+
+COMPOSITIONAL_PHRASES: list[str] = [
+    # Philosophical key phrases
+    "first principles",
+    "root cause",
+    "mental model",
+    "frame of reference",
+    "chain of reasoning",
+    "burden of proof",
+    "thought experiment",
+    "moral reasoning",
+    "moral compass",
+    "ethical framework",
+    "value judgment",
+    "decision making",
+    "problem solving",
+    "critical thinking",
+    "abstract reasoning",
+    "logical structure",
+    "causal mechanism",
+    "feedback loop",
+    "emergent behavior",
+    "self organization",
+    "collective action",
+    "game theory",
+    "information theory",
+    "signal processing",
+    "pattern recognition",
+    "knowledge representation",
+    "natural language",
+    "formal logic",
+    "modal logic",
+    "deductive reasoning",
+    "inductive reasoning",
+    "abductive reasoning",
+    "analogical reasoning",
+    "means and ends",
+    "form and function",
+    "cause and effect",
+    "trial and error",
+    "risk assessment",
+    "cost benefit",
+    "trade off",
+    "paradigm shift",
+    "cognitive bias",
+    "confirmation bias",
+    "selection bias",
+    "base rate",
+    "prior knowledge",
+    "posterior probability",
+    "null hypothesis",
+    "statistical significance",
+    "body of knowledge",
+    "state of affairs",
+    "point of view",
+    "line of inquiry",
+]
+
+# All curated phrases
+ALL_CURATED_PHRASES = QUESTION_PHRASES + POLE_PAIR_PHRASES + COMPOSITIONAL_PHRASES
+
+
+def compute_ngram_embeddings(
+    full_vocab: dict[str, int],
+    full_vectors: np.ndarray,
+    centroids: np.ndarray,
+    directions: np.ndarray,
+    cal_low: np.ndarray,
+    cal_high: np.ndarray,
+    runtime_vocab: dict[str, int],
+    runtime_vectors: np.ndarray,
+    disc_face_sim: np.ndarray,
+    axis_proj: np.ndarray,
+    idf_weights: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, dict[str, int], list[str], dict[str, str]]:
+    """Compute phrase embeddings and their face_sim/axis_proj/idf arrays.
+
+    Phrase embedding = mean of component RETROFITTED word vectors from full_vocab.
+    Face_sim and axis_proj computed through the standard pipeline.
+
+    Returns:
+        phrase_face_sim: shape (N_phrases, 12)
+        phrase_axis_proj: shape (N_phrases, 24)
+        phrase_idf: shape (N_phrases,) — IDF as max of component word IDFs
+        phrase_vocab: canonical_phrase -> index in phrase arrays (0-based, before offset)
+        phrase_keys: list of canonical phrase keys
+        surface_to_canonical: surface form (with stop words) -> canonical form
+    """
+    print(f"\n[PHRASES] Computing n-gram/phrase embeddings ...")
+
+    phrase_face_sims = []
+    phrase_axis_projs = []
+    phrase_idfs = []
+    phrase_vocab: dict[str, int] = {}
+    phrase_keys: list[str] = []
+    surface_to_canonical: dict[str, str] = {}
+
+    # Stop words for surface-to-canonical mapping
+    phrase_stop_words = {"and", "of", "the", "or", "a", "an", "in", "on", "to", "for"}
+
+    for phrase in ALL_CURATED_PHRASES:
+        # Canonical form: lowercase, no punctuation, stop words removed
+        canonical_words = []
+        surface_words = phrase.lower().split()
+        for w in surface_words:
+            cleaned = "".join(c for c in w if c.isalpha())
+            if cleaned and cleaned not in phrase_stop_words:
+                canonical_words.append(cleaned)
+
+        if len(canonical_words) < 2:
+            continue  # Not a valid phrase (need at least bigram)
+
+        canonical = " ".join(canonical_words)
+
+        if canonical in phrase_vocab:
+            continue  # Deduplicate
+
+        # Surface form (original with stop words) -> canonical
+        surface = " ".join(surface_words)
+        if surface != canonical:
+            surface_to_canonical[surface] = canonical
+
+        # Compute phrase embedding from full (retrofitted) vectors
+        word_indices = [full_vocab[w] for w in canonical_words if w in full_vocab]
+        if not word_indices:
+            continue  # No component words found in GloVe
+
+        phrase_vec = np.mean(full_vectors[word_indices], axis=0)
+
+        # Face sim: cosine(phrase_vec, centroid) - mean
+        norm = np.linalg.norm(phrase_vec)
+        if norm > 1e-9:
+            phrase_unit = phrase_vec / norm
+        else:
+            phrase_unit = np.zeros(VECTOR_DIM, dtype=np.float32)
+
+        raw_sim = phrase_unit @ centroids.T  # (12,)
+        phrase_disc_sim = raw_sim - np.mean(raw_sim)
+
+        # Axis proj: dot(phrase_vec, direction) calibrated
+        raw_proj = phrase_vec @ directions.T  # (24,)
+        cal_range = cal_high - cal_low
+        cal_range = np.where(np.abs(cal_range) < 1e-8, 1.0, cal_range)
+        normalized = (raw_proj - cal_low) / cal_range
+        clamped = np.clip(normalized, 0.0, 1.0)
+
+        # IDF: max of component word IDFs (phrases are rarer than any single word)
+        component_idfs = []
+        for w in canonical_words:
+            if w in runtime_vocab:
+                component_idfs.append(float(idf_weights[runtime_vocab[w]]))
+        phrase_idf = max(component_idfs) if component_idfs else 0.8  # default high
+
+        idx = len(phrase_keys)
+        phrase_vocab[canonical] = idx
+        phrase_keys.append(canonical)
+        phrase_face_sims.append(phrase_disc_sim.astype(np.float32))
+        phrase_axis_projs.append(clamped.astype(np.float32))
+        phrase_idfs.append(phrase_idf)
+
+    if phrase_keys:
+        pf_sim = np.stack(phrase_face_sims)
+        pa_proj = np.stack(phrase_axis_projs)
+        p_idf = np.array(phrase_idfs, dtype=np.float32)
+    else:
+        pf_sim = np.zeros((0, 12), dtype=np.float32)
+        pa_proj = np.zeros((0, 24), dtype=np.float32)
+        p_idf = np.zeros(0, dtype=np.float32)
+
+    print(f"[PHRASES] {len(phrase_keys)} phrases computed, "
+          f"{len(surface_to_canonical)} surface-to-canonical mappings")
+
+    return pf_sim, pa_proj, p_idf, phrase_vocab, phrase_keys, surface_to_canonical
 
 
 # ---------------------------------------------------------------------------
@@ -514,21 +1091,48 @@ def save_artifacts(
     disc_face_sim: np.ndarray,
     axis_proj: np.ndarray,
     idf_weights: np.ndarray,
+    disambig_face_sim: np.ndarray | None = None,
+    disambig_axis_proj: np.ndarray | None = None,
+    disambig_meta: dict | None = None,
+    phrase_keys: list[str] | None = None,
+    surface_to_canonical: dict[str, str] | None = None,
 ) -> None:
     """Save all artifacts to disk."""
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
-    np.savez_compressed(
-        str(NPZ_PATH),
-        face_sim=disc_face_sim,
-        axis_proj=axis_proj,
-        idf=idf_weights,
-        faces=np.array(ALL_FACES),
-    )
+    npz_dict = {
+        "face_sim": disc_face_sim,
+        "axis_proj": axis_proj,
+        "idf": idf_weights,
+        "faces": np.array(ALL_FACES),
+    }
+
+    # Add disambiguation arrays if present
+    if disambig_face_sim is not None:
+        npz_dict["disambig_face_sim"] = disambig_face_sim
+    if disambig_axis_proj is not None:
+        npz_dict["disambig_axis_proj"] = disambig_axis_proj
+
+    np.savez_compressed(str(NPZ_PATH), **npz_dict)
     print(f"[SAVE] {NPZ_PATH} ({NPZ_PATH.stat().st_size / 1024:.1f} KB)")
 
+    # Build vocab JSON with optional sections
+    vocab_data: dict = dict(runtime_vocab)
+
+    # Wrap in structured format if we have extra sections
+    if disambig_meta is not None or phrase_keys is not None:
+        vocab_data = {
+            "words": runtime_vocab,
+        }
+        if disambig_meta is not None:
+            vocab_data["disambiguation"] = disambig_meta
+        if phrase_keys is not None:
+            vocab_data["phrases"] = phrase_keys
+        if surface_to_canonical is not None:
+            vocab_data["surface_to_canonical"] = surface_to_canonical
+
     with open(str(VOCAB_PATH), "w", encoding="utf-8") as f:
-        json.dump(runtime_vocab, f)
+        json.dump(vocab_data, f)
     print(f"[SAVE] {VOCAB_PATH} ({VOCAB_PATH.stat().st_size / 1024:.1f} KB)")
 
 
@@ -631,37 +1235,78 @@ def main() -> None:
     # Step 2: Load ALL GloVe vectors
     full_vocab, full_vectors = load_all_glove()
 
-    # Step 3: Build face centroids from AUTHORED layers only
+    # Step 3: [Alg 1] Retrofitting DISABLED — the face cohort attraction overpowers
+    # antonym repulsion at the specified parameters, pulling opposing poles together
+    # instead of apart. This worsened face discrimination for unconstrained words
+    # (10/20 vs 14/20 baseline). Needs parameter tuning before re-enabling.
+    # retrofit_vectors(full_vocab, full_vectors)
+
+    # Step 4: Build face centroids from AUTHORED layers only (uses retrofitted vectors)
     print(f"\n[BUILD] Computing face centroids (authored layers only) ...")
     centroids = build_face_centroids(full_vocab, full_vectors)
 
-    # Step 4: Build axis direction vectors
+    # Step 5: Build axis direction vectors (uses retrofitted vectors)
     print(f"\n[BUILD] Computing 24 axis direction vectors ...")
     directions, cal_low, cal_high = build_axis_directions(full_vocab, full_vectors)
 
-    # Step 5: Select runtime vocabulary
+    # Step 6: Select runtime vocabulary
     print(f"\n[BUILD] Selecting runtime vocabulary ...")
     runtime_vocab, runtime_vectors = select_runtime_vocab(full_vocab, full_vectors)
 
-    # Step 6: Compute per-word artifacts
+    # Step 7: Compute per-word artifacts
     print(f"\n[BUILD] Computing per-word artifacts ...")
     disc_face_sim = compute_discriminative_face_similarity(runtime_vectors, centroids)
     axis_proj = compute_axis_projections(runtime_vectors, directions, cal_low, cal_high)
     idf_weights = compute_idf_weights(len(runtime_vocab))
 
-    # Step 7: Save artifacts
-    print(f"\n[SAVE] Saving artifacts ...")
-    save_artifacts(runtime_vocab, disc_face_sim, axis_proj, idf_weights)
+    # Step 8: [Alg 2] Compute disambiguation table
+    disambig_face_sim, disambig_axis_proj, disambig_meta = compute_disambiguation_table(
+        full_vocab, full_vectors, centroids, directions, cal_low, cal_high, runtime_vocab,
+    )
 
-    # Step 8: Reports
+    # Step 9: [Alg 3] Compute n-gram/phrase embeddings
+    phrase_face_sim, phrase_axis_proj, phrase_idf, phrase_vocab, phrase_keys, surface_to_canonical = (
+        compute_ngram_embeddings(
+            full_vocab, full_vectors, centroids, directions, cal_low, cal_high,
+            runtime_vocab, runtime_vectors, disc_face_sim, axis_proj, idf_weights,
+        )
+    )
+
+    # Step 10: Extend runtime arrays with phrase rows
+    if len(phrase_keys) > 0:
+        base_size = len(runtime_vocab)
+        disc_face_sim = np.concatenate([disc_face_sim, phrase_face_sim], axis=0)
+        axis_proj = np.concatenate([axis_proj, phrase_axis_proj], axis=0)
+        idf_weights = np.concatenate([idf_weights, phrase_idf], axis=0)
+        # Add phrase keys to runtime_vocab with offset indices
+        for canonical, local_idx in phrase_vocab.items():
+            runtime_vocab[canonical] = base_size + local_idx
+        print(f"[EXTEND] Appended {len(phrase_keys)} phrase rows, "
+              f"new array sizes: face_sim={disc_face_sim.shape}, "
+              f"axis_proj={axis_proj.shape}, idf={idf_weights.shape}")
+
+    # Step 11: Save artifacts
+    print(f"\n[SAVE] Saving artifacts ...")
+    save_artifacts(
+        runtime_vocab, disc_face_sim, axis_proj, idf_weights,
+        disambig_face_sim=disambig_face_sim,
+        disambig_axis_proj=disambig_axis_proj,
+        disambig_meta=disambig_meta,
+        phrase_keys=phrase_keys,
+        surface_to_canonical=surface_to_canonical,
+    )
+
+    # Step 12: Reports
     report_top_words(runtime_vocab, disc_face_sim)
     pole_ok = report_pole_self_test(runtime_vocab, axis_proj)
 
     print(f"\n{'='*70}")
-    print(f"Vocabulary size:      {len(runtime_vocab)}")
+    print(f"Vocabulary size:      {len(runtime_vocab)} (words + phrases)")
     print(f"Face similarity:      {disc_face_sim.shape}")
     print(f"Axis projections:     {axis_proj.shape}")
     print(f"IDF weights:          {idf_weights.shape}")
+    print(f"Disambiguation:       {len(disambig_meta)} triggers, {disambig_face_sim.shape[0]} senses")
+    print(f"Phrases:              {len(phrase_keys)} n-grams")
     print(f"Artifacts:            {NPZ_PATH}")
     print(f"                      {VOCAB_PATH}")
     print(f"Pole self-test:       {'PASS' if pole_ok else 'FAIL'}")
