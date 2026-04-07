@@ -94,7 +94,6 @@ class IntentParser:
         face_scores = self._bridge.face_relevance(tokens)
 
         # Normalize face scores to weights in [0.1, 1.0]
-        # Discriminative scores can be negative; shift so minimum maps to 0
         score_values = list(face_scores.values())
         min_score = min(score_values) if score_values else 0.0
         max_score = max(score_values) if score_values else 0.0
@@ -104,10 +103,9 @@ class IntentParser:
         for face in ALL_FACES:
             raw_score = face_scores.get(face, 0.0)
             if score_range > 1e-9:
-                normalized = (raw_score - min_score) / score_range  # [0, 1]
+                normalized = (raw_score - min_score) / score_range
             else:
-                normalized = 0.5  # uniform if no differentiation
-            # Map to [0.1, 1.0] — every face gets at least 0.1 base weight
+                normalized = 0.5
             face_weights[face] = 0.1 + 0.9 * normalized
 
         # --- Phase 2 & 3: Axis projection + scalar-to-grid ---
