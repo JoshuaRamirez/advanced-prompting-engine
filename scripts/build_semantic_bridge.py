@@ -403,14 +403,6 @@ DISAMBIGUATION_ENTRIES: dict[str, list[dict]] = {
         {"context_words": {"force", "body", "rest", "velocity", "acceleration", "uniform", "line", "state", "change", "impressed"},
          "target_face": "methodology", "seed_words": ["systematic", "deductive", "formal", "mathematical", "law"]},
     ],
-    "line": [
-        {"context_words": {"right", "motion", "uniform", "straight", "body", "force"},
-         "target_face": "methodology", "seed_words": ["formal", "geometric", "deductive", "axiomatic"]},
-    ],
-    "law": [
-        {"context_words": {"motion", "force", "body", "newton", "physics", "natural", "universal"},
-         "target_face": "methodology", "seed_words": ["systematic", "deductive", "formal", "axiomatic", "law"]},
-    ],
     # Aristotle/drama -> aesthetics
     "magnitude": [
         {"context_words": {"tragedy", "action", "serious", "complete", "language", "ornament", "imitation", "artistic"},
