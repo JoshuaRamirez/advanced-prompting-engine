@@ -43,7 +43,9 @@ from advanced_prompting_engine.graph.schema import (
     CUBE_PAIRS,
     DOMAIN_REPLACEMENTS,
     FACE_DEFINITIONS,
+    FACE_PHASES,
 )
+from advanced_prompting_engine.graph.canonical import BASE_QUESTIONS
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -378,6 +380,37 @@ DISAMBIGUATION_ENTRIES: dict[str, list[dict]] = {
     "action": [
         {"context_words": {"drama", "scene", "play", "performance", "theater", "film", "actor", "stage", "screenplay", "imitation"},
          "target_face": "aesthetics", "seed_words": ["dramatic", "performance", "theatrical", "scene", "staging"]},
+    ],
+    # Physics/science -> methodology
+    "motion": [
+        {"context_words": {"force", "body", "rest", "velocity", "acceleration", "uniform", "line", "state", "change", "impressed"},
+         "target_face": "methodology", "seed_words": ["systematic", "deductive", "formal", "mathematical", "law"]},
+    ],
+    "line": [
+        {"context_words": {"right", "motion", "uniform", "straight", "body", "force"},
+         "target_face": "methodology", "seed_words": ["formal", "geometric", "deductive", "axiomatic"]},
+    ],
+    "law": [
+        {"context_words": {"motion", "force", "body", "newton", "physics", "natural", "universal"},
+         "target_face": "methodology", "seed_words": ["systematic", "deductive", "formal", "axiomatic", "law"]},
+    ],
+    # Aristotle/drama -> aesthetics
+    "magnitude": [
+        {"context_words": {"tragedy", "action", "serious", "complete", "language", "ornament", "imitation", "artistic"},
+         "target_face": "aesthetics", "seed_words": ["artistic", "dramatic", "theatrical", "magnitude", "sublime"]},
+    ],
+    "serious": [
+        {"context_words": {"tragedy", "action", "complete", "magnitude", "language", "imitation", "artistic"},
+         "target_face": "aesthetics", "seed_words": ["dramatic", "weighty", "solemn", "dignified", "gravitas"]},
+    ],
+    # MLK/rhetoric -> semiotics
+    "meaning": [
+        {"context_words": {"creed", "true", "nation", "dream", "equal", "content", "character", "judged"},
+         "target_face": "semiotics", "seed_words": ["meaning", "signify", "symbol", "creed", "declaration"]},
+    ],
+    "creed": [
+        {"context_words": {"meaning", "true", "nation", "dream", "equal", "created"},
+         "target_face": "semiotics", "seed_words": ["creed", "declaration", "proclamation", "signify", "charter"]},
     ],
 }
 
@@ -1083,6 +1116,197 @@ def compute_idf_weights(vocab_size: int) -> np.ndarray:
 
 
 # ---------------------------------------------------------------------------
+# Technique F: Phase-Aware Face Weighting
+# ---------------------------------------------------------------------------
+
+PHASE_NAMES = ["comprehension", "evaluation", "application"]
+
+PHASE_FACES: dict[str, list[str]] = {
+    "comprehension": [f for f in ALL_FACES if FACE_PHASES[f] == "comprehension"],
+    "evaluation": [f for f in ALL_FACES if FACE_PHASES[f] == "evaluation"],
+    "application": [f for f in ALL_FACES if FACE_PHASES[f] == "application"],
+}
+
+
+def build_phase_centroids(
+    centroids: np.ndarray,
+) -> np.ndarray:
+    """Build phase centroid vectors by averaging face centroids per phase.
+
+    Returns: shape (3, VECTOR_DIM), unit-normalized.
+    """
+    print(f"\n[PHASE] Computing phase centroids ...")
+    face_index = {face: i for i, face in enumerate(ALL_FACES)}
+    phase_centroids = []
+
+    for phase_name in PHASE_NAMES:
+        faces_in_phase = PHASE_FACES[phase_name]
+        face_indices = [face_index[f] for f in faces_in_phase]
+        phase_vec = np.mean(centroids[face_indices], axis=0)
+        norm = np.linalg.norm(phase_vec)
+        if norm > 1e-9:
+            phase_vec = phase_vec / norm
+        phase_centroids.append(phase_vec)
+        print(f"  {phase_name:15s}: {len(faces_in_phase)} faces, "
+              f"norm before normalize = {norm:.4f}")
+
+    return np.stack(phase_centroids).astype(np.float32)  # (3, VECTOR_DIM)
+
+
+def compute_word_phase_sim(
+    runtime_vectors: np.ndarray,
+    phase_centroids: np.ndarray,
+) -> np.ndarray:
+    """Compute per-word cosine similarity to each phase centroid.
+
+    Returns: shape (vocab_size, 3)
+    """
+    print(f"\n[PHASE] Computing word-phase similarity ({runtime_vectors.shape[0]} x 3) ...")
+
+    # Normalize word vectors
+    norms = np.linalg.norm(runtime_vectors, axis=1, keepdims=True)
+    norms = np.where(norms == 0, 1, norms)
+    normed = runtime_vectors / norms
+
+    # Phase centroids are already unit-normalized
+    sim = normed @ phase_centroids.T  # (vocab_size, 3)
+
+    print(f"[OK] Word-phase similarity shape: {sim.shape}, "
+          f"range [{sim.min():.4f}, {sim.max():.4f}]")
+    return sim.astype(np.float32)
+
+
+# ---------------------------------------------------------------------------
+# Technique D: Per-Face Question Position Matching
+# ---------------------------------------------------------------------------
+
+# Stop words for question tokenization (shared with intent parser)
+_Q_STOP_WORDS = frozenset({
+    "a", "an", "the", "this", "that", "these", "those",
+    "at", "in", "on", "of", "from", "to", "into", "as", "by", "with",
+    "through", "between", "within", "upon", "along", "across", "about",
+    "over", "under", "after", "before", "during", "against", "toward",
+    "towards", "among", "around", "without",
+    "and", "or", "but", "nor", "yet", "so", "if", "then", "than",
+    "it", "its", "he", "she", "we", "us", "me", "my", "our", "your",
+    "you", "they", "them", "their", "his", "her",
+    "what", "how", "which", "where", "when", "who", "whom", "why",
+    "is", "are", "was", "were", "be", "been", "being",
+    "has", "have", "had", "having",
+    "do", "does", "did", "doing",
+    "can", "could", "will", "would", "shall", "should",
+    "may", "might", "must", "need", "ought",
+    "not", "no", "also", "just", "only", "very", "too", "more", "most",
+    "some", "any", "all", "each", "every", "both", "such",
+    "here", "there", "now", "already", "still", "even",
+})
+
+
+def _idf_weighted_average(
+    words: list[str],
+    vocab: dict[str, int],
+    vectors: np.ndarray,
+) -> np.ndarray:
+    """Compute IDF-weighted average vector for a list of words.
+
+    IDF approximation: words later in GloVe (higher index = less frequent)
+    get higher weight. Uses log(vocab_size / (rank+1)) formula.
+    """
+    indices = [vocab[w] for w in words if w in vocab]
+    if not indices:
+        return np.zeros(VECTOR_DIM, dtype=np.float32)
+
+    vs = vectors[indices]
+    vocab_size = len(vocab)
+    ranks = np.array(indices, dtype=np.float32) + 1.0
+    idf = np.log(float(vocab_size) / ranks)
+    # Normalize IDF to [0, 1]
+    idf_min, idf_max = idf.min(), idf.max()
+    if idf_max - idf_min > 1e-9:
+        idf = (idf - idf_min) / (idf_max - idf_min)
+    else:
+        idf = np.ones_like(idf)
+
+    total = idf.sum()
+    if total < 1e-9:
+        return np.mean(vs, axis=0)
+    return (vs * idf[:, np.newaxis]).sum(axis=0) / total
+
+
+def compute_question_position_maps(
+    full_vocab: dict[str, int],
+    full_vectors: np.ndarray,
+    runtime_vocab: dict[str, int],
+    runtime_vectors: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray, list[tuple[int, int]]]:
+    """Compute per-word best-matching question position for each face.
+
+    For each of 12 faces, embed all 144 questions as IDF-weighted GloVe vectors.
+    For each word in runtime vocab, find the best-matching question within each
+    face and record its (x, y) position.
+
+    Returns:
+        word_question_x: shape (vocab_size, 12) dtype int8
+        word_question_y: shape (vocab_size, 12) dtype int8
+        question_positions: ordered list of (x, y) for the 144 questions
+    """
+    print(f"\n[QUESTIONS] Computing per-face question position maps ...")
+
+    question_positions = list(BASE_QUESTIONS.keys())  # 144 (x,y) pairs
+    n_questions = len(question_positions)
+    vocab_size = runtime_vectors.shape[0]
+
+    # Normalize runtime word vectors
+    word_norms = np.linalg.norm(runtime_vectors, axis=1, keepdims=True)
+    word_norms = np.where(word_norms == 0, 1, word_norms)
+    word_normed = runtime_vectors / word_norms
+
+    word_question_x = np.zeros((vocab_size, 12), dtype=np.int8)
+    word_question_y = np.zeros((vocab_size, 12), dtype=np.int8)
+
+    for face_idx, face in enumerate(ALL_FACES):
+        domain = DOMAIN_REPLACEMENTS[face]
+        question_vecs = []
+
+        for (x, y) in question_positions:
+            template = BASE_QUESTIONS[(x, y)]
+            question_text = template.replace("{domain}", domain)
+            # Tokenize: lowercase, remove punctuation, filter short/stop words
+            cleaned = question_text.lower()
+            for ch in "?.,;:!'\"()[]{}—-–/":
+                cleaned = cleaned.replace(ch, " ")
+            words = [w for w in cleaned.split() if w not in _Q_STOP_WORDS and len(w) > 2]
+
+            vec = _idf_weighted_average(words, full_vocab, full_vectors)
+            question_vecs.append(vec)
+
+        q_matrix = np.stack(question_vecs)  # (144, VECTOR_DIM)
+        # Normalize question vectors
+        q_norms = np.linalg.norm(q_matrix, axis=1, keepdims=True)
+        q_norms = np.where(q_norms == 0, 1, q_norms)
+        q_normed = q_matrix / q_norms
+
+        # Cosine similarity: (vocab_size, 144)
+        similarities = word_normed @ q_normed.T
+        best_idx = similarities.argmax(axis=1)  # (vocab_size,)
+
+        for i, idx in enumerate(best_idx):
+            pos = question_positions[idx]
+            word_question_x[i, face_idx] = pos[0]
+            word_question_y[i, face_idx] = pos[1]
+
+        # Report a few top-matching positions
+        print(f"  {face:15s}: {n_questions} questions embedded, "
+              f"best-match positions range x=[{word_question_x[:, face_idx].min()}, "
+              f"{word_question_x[:, face_idx].max()}], "
+              f"y=[{word_question_y[:, face_idx].min()}, "
+              f"{word_question_y[:, face_idx].max()}]")
+
+    print(f"[OK] Question position maps: x={word_question_x.shape}, y={word_question_y.shape}")
+    return word_question_x, word_question_y, question_positions
+
+
+# ---------------------------------------------------------------------------
 # Output and reporting
 # ---------------------------------------------------------------------------
 
@@ -1096,6 +1320,10 @@ def save_artifacts(
     disambig_meta: dict | None = None,
     phrase_keys: list[str] | None = None,
     surface_to_canonical: dict[str, str] | None = None,
+    phase_centroids: np.ndarray | None = None,
+    word_phase_sim: np.ndarray | None = None,
+    word_question_x: np.ndarray | None = None,
+    word_question_y: np.ndarray | None = None,
 ) -> None:
     """Save all artifacts to disk."""
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -1112,6 +1340,18 @@ def save_artifacts(
         npz_dict["disambig_face_sim"] = disambig_face_sim
     if disambig_axis_proj is not None:
         npz_dict["disambig_axis_proj"] = disambig_axis_proj
+
+    # Add phase weighting arrays (Technique F)
+    if phase_centroids is not None:
+        npz_dict["phase_centroids"] = phase_centroids
+    if word_phase_sim is not None:
+        npz_dict["word_phase_sim"] = word_phase_sim
+
+    # Add question position maps (Technique D)
+    if word_question_x is not None:
+        npz_dict["word_question_x"] = word_question_x
+    if word_question_y is not None:
+        npz_dict["word_question_y"] = word_question_y
 
     np.savez_compressed(str(NPZ_PATH), **npz_dict)
     print(f"[SAVE] {NPZ_PATH} ({NPZ_PATH.stat().st_size / 1024:.1f} KB)")
@@ -1130,6 +1370,8 @@ def save_artifacts(
             vocab_data["phrases"] = phrase_keys
         if surface_to_canonical is not None:
             vocab_data["surface_to_canonical"] = surface_to_canonical
+        # Add phase names for runtime lookup
+        vocab_data["phase_names"] = PHASE_NAMES
 
     with open(str(VOCAB_PATH), "w", encoding="utf-8") as f:
         json.dump(vocab_data, f)
@@ -1285,7 +1527,29 @@ def main() -> None:
               f"new array sizes: face_sim={disc_face_sim.shape}, "
               f"axis_proj={axis_proj.shape}, idf={idf_weights.shape}")
 
-    # Step 11: Save artifacts
+    # Step 11: [Technique F] Phase-aware face weighting
+    phase_centroids = build_phase_centroids(centroids)
+    word_phase_sim = compute_word_phase_sim(runtime_vectors, phase_centroids)
+    # Extend word_phase_sim to include phrase rows (use zeros for phrases)
+    if len(phrase_keys) > 0:
+        phrase_phase_pad = np.zeros((len(phrase_keys), 3), dtype=np.float32)
+        word_phase_sim = np.concatenate([word_phase_sim, phrase_phase_pad], axis=0)
+        print(f"[EXTEND] Phase sim extended for phrases: {word_phase_sim.shape}")
+
+    # Step 12: [Technique D] Per-face question position maps
+    word_question_x, word_question_y, question_positions = compute_question_position_maps(
+        full_vocab, full_vectors, runtime_vocab, runtime_vectors,
+    )
+    # Extend for phrase rows (default position (5, 5) = center for phrases)
+    if len(phrase_keys) > 0:
+        phrase_qx_pad = np.full((len(phrase_keys), 12), 5, dtype=np.int8)
+        phrase_qy_pad = np.full((len(phrase_keys), 12), 5, dtype=np.int8)
+        word_question_x = np.concatenate([word_question_x, phrase_qx_pad], axis=0)
+        word_question_y = np.concatenate([word_question_y, phrase_qy_pad], axis=0)
+        print(f"[EXTEND] Question maps extended for phrases: "
+              f"x={word_question_x.shape}, y={word_question_y.shape}")
+
+    # Step 13: Save artifacts
     print(f"\n[SAVE] Saving artifacts ...")
     save_artifacts(
         runtime_vocab, disc_face_sim, axis_proj, idf_weights,
@@ -1294,9 +1558,13 @@ def main() -> None:
         disambig_meta=disambig_meta,
         phrase_keys=phrase_keys,
         surface_to_canonical=surface_to_canonical,
+        phase_centroids=phase_centroids,
+        word_phase_sim=word_phase_sim,
+        word_question_x=word_question_x,
+        word_question_y=word_question_y,
     )
 
-    # Step 12: Reports
+    # Step 14: Reports
     report_top_words(runtime_vocab, disc_face_sim)
     pole_ok = report_pole_self_test(runtime_vocab, axis_proj)
 
@@ -1307,6 +1575,9 @@ def main() -> None:
     print(f"IDF weights:          {idf_weights.shape}")
     print(f"Disambiguation:       {len(disambig_meta)} triggers, {disambig_face_sim.shape[0]} senses")
     print(f"Phrases:              {len(phrase_keys)} n-grams")
+    print(f"Phase centroids:      {phase_centroids.shape}")
+    print(f"Word-phase sim:       {word_phase_sim.shape}")
+    print(f"Question pos maps:    x={word_question_x.shape}, y={word_question_y.shape}")
     print(f"Artifacts:            {NPZ_PATH}")
     print(f"                      {VOCAB_PATH}")
     print(f"Pole self-test:       {'PASS' if pole_ok else 'FAIL'}")

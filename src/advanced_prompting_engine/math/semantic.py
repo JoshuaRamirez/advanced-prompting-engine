@@ -2,15 +2,19 @@
 projections at runtime.
 
 The artifacts are generated offline by scripts/build_semantic_bridge.py. At
-runtime, this module loads three pre-computed arrays from the package data
-directory and provides fast numpy-only lookups:
+runtime, this module loads pre-computed arrays from the package data directory
+and provides fast numpy-only lookups:
 
   1. face_relevance(tokens) — IDF-weighted discriminative face similarity
   2. axis_projection(tokens, face, axis) — IDF-weighted axis projection [0,1]
+  3. phase_weighting(tokens) — IDF-weighted phase similarity per face (Technique F)
+  4. question_position(tokens, face) — IDF-weighted question-matched (x,y) (Technique D)
 
 Enhanced with:
   - Contextual disambiguation for polysemous words (Alg 2)
   - N-gram/phrase vocabulary for multi-word lookups (Alg 3)
+  - Phase-aware face weighting from phase centroids (Technique F)
+  - Per-face question position matching (Technique D)
 
 No GloVe vectors are needed at runtime. If the artifact files are absent
 (developer has not run the build script), the bridge reports is_loaded=False
@@ -24,7 +28,7 @@ from pathlib import Path
 
 import numpy as np
 
-from advanced_prompting_engine.graph.schema import ALL_FACES, CUBE_PAIRS
+from advanced_prompting_engine.graph.schema import ALL_FACES, CUBE_PAIRS, FACE_PHASES
 
 
 class GeometricBridge:
@@ -62,6 +66,13 @@ class GeometricBridge:
         # Phrases
         self._phrase_keys: set[str] = set()
         self._surface_to_canonical: dict[str, str] = {}
+        # Phase weighting (Technique F)
+        self._phase_centroids: np.ndarray | None = None
+        self._word_phase_sim: np.ndarray | None = None
+        self._phase_names: list[str] = []
+        # Question position matching (Technique D)
+        self._word_question_x: np.ndarray | None = None
+        self._word_question_y: np.ndarray | None = None
 
     def load(self) -> None:
         """Load the pre-computed geometric bridge from package data.
@@ -86,6 +97,16 @@ class GeometricBridge:
                     self._disambig_face_sim = npz["disambig_face_sim"]
                 if "disambig_axis_proj" in npz:
                     self._disambig_axis_proj = npz["disambig_axis_proj"]
+                # Load phase weighting arrays (Technique F)
+                if "phase_centroids" in npz:
+                    self._phase_centroids = npz["phase_centroids"]
+                if "word_phase_sim" in npz:
+                    self._word_phase_sim = npz["word_phase_sim"]
+                # Load question position maps (Technique D)
+                if "word_question_x" in npz:
+                    self._word_question_x = npz["word_question_x"]
+                if "word_question_y" in npz:
+                    self._word_question_y = npz["word_question_y"]
 
             with open(vocab_path, "r", encoding="utf-8") as f:
                 raw_data = json.load(f)
@@ -102,6 +123,9 @@ class GeometricBridge:
                 # Load surface-to-canonical mapping
                 if "surface_to_canonical" in raw_data:
                     self._surface_to_canonical = raw_data["surface_to_canonical"]
+                # Load phase names
+                if "phase_names" in raw_data:
+                    self._phase_names = raw_data["phase_names"]
             else:
                 # Old flat format — word -> index only
                 self._vocab = raw_data
@@ -118,6 +142,11 @@ class GeometricBridge:
             self._disambig_meta = {}
             self._phrase_keys = set()
             self._surface_to_canonical = {}
+            self._phase_centroids = None
+            self._word_phase_sim = None
+            self._phase_names = []
+            self._word_question_x = None
+            self._word_question_y = None
 
     def _lookup_sense(self, token: str, all_tokens: list[str]) -> int | None:
         """Check if token is a disambiguation trigger and find matching sense.
@@ -315,10 +344,120 @@ class GeometricBridge:
 
         return scalar, confidence
 
+    def phase_weighting(self, tokens: list[str]) -> dict[str, float]:
+        """Compute phase-aware face weights from IDF-weighted word-phase similarity.
+
+        For each token in the vocabulary, look up its pre-computed cosine
+        similarity to each of 3 phase centroids (comprehension, evaluation,
+        application). IDF-weight the similarities, normalize to [0, 1], then
+        map each face to its phase's score.
+
+        Returns {face: phase_weight} where weight is in [0, 1].
+        """
+        if not self.is_loaded or self._word_phase_sim is None:
+            return {f: 0.5 for f in ALL_FACES}
+
+        indices = []
+        for token in tokens:
+            idx = self._vocab.get(token)
+            if idx is not None and idx < self._word_phase_sim.shape[0]:
+                indices.append(idx)
+
+        if not indices:
+            return {f: 0.5 for f in ALL_FACES}
+
+        # IDF-weighted average of word-phase similarities
+        rows = self._word_phase_sim[indices]  # (n_tokens, 3)
+        weights = self._idf[indices]          # (n_tokens,)
+        total_weight = weights.sum()
+
+        if total_weight < 1e-9:
+            return {f: 0.5 for f in ALL_FACES}
+
+        phase_scores = (rows * weights[:, np.newaxis]).sum(axis=0) / total_weight  # (3,)
+
+        # Normalize to [0, 1]: shift and scale so min -> 0, max -> 1
+        ps_min = phase_scores.min()
+        ps_max = phase_scores.max()
+        ps_range = ps_max - ps_min
+        if ps_range > 1e-9:
+            phase_normed = (phase_scores - ps_min) / ps_range
+        else:
+            phase_normed = np.full(3, 0.5)
+
+        # Map phase names to indices
+        phase_index = {name: i for i, name in enumerate(self._phase_names)}
+
+        # Map each face to its phase score
+        result: dict[str, float] = {}
+        for face in ALL_FACES:
+            phase = FACE_PHASES.get(face, "comprehension")
+            pidx = phase_index.get(phase)
+            if pidx is not None:
+                result[face] = float(phase_normed[pidx])
+            else:
+                result[face] = 0.5
+
+        return result
+
+    def question_position(self, tokens: list[str], face: str) -> tuple[int, int] | None:
+        """Compute IDF-weighted question-matched grid position for a face.
+
+        For each token, looks up the pre-computed best-matching question
+        position within the given face. Returns the IDF-weighted average
+        position, rounded to nearest grid integer.
+
+        Returns (x, y) or None if no tokens match or data not loaded.
+        """
+        if not self.is_loaded or self._word_question_x is None:
+            return None
+
+        try:
+            face_idx = self._faces.index(face)
+        except ValueError:
+            return None
+
+        indices = []
+        for token in tokens:
+            idx = self._vocab.get(token)
+            if idx is not None and idx < self._word_question_x.shape[0]:
+                indices.append(idx)
+
+        if not indices:
+            return None
+
+        # IDF-weighted average of question positions
+        x_vals = self._word_question_x[indices, face_idx].astype(np.float32)
+        y_vals = self._word_question_y[indices, face_idx].astype(np.float32)
+        weights = self._idf[indices]
+        total_weight = weights.sum()
+
+        if total_weight < 1e-9:
+            return None
+
+        avg_x = float((x_vals * weights).sum() / total_weight)
+        avg_y = float((y_vals * weights).sum() / total_weight)
+
+        # Round to nearest grid position, clamp to [0, 11]
+        x = max(0, min(11, round(avg_x)))
+        y = max(0, min(11, round(avg_y)))
+
+        return (x, y)
+
     @property
     def is_loaded(self) -> bool:
         """True if artifact files were successfully loaded."""
         return self._face_sim is not None
+
+    @property
+    def has_phase_data(self) -> bool:
+        """True if phase weighting artifacts are loaded."""
+        return self._word_phase_sim is not None and len(self._phase_names) > 0
+
+    @property
+    def has_question_data(self) -> bool:
+        """True if question position map artifacts are loaded."""
+        return self._word_question_x is not None
 
     @property
     def phrase_keys(self) -> set[str]:

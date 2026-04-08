@@ -108,6 +108,13 @@ class IntentParser:
         # --- Phase 1: Face relevance ---
         face_scores = self._bridge.face_relevance(tokens)
 
+        # Technique F: Phase-aware modulation of face scores
+        if self._bridge.has_phase_data:
+            phase_weights = self._bridge.phase_weighting(tokens)
+            for face in ALL_FACES:
+                # Phase provides a 30% modulation, not a replacement
+                face_scores[face] *= (0.7 + 0.3 * phase_weights.get(face, 0.5))
+
         # Normalize face scores to weights in [0.1, 1.0]
         score_values = list(face_scores.values())
         min_score = min(score_values) if score_values else 0.0
@@ -139,8 +146,22 @@ class IntentParser:
                 partial[face] = None
                 continue
 
-            x = self._scalar_to_grid(x_scalar)
-            y = self._scalar_to_grid(y_scalar)
+            ax_x = self._scalar_to_grid(x_scalar)
+            ax_y = self._scalar_to_grid(y_scalar)
+
+            # Technique D: Blend axis projection with question-matched position
+            if self._bridge.has_question_data:
+                q_pos = self._bridge.question_position(tokens, face)
+                if q_pos is not None:
+                    qx, qy = q_pos
+                    # Question match gets higher weight (0.6) — carries
+                    # position-specific vocabulary from 1728 construction questions
+                    x = max(0, min(11, round(0.4 * ax_x + 0.6 * qx)))
+                    y = max(0, min(11, round(0.4 * ax_y + 0.6 * qy)))
+                else:
+                    x, y = ax_x, ax_y
+            else:
+                x, y = ax_x, ax_y
 
             # Weight combines face relevance (Phase 1) with axis confidence (Phase 2)
             weight = face_weights[face] * (0.7 + 0.3 * avg_confidence)
