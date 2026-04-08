@@ -138,59 +138,38 @@ POLE_SYNONYMS: dict[str, list[str]] = {
 
 
 # ---------------------------------------------------------------------------
-# Algorithm 1: Retrofitting + Counter-fitting (Faruqui 2015 / Mrksic 2016)
+# Algorithm 1: Counter-fitting (Mrksic et al. 2016 SGD, antonym-only + VSP)
 # ---------------------------------------------------------------------------
 
-def _build_constraint_graph(
+def _build_antonym_pairs(
     full_vocab: dict[str, int],
-) -> tuple[dict[int, set[int]], dict[int, set[int]], dict[int, set[int]]]:
-    """Build three constraint sets from POLE_SYNONYMS for retrofitting.
+) -> dict[int, set[int]]:
+    """Build antonym constraint sets from POLE_SYNONYMS.
+
+    For each of 24 axes, all words in the low-pole synonym cluster are
+    antonyms of all words in the high-pole synonym cluster. This yields
+    approximately 24 x 7 x 7 = ~1176 antonym pairs.
 
     Returns:
-        S: synonym attract sets (word_idx -> set of synonym word indices)
-        F: face cohort attract sets (word_idx -> set of same-face, different-pole indices)
-        A: antonym repel sets (word_idx -> set of opposing-pole word indices)
+        A: word_idx -> set of antonym word indices (bidirectional)
     """
-    S: dict[int, set[int]] = {}
-    F: dict[int, set[int]] = {}
     A: dict[int, set[int]] = {}
 
-    # Group poles by face and axis for F and A construction
-    face_axis_poles: dict[str, dict[str, dict[str, list[str]]]] = {}
     for face in ALL_FACES:
         defn = FACE_DEFINITIONS[face]
-        face_axis_poles[face] = {}
-        for axis_prefix, (low_key, high_key) in [
-            ("x", ("x_axis_low", "x_axis_high")),
-            ("y", ("y_axis_low", "y_axis_high")),
+        for low_key, high_key in [
+            ("x_axis_low", "x_axis_high"),
+            ("y_axis_low", "y_axis_high"),
         ]:
             low_label = defn[low_key].lower()
             high_label = defn[high_key].lower()
             low_words = [low_label] + POLE_SYNONYMS.get(low_label, [])
             high_words = [high_label] + POLE_SYNONYMS.get(high_label, [])
-            face_axis_poles[face][axis_prefix] = {
-                "low": [w for w in low_words if w in full_vocab],
-                "high": [w for w in high_words if w in full_vocab],
-            }
 
-    # S: synonym constraints — words in the same POLE_SYNONYMS entry attract
-    for pole_word, synonyms in POLE_SYNONYMS.items():
-        group = [pole_word] + synonyms
-        group_indices = [full_vocab[w] for w in group if w in full_vocab]
-        for idx in group_indices:
-            if idx not in S:
-                S[idx] = set()
-            S[idx].update(j for j in group_indices if j != idx)
+            low_indices = [full_vocab[w] for w in low_words if w in full_vocab]
+            high_indices = [full_vocab[w] for w in high_words if w in full_vocab]
 
-    # F: face cohort constraints — words in the same face but different poles weakly attract
-    # A: antonym constraints — words in opposing poles of the same axis repel
-    for face in ALL_FACES:
-        for axis_prefix in ("x", "y"):
-            poles = face_axis_poles[face][axis_prefix]
-            low_indices = [full_vocab[w] for w in poles["low"]]
-            high_indices = [full_vocab[w] for w in poles["high"]]
-
-            # A: low vs high on same axis = antonyms
+            # Cross-product: every low word is antonym of every high word
             for idx in low_indices:
                 if idx not in A:
                     A[idx] = set()
@@ -200,144 +179,182 @@ def _build_constraint_graph(
                     A[idx] = set()
                 A[idx].update(low_indices)
 
-        # F: all words in the same face (across all poles/axes) but NOT in the same
-        # synonym group attract weakly
-        all_face_indices: set[int] = set()
-        for axis_prefix in ("x", "y"):
-            poles = face_axis_poles[face][axis_prefix]
-            all_face_indices.update(full_vocab[w] for w in poles["low"])
-            all_face_indices.update(full_vocab[w] for w in poles["high"])
-
-        for idx in all_face_indices:
-            if idx not in F:
-                F[idx] = set()
-            # Face cohort = same face, but exclude own synonym group (already in S)
-            own_synonyms = S.get(idx, set())
-            cohort = all_face_indices - {idx} - own_synonyms
-            F[idx].update(cohort)
-
-    return S, F, A
+    return A
 
 
-def retrofit_vectors(
+def _build_vsp_neighbors(
+    full_vectors: np.ndarray,
+    constrained_indices: list[int],
+    k: int = 10,
+    rho: float = 0.2,
+) -> dict[int, list[tuple[int, float]]]:
+    """Build Vector Space Preservation (VSP) neighbor sets.
+
+    For each constrained word, find its top-K neighbors within rho cosine
+    distance in the ORIGINAL vector space. These neighbors will be pulled
+    back if they drift during SGD.
+
+    Returns:
+        VSP: word_idx -> list of (neighbor_idx, original_euclidean_distance)
+    """
+    print(f"[COUNTERFIT] Building VSP neighbors (K={k}, rho={rho}) ...")
+
+    # Normalize all vectors for cosine computation
+    norms = np.linalg.norm(full_vectors, axis=1, keepdims=True)
+    norms = np.where(norms < 1e-9, 1.0, norms)
+    normed = full_vectors / norms
+
+    VSP: dict[int, list[tuple[int, float]]] = {}
+    n_total = full_vectors.shape[0]
+
+    # For each constrained word, compute cosine sim to ALL words and find
+    # top-K within rho distance. Process in batches for memory efficiency.
+    batch_size = 64
+    constrained_arr = np.array(constrained_indices)
+
+    for batch_start in range(0, len(constrained_arr), batch_size):
+        batch_end = min(batch_start + batch_size, len(constrained_arr))
+        batch_indices = constrained_arr[batch_start:batch_end]
+
+        # Cosine similarities: (batch, n_total)
+        batch_normed = normed[batch_indices]
+        sims = batch_normed @ normed.T
+
+        for local_i, global_idx in enumerate(batch_indices):
+            row_sims = sims[local_i]
+            # Cosine distance = 1 - cosine_similarity
+            # Find words with cosine distance < rho (i.e., sim > 1 - rho)
+            threshold = 1.0 - rho
+            mask = row_sims > threshold
+            mask[global_idx] = False  # exclude self
+
+            candidate_indices = np.where(mask)[0]
+            candidate_sims = row_sims[candidate_indices]
+
+            # Sort by similarity descending, take top K
+            if len(candidate_indices) > k:
+                top_k_local = np.argsort(candidate_sims)[::-1][:k]
+                candidate_indices = candidate_indices[top_k_local]
+
+            # Store with original euclidean distances
+            neighbors = []
+            vi = full_vectors[global_idx]
+            for nidx in candidate_indices:
+                orig_dist = float(np.linalg.norm(vi - full_vectors[nidx]))
+                neighbors.append((int(nidx), orig_dist))
+
+            VSP[int(global_idx)] = neighbors
+
+    total_vsp_pairs = sum(len(v) for v in VSP.values())
+    print(f"[COUNTERFIT] {len(VSP)} constrained words, "
+          f"{total_vsp_pairs} total VSP neighbor pairs")
+    return VSP
+
+
+def counterfit_vectors(
     full_vocab: dict[str, int],
     full_vectors: np.ndarray,
 ) -> None:
-    """Retrofit GloVe vectors in-place using combined attract/repel constraints.
+    """Counter-fit GloVe vectors using antonym-only constraints + VSP.
 
-    Update rule (per iteration, per constrained word i):
-        v_i = (alpha*q_i + beta_s*sum_S(v_j) + beta_f*sum_F(v_j) + gamma*sum_A(push(v_i, v_j)))
-              / (alpha + beta_s*|S_i| + beta_f*|F_i|)
+    Implements the Mrksic et al. 2016 SGD procedure:
+      - k1 = 0.1 (antonym repulsion weight)
+      - k2 = 0   (NO synonym attraction -- antonym-only mode)
+      - k3 = 0.1 (VSP preservation weight)
+      - delta = 1.0 (antonym distance margin)
+      - rho = 0.2 (VSP neighborhood cosine radius)
+      - 20 SGD iterations
 
-    Where push(v_i, v_j) = (v_i - v_j) / ||v_i - v_j|| if ||v_i - v_j|| < delta, else 0.
-
-    Parameters: alpha=1.0, beta_s=1.0, beta_f=0.2, gamma=0.3, delta=1.0, T=10.
-    Re-normalizes to unit length after each iteration.
-    Modifies full_vectors in-place for constrained words only.
+    Only modifies words that appear in antonym pairs (the 24 axis pole
+    synonym clusters). Other words are indirectly affected by VSP.
+    Modifies full_vectors in-place.
     """
-    alpha = 1.0
-    beta_s = 1.0
-    beta_f = 0.2
-    gamma = 0.3
-    delta = 1.0
-    T = 10
+    k1 = 0.1   # antonym repulsion
+    # k2 = 0   # synonym attraction (disabled)
+    k3 = 0.1   # VSP preservation
+    delta = 1.0  # antonym distance margin
+    rho = 0.2    # VSP neighborhood radius
+    T = 20       # SGD iterations
 
-    print(f"\n[RETROFIT] Building constraint graph ...")
-    S, F, A = _build_constraint_graph(full_vocab)
+    print(f"\n[COUNTERFIT] Mrksic SGD: k1={k1}, k3={k3}, delta={delta}, "
+          f"rho={rho}, T={T}")
 
-    # All constrained word indices
-    constrained = set(S.keys()) | set(F.keys()) | set(A.keys())
-    print(f"[RETROFIT] {len(constrained)} constrained words, "
-          f"{sum(len(v) for v in S.values())//2} synonym pairs, "
-          f"{sum(len(v) for v in A.values())//2} antonym pairs")
+    # Build antonym constraints
+    A = _build_antonym_pairs(full_vocab)
+    constrained = sorted(A.keys())
+    n_antonym_pairs = sum(len(v) for v in A.values()) // 2
+    print(f"[COUNTERFIT] {len(constrained)} constrained words, "
+          f"{n_antonym_pairs} antonym pairs")
 
-    # Save original vectors for regularization
-    q = full_vectors[list(constrained)].copy()
-    idx_map = {orig_idx: i for i, orig_idx in enumerate(sorted(constrained))}
-    constrained_sorted = sorted(constrained)
+    # Save original vectors for VSP distance reference
+    original_vectors = full_vectors.copy()
 
-    # Measure before metrics
-    def _measure_coherence() -> tuple[float, float]:
-        """Measure average synonym cosine and average antonym cosine."""
-        syn_cos = []
-        ant_cos = []
-        for idx in constrained_sorted:
+    # Build VSP neighbors from original space
+    VSP = _build_vsp_neighbors(original_vectors, constrained, k=10, rho=rho)
+
+    # Measure coherence using cosine similarity (robust to normalization changes)
+    def _measure_antonym_cosine() -> float:
+        """Average cosine similarity between antonym pairs (lower = better separated)."""
+        cosines = []
+        for idx in constrained:
             vi = full_vectors[idx]
             vi_norm = np.linalg.norm(vi)
             if vi_norm < 1e-9:
                 continue
             vi_unit = vi / vi_norm
-            for j in S.get(idx, set()):
-                if j > idx:  # count each pair once
-                    vj = full_vectors[j]
-                    vj_norm = np.linalg.norm(vj)
-                    if vj_norm < 1e-9:
-                        continue
-                    syn_cos.append(float(np.dot(vi_unit, vj / vj_norm)))
             for j in A.get(idx, set()):
                 if j > idx:
                     vj = full_vectors[j]
                     vj_norm = np.linalg.norm(vj)
                     if vj_norm < 1e-9:
                         continue
-                    ant_cos.append(float(np.dot(vi_unit, vj / vj_norm)))
-        avg_syn = float(np.mean(syn_cos)) if syn_cos else 0.0
-        avg_ant = float(np.mean(ant_cos)) if ant_cos else 0.0
-        return avg_syn, avg_ant
+                    cosines.append(float(np.dot(vi_unit, vj / vj_norm)))
+        return float(np.mean(cosines)) if cosines else 0.0
 
-    syn_before, ant_before = _measure_coherence()
-    print(f"[RETROFIT] BEFORE: synonym coherence = {syn_before:.4f}, "
-          f"antonym separation = {1.0 - ant_before:.4f} (lower cosine = more separated)")
+    cos_before = _measure_antonym_cosine()
+    print(f"[COUNTERFIT] BEFORE: avg antonym cosine = {cos_before:.4f} "
+          f"(lower = better separated)")
 
-    # Run T iterations
+    # SGD iterations
     for t in range(T):
-        for i, idx in enumerate(constrained_sorted):
+        for idx in constrained:
             vi = full_vectors[idx]
-            qi = q[i]
+            gradient = np.zeros(VECTOR_DIM, dtype=np.float32)
+            count = 0
 
-            # Synonym attraction: sum of synonym vectors
-            syn_sum = np.zeros(VECTOR_DIM, dtype=np.float32)
-            s_count = 0
-            for j in S.get(idx, set()):
-                syn_sum += full_vectors[j]
-                s_count += 1
-
-            # Face cohort attraction: sum of cohort vectors
-            f_sum = np.zeros(VECTOR_DIM, dtype=np.float32)
-            f_count = 0
-            for j in F.get(idx, set()):
-                f_sum += full_vectors[j]
-                f_count += 1
-
-            # Antonym repulsion: push vectors
-            a_push = np.zeros(VECTOR_DIM, dtype=np.float32)
+            # Antonym repulsion (k1): push apart if closer than delta
             for j in A.get(idx, set()):
                 diff = vi - full_vectors[j]
-                dist = np.linalg.norm(diff)
+                dist = float(np.linalg.norm(diff))
                 if dist < delta and dist > 1e-9:
-                    a_push += diff / dist
+                    gradient += k1 * (diff / dist)  # push away
+                    count += 1
 
-            # Combined update
-            numerator = alpha * qi + beta_s * syn_sum + beta_f * f_sum + gamma * a_push
-            denominator = alpha + beta_s * s_count + beta_f * f_count
+            # VSP preservation (k3): pull back if neighbors have drifted
+            for (nidx, orig_dist) in VSP.get(idx, []):
+                current_diff = vi - full_vectors[nidx]
+                current_dist = float(np.linalg.norm(current_diff))
+                if current_dist > orig_dist and current_dist > 1e-9:
+                    gradient += k3 * (full_vectors[nidx] - vi)  # pull back
+                    count += 1
 
-            full_vectors[idx] = numerator / denominator
+            # Apply averaged gradient
+            if count > 0:
+                full_vectors[idx] = vi + gradient / count
 
-        # Re-normalize all constrained vectors to unit length
-        for idx in constrained_sorted:
-            norm = np.linalg.norm(full_vectors[idx])
+            # Renormalize to unit length
+            norm = float(np.linalg.norm(full_vectors[idx]))
             if norm > 1e-9:
                 full_vectors[idx] /= norm
 
         if (t + 1) % 5 == 0 or t == 0:
-            syn_t, ant_t = _measure_coherence()
-            print(f"  iteration {t+1}/{T}: syn={syn_t:.4f}, ant_cos={ant_t:.4f}")
+            cos_t = _measure_antonym_cosine()
+            print(f"  iteration {t+1}/{T}: avg antonym cosine = {cos_t:.4f}")
 
-    syn_after, ant_after = _measure_coherence()
-    print(f"[RETROFIT] AFTER:  synonym coherence = {syn_after:.4f}, "
-          f"antonym separation = {1.0 - ant_after:.4f}")
-    print(f"[RETROFIT] Delta:  synonym +{syn_after - syn_before:.4f}, "
-          f"antonym separation +{(1.0 - ant_after) - (1.0 - ant_before):.4f}")
+    cos_after = _measure_antonym_cosine()
+    print(f"[COUNTERFIT] AFTER: avg antonym cosine = {cos_after:.4f}")
+    print(f"[COUNTERFIT] Delta: {cos_after - cos_before:+.4f} "
+          f"({'improved' if cos_after < cos_before else 'worsened'})")
 
 
 # ---------------------------------------------------------------------------
@@ -1307,6 +1324,258 @@ def compute_question_position_maps(
 
 
 # ---------------------------------------------------------------------------
+# Question-Guided Vocabulary Expansion
+# ---------------------------------------------------------------------------
+
+def expand_vocab_by_question_proximity(
+    full_vocab: dict[str, int],
+    full_vectors: np.ndarray,
+    runtime_vocab: dict[str, int],
+    runtime_vectors: np.ndarray,
+    centroids: np.ndarray,
+    directions: np.ndarray,
+    cal_low: np.ndarray,
+    cal_high: np.ndarray,
+    idf_weights: np.ndarray,
+    disc_face_sim: np.ndarray,
+    axis_proj: np.ndarray,
+    word_phase_sim: np.ndarray,
+    word_question_x: np.ndarray,
+    word_question_y: np.ndarray,
+    phase_centroids: np.ndarray,
+    max_additions: int = 5000,
+) -> tuple[dict[str, int], np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """Expand vocabulary with OOV words most relevant to the 1728 construction questions.
+
+    For each face's 144 questions, embed the question as IDF-weighted average of
+    GloVe word vectors. For each OOV word (in full GloVe but not runtime vocab),
+    compute max cosine similarity to any question embedding. Select the top
+    max_additions words by this max similarity score.
+
+    Each added word enters with a known best-matching question, which gives it
+    a natural (face, x, y) position grounded in the geometry.
+
+    Returns updated: (disc_face_sim, axis_proj, idf_weights, word_phase_sim,
+                      word_question_x, word_question_y, runtime_vocab)
+    """
+    print(f"\n[EXPAND] Question-guided vocabulary expansion (max {max_additions}) ...")
+
+    # Step 1: Embed all 1728 questions as IDF-weighted GloVe averages
+    question_positions = list(BASE_QUESTIONS.keys())  # 144 (x,y) pairs
+    all_q_vecs = []      # (1728,) list -> (1728, VECTOR_DIM)
+    all_q_faces = []     # face index per question
+    all_q_pos = []       # (x, y) per question
+
+    for face_idx, face in enumerate(ALL_FACES):
+        domain = DOMAIN_REPLACEMENTS[face]
+        for (x, y) in question_positions:
+            template = BASE_QUESTIONS[(x, y)]
+            question_text = template.replace("{domain}", domain)
+            cleaned = question_text.lower()
+            for ch in "?.,;:!'\"()[]{}—-–/":
+                cleaned = cleaned.replace(ch, " ")
+            words = [w for w in cleaned.split() if w not in _Q_STOP_WORDS and len(w) > 2]
+
+            vec = _idf_weighted_average(words, full_vocab, full_vectors)
+            all_q_vecs.append(vec)
+            all_q_faces.append(face_idx)
+            all_q_pos.append((x, y))
+
+    q_matrix = np.stack(all_q_vecs)  # (1728, VECTOR_DIM)
+
+    # Step 2: Normalize question vectors to unit length
+    q_norms = np.linalg.norm(q_matrix, axis=1, keepdims=True)
+    q_norms = np.where(q_norms < 1e-9, 1.0, q_norms)
+    q_normed = q_matrix / q_norms
+
+    # Step 3: Identify OOV words (in full GloVe but not runtime vocab)
+    runtime_set = set(runtime_vocab.keys())
+    oov_words = []
+    oov_indices = []
+    for word, idx in full_vocab.items():
+        if word not in runtime_set:
+            oov_words.append(word)
+            oov_indices.append(idx)
+
+    if not oov_words:
+        print(f"[EXPAND] No OOV words found — skipping expansion")
+        return (disc_face_sim, axis_proj, idf_weights, word_phase_sim,
+                word_question_x, word_question_y, runtime_vocab)
+
+    print(f"[EXPAND] {len(oov_words)} OOV candidates ...")
+
+    # Step 4: Compute max cosine similarity to any question for each OOV word
+    oov_vecs = full_vectors[oov_indices]  # (N_oov, VECTOR_DIM)
+    oov_norms = np.linalg.norm(oov_vecs, axis=1, keepdims=True)
+    oov_norms = np.where(oov_norms < 1e-9, 1.0, oov_norms)
+    oov_normed = oov_vecs / oov_norms
+
+    # Process in batches to limit memory: (batch, 1728) similarities
+    batch_size = 10000
+    max_sims = np.zeros(len(oov_words), dtype=np.float32)
+    best_q_idx = np.zeros(len(oov_words), dtype=np.int32)
+
+    for b_start in range(0, len(oov_words), batch_size):
+        b_end = min(b_start + batch_size, len(oov_words))
+        batch_normed = oov_normed[b_start:b_end]  # (batch, dim)
+        sims = batch_normed @ q_normed.T            # (batch, 1728)
+        max_sims[b_start:b_end] = sims.max(axis=1)
+        best_q_idx[b_start:b_end] = sims.argmax(axis=1)
+
+    # Step 5: Select top max_additions by max question similarity
+    top_k = min(max_additions, len(oov_words))
+    top_local_indices = np.argsort(max_sims)[::-1][:top_k]
+
+    # Filter: require minimum similarity threshold
+    min_sim = 0.3
+    top_local_indices = [i for i in top_local_indices if max_sims[i] >= min_sim]
+
+    if not top_local_indices:
+        print(f"[EXPAND] No OOV words above similarity threshold {min_sim} — skipping")
+        return (disc_face_sim, axis_proj, idf_weights, word_phase_sim,
+                word_question_x, word_question_y, runtime_vocab)
+
+    print(f"[EXPAND] Selected {len(top_local_indices)} OOV words "
+          f"(sim range [{max_sims[top_local_indices[-1]]:.4f}, "
+          f"{max_sims[top_local_indices[0]]:.4f}])")
+
+    # Step 6: Compute all arrays for the new words
+    new_face_sims = []
+    new_axis_projs = []
+    new_idfs = []
+    new_phase_sims = []
+    new_qx = []
+    new_qy = []
+    new_words = []
+
+    # Pre-compute calibration range
+    cal_range = cal_high - cal_low
+    cal_range = np.where(np.abs(cal_range) < 1e-8, 1.0, cal_range)
+
+    # Normalize phase centroids for cosine sim
+    pc_norms = np.linalg.norm(phase_centroids, axis=1, keepdims=True)
+    pc_norms = np.where(pc_norms < 1e-9, 1.0, pc_norms)
+    pc_normed = phase_centroids / pc_norms
+
+    base_runtime_size = len(runtime_vocab)
+
+    for rank, local_i in enumerate(top_local_indices):
+        word = oov_words[local_i]
+        full_idx = oov_indices[local_i]
+        vec = full_vectors[full_idx]
+
+        # Face similarity: cosine(word, centroid) - mean
+        vec_norm = np.linalg.norm(vec)
+        if vec_norm > 1e-9:
+            vec_unit = vec / vec_norm
+        else:
+            vec_unit = np.zeros(VECTOR_DIM, dtype=np.float32)
+
+        raw_sim = vec_unit @ centroids.T  # (12,)
+        disc_sim = raw_sim - np.mean(raw_sim)
+        new_face_sims.append(disc_sim.astype(np.float32))
+
+        # Axis projections: dot(word, direction) calibrated
+        raw_proj = vec @ directions.T  # (24,)
+        normalized = (raw_proj - cal_low) / cal_range
+        clamped = np.clip(normalized, 0.0, 1.0)
+        new_axis_projs.append(clamped.astype(np.float32))
+
+        # IDF: based on GloVe frequency rank, same formula as compute_idf_weights
+        # but for the full vocab index. Higher index = less frequent = higher IDF.
+        total_full = len(full_vocab)
+        idf_val = np.log(float(total_full) / (full_idx + 1.0))
+        # Normalize same way: use the observed range from runtime IDF
+        idf_min = 0.0  # runtime IDF is already [0, 1]
+        idf_max = np.log(float(base_runtime_size))
+        if idf_max > 1e-9:
+            idf_normed = min(1.0, max(0.0, idf_val / idf_max))
+        else:
+            idf_normed = 0.5
+        new_idfs.append(idf_normed)
+
+        # Phase similarity: cosine(word, phase_centroid)
+        phase_sim = vec_unit @ pc_normed.T  # (3,)
+        new_phase_sims.append(phase_sim.astype(np.float32))
+
+        # Question position: use the best-matching question's (face, x, y)
+        best_q = best_q_idx[local_i]
+        best_face_idx = all_q_faces[best_q]
+        best_pos = all_q_pos[best_q]
+
+        # For the best-matching face, use that question's position.
+        # For other faces, find the best matching question within that face.
+        qx_row = np.zeros(12, dtype=np.int8)
+        qy_row = np.zeros(12, dtype=np.int8)
+
+        # Compute per-face best question match
+        for fi in range(12):
+            # Slice of questions for this face: indices fi*144 to (fi+1)*144
+            face_q_start = fi * 144
+            face_q_end = face_q_start + 144
+            face_q_sims = vec_unit @ q_normed[face_q_start:face_q_end].T  # (144,)
+            best_local_q = int(np.argmax(face_q_sims))
+            pos = question_positions[best_local_q]
+            qx_row[fi] = pos[0]
+            qy_row[fi] = pos[1]
+
+        new_qx.append(qx_row)
+        new_qy.append(qy_row)
+        new_words.append(word)
+
+    # Step 7: Extend all arrays
+    n_new = len(new_words)
+    new_face_sim_arr = np.stack(new_face_sims)         # (n_new, 12)
+    new_axis_proj_arr = np.stack(new_axis_projs)       # (n_new, 24)
+    new_idf_arr = np.array(new_idfs, dtype=np.float32) # (n_new,)
+    new_phase_sim_arr = np.stack(new_phase_sims)       # (n_new, 3)
+    new_qx_arr = np.stack(new_qx)                     # (n_new, 12)
+    new_qy_arr = np.stack(new_qy)                     # (n_new, 12)
+
+    disc_face_sim = np.concatenate([disc_face_sim, new_face_sim_arr], axis=0)
+    axis_proj = np.concatenate([axis_proj, new_axis_proj_arr], axis=0)
+    idf_weights = np.concatenate([idf_weights, new_idf_arr], axis=0)
+    word_phase_sim = np.concatenate([word_phase_sim, new_phase_sim_arr], axis=0)
+    word_question_x = np.concatenate([word_question_x, new_qx_arr], axis=0)
+    word_question_y = np.concatenate([word_question_y, new_qy_arr], axis=0)
+
+    # Add to runtime vocab with offset indices
+    # disc_face_sim now has (old_size + n_new) rows; new words start at old_size
+    expansion_offset = disc_face_sim.shape[0] - n_new
+    for i, word in enumerate(new_words):
+        runtime_vocab[word] = expansion_offset + i
+
+    # Report some interesting additions
+    print(f"[EXPAND] Added {n_new} words to vocabulary")
+    print(f"[EXPAND] New array sizes: face_sim={disc_face_sim.shape}, "
+          f"axis_proj={axis_proj.shape}, idf={idf_weights.shape}")
+    # Show a few examples
+    sample_count = min(10, n_new)
+    print(f"[EXPAND] Sample additions (top {sample_count} by question proximity):")
+    for i in range(sample_count):
+        local_i = top_local_indices[i]
+        word = oov_words[local_i]
+        sim = max_sims[local_i]
+        best_q = best_q_idx[local_i]
+        best_face = ALL_FACES[all_q_faces[best_q]]
+        best_pos = all_q_pos[best_q]
+        print(f"  {word:20s} sim={sim:.4f} -> {best_face} ({best_pos[0]},{best_pos[1]})")
+
+    # Check specific words of interest
+    check_words = ["imitation", "ornament", "embellished", "perseveres",
+                   "catharsis", "sovereignty", "metaphorical"]
+    found = [w for w in check_words if w in runtime_vocab]
+    missing = [w for w in check_words if w not in runtime_vocab]
+    if found:
+        print(f"[EXPAND] Check words now in vocab: {', '.join(found)}")
+    if missing:
+        print(f"[EXPAND] Check words still missing: {', '.join(missing)}")
+
+    return (disc_face_sim, axis_proj, idf_weights, word_phase_sim,
+            word_question_x, word_question_y, runtime_vocab)
+
+
+# ---------------------------------------------------------------------------
 # Output and reporting
 # ---------------------------------------------------------------------------
 
@@ -1477,17 +1746,16 @@ def main() -> None:
     # Step 2: Load ALL GloVe vectors
     full_vocab, full_vectors = load_all_glove()
 
-    # Step 3: [Alg 1] Retrofitting DISABLED — the face cohort attraction overpowers
-    # antonym repulsion at the specified parameters, pulling opposing poles together
-    # instead of apart. This worsened face discrimination for unconstrained words
-    # (10/20 vs 14/20 baseline). Needs parameter tuning before re-enabling.
-    # retrofit_vectors(full_vocab, full_vectors)
+    # Step 3: [Alg 1] Counter-fitting (Mrksic SGD, antonym-only + VSP)
+    # Replaces the disabled Faruqui-style retrofitting. Uses antonym repulsion
+    # only (k2=0) with VSP to preserve neighborhood structure.
+    # counterfit_vectors(full_vocab, full_vectors)  # DISABLED — testing isolation
 
-    # Step 4: Build face centroids from AUTHORED layers only (uses retrofitted vectors)
+    # Step 4: Build face centroids from AUTHORED layers only (uses counter-fitted vectors)
     print(f"\n[BUILD] Computing face centroids (authored layers only) ...")
     centroids = build_face_centroids(full_vocab, full_vectors)
 
-    # Step 5: Build axis direction vectors (uses retrofitted vectors)
+    # Step 5: Build axis direction vectors (uses counter-fitted vectors)
     print(f"\n[BUILD] Computing 24 axis direction vectors ...")
     directions, cal_low, cal_high = build_axis_directions(full_vocab, full_vectors)
 
@@ -1549,7 +1817,17 @@ def main() -> None:
         print(f"[EXTEND] Question maps extended for phrases: "
               f"x={word_question_x.shape}, y={word_question_y.shape}")
 
-    # Step 13: Save artifacts
+    # Step 13: Question-guided vocabulary expansion
+    (disc_face_sim, axis_proj, idf_weights, word_phase_sim,
+     word_question_x, word_question_y, runtime_vocab) = expand_vocab_by_question_proximity(
+        full_vocab, full_vectors, runtime_vocab, runtime_vectors,
+        centroids, directions, cal_low, cal_high,
+        idf_weights, disc_face_sim, axis_proj,
+        word_phase_sim, word_question_x, word_question_y,
+        phase_centroids, max_additions=5000,
+    )
+
+    # Step 14: Save artifacts
     print(f"\n[SAVE] Saving artifacts ...")
     save_artifacts(
         runtime_vocab, disc_face_sim, axis_proj, idf_weights,
@@ -1564,7 +1842,7 @@ def main() -> None:
         word_question_y=word_question_y,
     )
 
-    # Step 14: Reports
+    # Step 15: Reports
     report_top_words(runtime_vocab, disc_face_sim)
     pole_ok = report_pole_self_test(runtime_vocab, axis_proj)
 
