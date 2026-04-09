@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2026-04-09
+
+### Added
+- Phase-aware face weighting: 3 phase centroids (comprehension/evaluation/application) provide 30% modulation on face relevance scores. Pre-computed per-word phase similarity matrix.
+- Expanded contextual disambiguation: 15 trigger words with 15 context-aware senses (up from 8/10). Covers physics→methodology, drama→aesthetics, rhetoric→semiotics contexts.
+- Per-face question position matching: pre-computed per-word best-matching question within each face. Phase 2 blends axis projection (40%) with question-matched position (60%).
+- Question-guided vocabulary expansion: 15K→20K words selected by proximity to 1728 construction question embeddings (not generic frequency). Covers literary/archaic terms like "imitation", "catharsis", "sovereignty".
+- Benchmark script (scripts/benchmark_8texts.py): 8-text literary benchmark across Shakespeare, Genesis, Marx, MLK, Newton, Aristotle, Tao Te Ching, Descartes.
+- Model2Vec integration (conditional): if distilled sentence transformer exists at build time, uses Model2Vec vectors instead of GloVe. Currently disabled (GloVe outperforms for this domain).
+- Semantic bridge algorithm specification (docs/specs/semantic-bridge-algorithms.md).
+- `/pre-release` and `/release` project commands.
+- `/research-semantic-improvement` research command.
+
+### Changed
+- Contrastive cube-pair dampening: 30% score transfer within each complementary pair, enforcing theoretical/applied distinction.
+- Synonym decontamination: refined pole synonyms for Ethics, Aesthetics, Teleology, Axiology, Phenomenology, Praxeology to reduce cross-face vocabulary overlap.
+
+### Performance
+- Literary text benchmark: 18/20 expected faces in top 6 (up from 14/20 at v0.4.0 keyword-only baseline).
+- Remaining 2 misses (MLK teleology, Newton methodology) are at the fundamental limit of word-level static embeddings.
+- 300 tests passing (up from 261).
+
 ## [0.4.0] - 2026-04-07
 
 ### Added
@@ -112,6 +134,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Spectral embedding cache and TF-IDF cache with lifecycle management.
 - 12 Architecture Decision Records.
 
+[0.5.0]: https://github.com/JoshuaRamirez/advanced-prompting-engine/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/JoshuaRamirez/advanced-prompting-engine/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/JoshuaRamirez/advanced-prompting-engine/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/JoshuaRamirez/advanced-prompting-engine/compare/v0.1.1...v0.2.0
