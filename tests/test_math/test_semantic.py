@@ -159,7 +159,7 @@ class TestPoleConsistency:
             ("ethics", "x", "high"): ["welfare", "happiness", "consequence"],
             ("ethics", "y", "low"): ["character", "virtue", "conscience"],
             ("ethics", "y", "high"): ["deed", "conduct", "justice"],
-            ("methodology", "x", "low"): ["decomposing", "separating", "isolating"],
+            ("methodology", "x", "low"): ["breaking", "separating", "decomposing"],
             ("methodology", "x", "high"): ["combining", "integrating", "merging"],
             ("aesthetics", "y", "low"): ["beautiful", "visual", "elegant"],
             ("aesthetics", "y", "high"): ["artistic", "creative", "expressive"],

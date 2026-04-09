@@ -1,17 +1,25 @@
 #!/usr/bin/env python3
-"""Build the geometric semantic bridge artifacts from GloVe word vectors.
+"""Build the geometric semantic bridge artifacts from word vectors.
 
 This script runs on the DEVELOPER machine at build time — never at runtime.
-It downloads GloVe 6B 100d vectors (~130MB), loads ALL 400K vectors, selects a
-~16K runtime vocabulary (top 15K frequent + face/domain/axis/pole words), builds
-12 face centroids from AUTHORED LAYERS ONLY (core questions, sub-dimension labels,
-domain replacement strings, face names — NOT the 144 derived question templates),
-builds 24 axis direction vectors (high_pole - low_pole), calibrates projections,
-and pre-computes per-word artifacts:
 
-  - Discriminative face similarity: cosine(word, centroid) - mean → (16K, 12)
-  - Axis projections: dot(word, direction_unit) normalized by calibration → (16K, 24)
-  - IDF weights from frequency rank → (16K,)
+Vector source (selected automatically):
+  1. Model2Vec (preferred) — distilled sentence transformer at
+     ~/.cache/model2vec/minilm-distilled. 256d encoded, PCA-compressed to 100d.
+     Produces sentence-transformer-quality vectors for single words.
+  2. GloVe 6B 100d (fallback) — downloads ~130MB if not cached.
+
+GloVe is always loaded for vocabulary frequency ordering and as fallback.
+When Model2Vec is available, all 400K GloVe vocabulary words are re-encoded
+through Model2Vec and PCA-compressed to VECTOR_DIM. The rest of the pipeline
+(centroids, axis directions, face_sim, axis_proj, disambiguation, phrases,
+question matching, phase sim, vocabulary expansion) works identically on
+whichever vector source is active.
+
+Pre-computes per-word artifacts:
+  - Discriminative face similarity: cosine(word, centroid) - mean → (N, 12)
+  - Axis projections: dot(word, direction_unit) normalized by calibration → (N, 24)
+  - IDF weights from frequency rank → (N,)
 
 Artifacts saved:
   src/advanced_prompting_engine/data/semantic_bridge.npz
@@ -810,6 +818,187 @@ def load_all_glove() -> tuple[dict[str, int], np.ndarray]:
 
 
 # ---------------------------------------------------------------------------
+# Model2Vec vector encoding (replaces GloVe vectors when available)
+# ---------------------------------------------------------------------------
+
+M2V_MODEL_PATH = Path.home() / ".cache" / "model2vec" / "minilm-distilled"
+
+
+def _build_face_directions_raw(
+    m2v_model,
+    vocab: dict[str, int],
+    words_list: list[str],
+    raw_vectors: np.ndarray,
+) -> np.ndarray:
+    """Build face-discriminative directions in the raw Model2Vec 256d space.
+
+    Computes 12 centroid directions + 24 axis directions = 36 directions
+    from the same authored content used by build_face_centroids() and
+    build_axis_directions(). These directions define the face-relevant
+    subspace that must be preserved during dimensionality reduction.
+
+    Returns:
+        directions: shape (K, raw_dim) where K <= 36, each unit-normalized.
+                    K may be less than 36 if some directions are linearly dependent.
+    """
+    raw_dim = raw_vectors.shape[1]
+    directions = []
+
+    def _words_to_vec(word_list: list[str]) -> np.ndarray:
+        """Average raw vectors for words in vocab."""
+        indices = [vocab[w] for w in word_list if w in vocab]
+        if not indices:
+            return np.zeros(raw_dim, dtype=np.float64)
+        return np.mean(raw_vectors[indices], axis=0)
+
+    # 12 face centroid directions (same weighting as build_face_centroids)
+    for face in ALL_FACES:
+        defn = FACE_DEFINITIONS[face]
+        all_words: list[str] = []
+        all_words.extend([face] * 2)
+        all_words.extend(_tokenize_text(defn["core_question"]))
+        for key in ("x_axis_low", "x_axis_high", "y_axis_low", "y_axis_high"):
+            label_words = _tokenize_text(defn[key])
+            all_words.extend(label_words * 5)
+        for key in ("x_axis_low", "x_axis_high", "y_axis_low", "y_axis_high"):
+            label = defn[key].lower()
+            synonyms = POLE_SYNONYMS.get(label, [])
+            for syn in synonyms:
+                all_words.extend(_tokenize_text(syn) * 3)
+        all_words.extend(_tokenize_text(DOMAIN_REPLACEMENTS[face]) * 2)
+        centroid = _words_to_vec(all_words)
+        norm = np.linalg.norm(centroid)
+        if norm > 1e-9:
+            directions.append(centroid / norm)
+
+    # 24 axis direction vectors (high_pole - low_pole)
+    for face in ALL_FACES:
+        defn = FACE_DEFINITIONS[face]
+        for low_key, high_key in [("x_axis_low", "x_axis_high"), ("y_axis_low", "y_axis_high")]:
+            low_words = _tokenize_text(defn[low_key])
+            high_words = _tokenize_text(defn[high_key])
+            for w in list(low_words):
+                if w in POLE_SYNONYMS:
+                    low_words.extend(POLE_SYNONYMS[w])
+            for w in list(high_words):
+                if w in POLE_SYNONYMS:
+                    high_words.extend(POLE_SYNONYMS[w])
+            low_vec = _words_to_vec(low_words)
+            high_vec = _words_to_vec(high_words)
+            direction = high_vec - low_vec
+            norm = np.linalg.norm(direction)
+            if norm > 1e-9:
+                directions.append(direction / norm)
+
+    return np.stack(directions)  # (K, raw_dim)
+
+
+def encode_vocab_with_model2vec(
+    m2v_model,  # StaticModel instance
+    vocab: dict[str, int],
+) -> np.ndarray:
+    """Encode vocabulary through Model2Vec with face-informed dimensionality reduction.
+
+    Model2Vec produces 256d vectors from a distilled sentence transformer.
+    Standard PCA to 100d loses face-discriminative directions that sit outside
+    the top principal components. This function uses a two-stage projection:
+
+      Stage 1: Extract face-relevant directions (12 centroids + 24 axes = 36d)
+               in the raw 256d space. QR-orthogonalize to get the face subspace.
+      Stage 2: PCA on the residual (component orthogonal to face subspace) to
+               fill the remaining (VECTOR_DIM - face_rank) dimensions.
+      Stage 3: Combine into a single VECTOR_DIM projection matrix.
+
+    This guarantees that face-discriminative directions are always preserved,
+    while PCA captures maximum remaining variance for general vocabulary coverage.
+
+    Args:
+        m2v_model: Loaded Model2Vec StaticModel instance
+        vocab: word -> index mapping (GloVe frequency-ordered)
+
+    Returns:
+        vectors: shape (len(vocab), VECTOR_DIM), unit-normalized float32
+    """
+    # Build ordered word list matching vocab indices
+    words = [""] * len(vocab)
+    for word, idx in vocab.items():
+        words[idx] = word
+
+    n_words = len(words)
+    print(f"[MODEL2VEC] Encoding {n_words} vocabulary words through Model2Vec ...")
+
+    # Encode in batches for progress reporting
+    batch_size = 50000
+    raw_parts = []
+    for b_start in range(0, n_words, batch_size):
+        b_end = min(b_start + batch_size, n_words)
+        batch = words[b_start:b_end]
+        raw_parts.append(m2v_model.encode(batch))
+        print(f"  encoded {b_end}/{n_words} ...")
+
+    m2v_raw = np.concatenate(raw_parts, axis=0)  # (n_words, 256)
+    raw_dim = m2v_raw.shape[1]
+    print(f"[MODEL2VEC] Raw vectors: {m2v_raw.shape}, dtype={m2v_raw.dtype}")
+
+    # Center the vectors
+    mean_vec = m2v_raw.mean(axis=0)
+    centered = m2v_raw - mean_vec
+
+    # Stage 1: Build face-relevant directions in 256d space
+    print(f"[MODEL2VEC] Building face-informed projection basis ...")
+    face_dirs = _build_face_directions_raw(m2v_model, vocab, words, m2v_raw)
+    print(f"[MODEL2VEC] {face_dirs.shape[0]} face directions extracted")
+
+    # QR-orthogonalize the face directions to get an orthonormal basis
+    # for the face-relevant subspace
+    Q_face, R_face = np.linalg.qr(face_dirs.T)  # Q: (256, K), R: (K, K)
+    # Rank = number of columns with non-negligible R diagonal
+    r_diag = np.abs(np.diag(R_face))
+    face_rank = int(np.sum(r_diag > 1e-8))
+    Q_face = Q_face[:, :face_rank]  # (256, face_rank) — orthonormal face basis
+    print(f"[MODEL2VEC] Face subspace rank: {face_rank} "
+          f"(from {face_dirs.shape[0]} raw directions)")
+
+    # Stage 2: PCA on the residual (component orthogonal to face subspace)
+    # Project centered vectors onto face subspace
+    face_components = centered @ Q_face  # (n_words, face_rank)
+    # Residual: remove face subspace component
+    residual = centered - face_components @ Q_face.T  # (n_words, 256)
+
+    # PCA on residual
+    pca_dim = VECTOR_DIM - face_rank
+    print(f"[MODEL2VEC] PCA on residual: {raw_dim}d -> {pca_dim}d ...")
+    _, S_res, Vt_res = np.linalg.svd(residual, full_matrices=False)
+    Q_residual = Vt_res[:pca_dim].T  # (256, pca_dim)
+    residual_components = residual @ Q_residual  # (n_words, pca_dim)
+
+    # Variance reporting
+    _, S_full, _ = np.linalg.svd(centered, full_matrices=False)
+    face_var = np.sum(face_components ** 2)
+    res_var = np.sum(residual_components ** 2)
+    total_var = np.sum(S_full ** 2)
+    captured = (face_var + res_var) / total_var * 100
+    print(f"[MODEL2VEC] Variance: face subspace {face_var/total_var*100:.1f}%, "
+          f"residual PCA {res_var/total_var*100:.1f}%, "
+          f"total captured {captured:.1f}%")
+
+    # Stage 3: Combine into final VECTOR_DIM vectors
+    # First face_rank columns = face subspace, remaining = residual PCA
+    vectors = np.concatenate([face_components, residual_components],
+                             axis=1).astype(np.float32)
+    print(f"[MODEL2VEC] Combined projection: {vectors.shape}")
+
+    # L2-normalize to unit length
+    norms = np.linalg.norm(vectors, axis=1, keepdims=True)
+    norms = np.where(norms < 1e-8, 1.0, norms)
+    vectors = vectors / norms
+
+    print(f"[MODEL2VEC] Final vectors: {vectors.shape}, "
+          f"dtype={vectors.dtype}, all unit-normed")
+    return vectors
+
+
+# ---------------------------------------------------------------------------
 # Text tokenization
 # ---------------------------------------------------------------------------
 
@@ -1103,8 +1292,7 @@ def compute_axis_projections(
 def compute_idf_weights(vocab_size: int) -> np.ndarray:
     """Compute IDF-like weights from frequency rank.
 
-    GloVe words are ordered by frequency. More frequent words get LOWER weight
-    (they are less informative). Uses log-inverse-rank formula:
+    GloVe words are ordered by frequency. Uses log-inverse-rank formula:
       idf[i] = log(vocab_size / (rank + 1))
     Normalized to [0, 1].
 
@@ -1585,6 +1773,7 @@ def save_artifacts(
     word_phase_sim: np.ndarray | None = None,
     word_question_x: np.ndarray | None = None,
     word_question_y: np.ndarray | None = None,
+    vector_source: str = "GloVe 6B 100d",
 ) -> None:
     """Save all artifacts to disk."""
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -1633,6 +1822,8 @@ def save_artifacts(
             vocab_data["surface_to_canonical"] = surface_to_canonical
         # Add phase names for runtime lookup
         vocab_data["phase_names"] = PHASE_NAMES
+        # Record which vector source was used
+        vocab_data["vector_source"] = vector_source
 
     with open(str(VOCAB_PATH), "w", encoding="utf-8") as f:
         json.dump(vocab_data, f)
@@ -1732,11 +1923,43 @@ def main() -> None:
     print("Geometric Semantic Bridge Builder")
     print("=" * 70)
 
-    # Step 1: Download GloVe
+    # Step 0: Detect Model2Vec availability
+    use_model2vec = False
+    m2v_model = None
+
+    if M2V_MODEL_PATH.exists():
+        print(f"\n[MODEL2VEC] Found distilled model at {M2V_MODEL_PATH}")
+        print(f"[MODEL2VEC] Loading Model2Vec (sentence-transformer-quality vectors) ...")
+        try:
+            from model2vec import StaticModel
+            m2v_model = StaticModel.from_pretrained(str(M2V_MODEL_PATH))
+            use_model2vec = True
+            print(f"[MODEL2VEC] Loaded. Will use Model2Vec vectors instead of GloVe.")
+        except ImportError:
+            print(f"[MODEL2VEC] model2vec package not installed. Falling back to GloVe.")
+        except Exception as e:
+            print(f"[MODEL2VEC] Error loading model: {e}. Falling back to GloVe.")
+    else:
+        print(f"\n[GLOVE] Model2Vec not found at {M2V_MODEL_PATH}")
+        print(f"[GLOVE] Using GloVe 6B 100d vectors (default)")
+
+    # Step 1: Download and load GloVe (always needed for frequency ordering)
     download_glove()
 
-    # Step 2: Load ALL GloVe vectors
+    # Step 2: Load ALL GloVe vectors (vocabulary + vectors)
     full_vocab, full_vectors = load_all_glove()
+
+    # Step 2b: If Model2Vec available, re-encode all vocabulary words
+    # through Model2Vec and PCA-compress to VECTOR_DIM. This replaces
+    # full_vectors entirely — all downstream code (centroids, axes,
+    # face_sim, axis_proj, disambiguation, phrases, expansion) operates
+    # on the same-shaped arrays with better-quality vectors.
+    if use_model2vec:
+        full_vectors = encode_vocab_with_model2vec(m2v_model, full_vocab)
+        vector_source = "Model2Vec (PCA 256d->100d)"
+    else:
+        vector_source = "GloVe 6B 100d"
+    print(f"\n[VECTORS] Active vector source: {vector_source}")
 
     # Step 3: [Alg 1] Counter-fitting (Mrksic SGD, antonym-only + VSP)
     # Replaces the disabled Faruqui-style retrofitting. Uses antonym repulsion
@@ -1832,6 +2055,7 @@ def main() -> None:
         word_phase_sim=word_phase_sim,
         word_question_x=word_question_x,
         word_question_y=word_question_y,
+        vector_source=vector_source,
     )
 
     # Step 15: Reports
@@ -1839,6 +2063,7 @@ def main() -> None:
     pole_ok = report_pole_self_test(runtime_vocab, axis_proj)
 
     print(f"\n{'='*70}")
+    print(f"Vector source:        {vector_source}")
     print(f"Vocabulary size:      {len(runtime_vocab)} (words + phrases)")
     print(f"Face similarity:      {disc_face_sim.shape}")
     print(f"Axis projections:     {axis_proj.shape}")
