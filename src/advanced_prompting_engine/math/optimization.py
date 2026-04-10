@@ -1,6 +1,9 @@
 """Pareto front computation.
 
 Authoritative source: Spec 05 §13.
+
+NOTE: pareto_front is not called by any current pipeline stage. Retained as a
+utility for future multi-pass orchestrator enhancements.
 """
 
 from __future__ import annotations

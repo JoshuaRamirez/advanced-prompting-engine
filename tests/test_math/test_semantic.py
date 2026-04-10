@@ -203,3 +203,146 @@ class TestGracefulDegradation:
         scalar, conf = b.axis_projection(["test"], "ontology", "x")
         assert scalar == 0.5
         assert conf == 0.0
+
+
+# ===================================================================
+# Gap A: Phase weighting tests
+# ===================================================================
+
+class TestPhaseWeighting:
+    """Validate phase_weighting returns well-formed, phase-sensitive results."""
+
+    def test_returns_all_faces(self, bridge):
+        result = bridge.phase_weighting(["truth", "knowledge"])
+        assert set(result.keys()) == set(ALL_FACES)
+
+    def test_empty_tokens_returns_defaults(self, bridge):
+        """Empty token list should return default (0.5) for all faces."""
+        result = bridge.phase_weighting([])
+        for face in ALL_FACES:
+            assert result[face] == 0.5
+
+    def test_comprehension_tokens_boost_comprehension(self, bridge):
+        """Tokens associated with knowing/understanding should boost comprehension-phase faces."""
+        if not bridge.has_phase_data:
+            pytest.skip("Phase data not loaded")
+
+        from advanced_prompting_engine.graph.schema import FACE_PHASES
+
+        comprehension_tokens = ["know", "truth", "understand"]
+        result = bridge.phase_weighting(comprehension_tokens)
+
+        comprehension_faces = [f for f, p in FACE_PHASES.items() if p == "comprehension"]
+        application_faces = [f for f, p in FACE_PHASES.items() if p == "application"]
+
+        avg_comp = sum(result[f] for f in comprehension_faces) / len(comprehension_faces)
+        avg_app = sum(result[f] for f in application_faces) / len(application_faces)
+
+        # Comprehension tokens should not score lower than application tokens
+        # (they may be equal if phase data doesn't discriminate these particular words)
+        assert avg_comp >= avg_app or abs(avg_comp - avg_app) < 0.2, (
+            f"Comprehension avg {avg_comp:.3f} much lower than application avg {avg_app:.3f}"
+        )
+
+    def test_unloaded_bridge_returns_defaults(self):
+        """Unloaded bridge should return 0.5 for all faces."""
+        b = GeometricBridge()
+        result = b.phase_weighting(["truth"])
+        for face in ALL_FACES:
+            assert result[face] == 0.5
+
+
+# ===================================================================
+# Gap B: Question position tests
+# ===================================================================
+
+class TestQuestionPosition:
+    """Validate question_position returns valid grid coordinates or None."""
+
+    def test_returns_valid_grid_coords(self, bridge):
+        """Known words should return (x, y) within grid bounds."""
+        if not bridge.has_question_data:
+            pytest.skip("Question position data not loaded")
+        from advanced_prompting_engine.graph.schema import GRID_SIZE
+        result = bridge.question_position(["truth", "knowledge"], "ontology")
+        if result is not None:
+            x, y = result
+            assert 0 <= x < GRID_SIZE, f"x={x} out of range"
+            assert 0 <= y < GRID_SIZE, f"y={y} out of range"
+
+    def test_returns_none_for_empty_tokens(self, bridge):
+        """Empty tokens should return None."""
+        result = bridge.question_position([], "ontology")
+        assert result is None
+
+    def test_returns_none_for_unknown_tokens(self, bridge):
+        """Tokens not in vocabulary should return None."""
+        result = bridge.question_position(["xyzzy"], "ontology")
+        assert result is None
+
+    def test_unloaded_bridge_returns_none(self):
+        """Unloaded bridge should return None."""
+        b = GeometricBridge()
+        result = b.question_position(["truth"], "ontology")
+        assert result is None
+
+
+# ===================================================================
+# Gap C: Disambiguation tests
+# ===================================================================
+
+class TestDisambiguation:
+    """Validate contextual disambiguation changes face scores for polysemous words."""
+
+    def test_trigger_word_changes_face_scores(self, bridge):
+        """A trigger word with relevant context should produce different scores
+        than the same word without context (if disambiguation data is loaded)."""
+        if not bridge._disambig_meta:
+            pytest.skip("Disambiguation data not loaded")
+
+        # Find a trigger word that exists in disambiguation metadata
+        trigger = next(iter(bridge._disambig_meta))
+        entries = bridge._disambig_meta[trigger]
+        context_words = list(entries[0]["context_words"])[:3]
+
+        scores_with_context = bridge.face_relevance([trigger] + context_words)
+        scores_without_context = bridge.face_relevance([trigger])
+
+        # At least some face scores should differ when context is provided
+        differences = sum(
+            1 for f in ALL_FACES
+            if abs(scores_with_context[f] - scores_without_context[f]) > 1e-6
+        )
+        assert differences > 0, (
+            f"Disambiguation for '{trigger}' with context {context_words} "
+            "produced identical scores — expected at least some change"
+        )
+
+    def test_no_context_match_uses_standard(self, bridge):
+        """A trigger word without matching context should use standard vocabulary row."""
+        if not bridge._disambig_meta:
+            pytest.skip("Disambiguation data not loaded")
+
+        trigger = next(iter(bridge._disambig_meta))
+
+        # Use unrelated context words that should not match any sense
+        scores_no_match = bridge.face_relevance([trigger, "xyzzy", "qwfpg"])
+        scores_alone = bridge.face_relevance([trigger])
+
+        # Without context match, both should use the standard row.
+        # The xyzzy/qwfpg tokens are unknown, so they're ignored.
+        for f in ALL_FACES:
+            assert abs(scores_no_match[f] - scores_alone[f]) < 1e-6, (
+                f"Face {f}: no-match scores should equal standalone scores"
+            )
+
+    def test_non_trigger_word_unchanged(self, bridge):
+        """A non-trigger word should produce the same scores regardless of context."""
+        scores_plain = bridge.face_relevance(["philosophy"])
+        scores_context = bridge.face_relevance(["philosophy", "xyzzy", "qwfpg"])
+
+        # xyzzy/qwfpg are unknown, so they're ignored — results should match
+        for f in ALL_FACES:
+            assert abs(scores_plain[f] - scores_context[f]) < 1e-6, (
+                f"Face {f}: non-trigger word 'philosophy' changed with junk context"
+            )

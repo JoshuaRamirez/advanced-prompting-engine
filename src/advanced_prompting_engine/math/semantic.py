@@ -203,7 +203,7 @@ class GeometricBridge:
                 indices.append(idx)
 
         if not indices and not override_rows:
-            return {f: 0.0 for f in self._faces}
+            return {f: 0.0 for f in ALL_FACES}
 
         # Combine standard and override rows
         all_rows = []
@@ -222,7 +222,7 @@ class GeometricBridge:
         total_weight = weights.sum()
 
         if total_weight < 1e-9:
-            return {f: 0.0 for f in self._faces}
+            return {f: 0.0 for f in ALL_FACES}
 
         weighted_avg = (rows * weights[:, np.newaxis]).sum(axis=0) / total_weight
 
@@ -231,8 +231,6 @@ class GeometricBridge:
         # Contrastive cube-pair dampening
         contrasted = self._apply_cube_contrast(raw_scores)
 
-        # Causal chain propagation DISABLED — testing isolation
-        # return self._apply_causal_propagation(contrasted)
         return contrasted
 
     def _apply_cube_contrast(self, scores: dict[str, float]) -> dict[str, float]:
@@ -261,43 +259,6 @@ class GeometricBridge:
             else:
                 result[face_b] += transfer
                 result[face_a] -= transfer
-
-        return result
-
-    # PRECEDES causal ordering — ALL_FACES defines the canonical sequence
-    _CAUSAL_ORDER = ALL_FACES  # ontology -> epistemology -> ... -> heuristics
-    _PROPAGATION_DECAY = 0.15  # 15% transfer per hop
-    _HOP_HALVING = 0.5  # each additional hop halves the boost
-
-    def _apply_causal_propagation(self, scores: dict[str, float]) -> dict[str, float]:
-        """Propagate face activation forward along the causal chain.
-
-        The PRECEDES ordering: ontology -> epistemology -> axiology -> teleology ->
-        phenomenology -> ethics -> aesthetics -> praxeology -> methodology ->
-        semiotics -> hermeneutics -> heuristics.
-
-        When a face activates with a positive score, its causal successors receive
-        an exponentially decaying boost. This reflects the geometric principle that
-        upstream relevance increases the likelihood of downstream relevance.
-
-        Propagation rule: each hop transfers 15% of the predecessor's score,
-        halving with each additional hop. Boosts below 0.001 are truncated.
-        """
-        result = dict(scores)
-        order = self._CAUSAL_ORDER
-        decay = self._PROPAGATION_DECAY
-        halving = self._HOP_HALVING
-
-        for i, face in enumerate(order):
-            score = scores[face]  # use ORIGINAL scores, not accumulated
-            if score <= 0:
-                continue
-            for j in range(i + 1, len(order)):
-                hops = j - i
-                boost = score * decay * (halving ** (hops - 1))
-                if boost < 0.001:
-                    break
-                result[order[j]] += boost
 
         return result
 

@@ -30,6 +30,7 @@ from advanced_prompting_engine.graph.canonical import build_canonical_graph, BAS
 from advanced_prompting_engine.graph.schema import (
     ALL_FACES, FACE_DEFINITIONS, GRID_SIZE, CUBE_PAIRS,
     DOMAIN_REPLACEMENTS, FACE_PHASES, NexusTier,
+    SYMMETRIC_RELATIONS,
 )
 from advanced_prompting_engine.graph.grid import classify, potency, degree_label, potency_matrix
 from advanced_prompting_engine.cache.embedding import EmbeddingCache
@@ -55,6 +56,15 @@ def engine():
         G.add_node(n["id"], **n)
     for e in edges:
         G.add_edge(e["source_id"], e["target_id"], **e)
+    # Expand symmetric relations so reverse lookups work
+    for e in edges:
+        if e.get("relation") in SYMMETRIC_RELATIONS:
+            G.add_edge(
+                e["target_id"], e["source_id"],
+                **{k: v for k, v in e.items() if k not in ("source_id", "target_id")},
+                source_id=e["target_id"],
+                target_id=e["source_id"],
+            )
     ec = EmbeddingCache()
     ec.initialize(G)
     tc = TfidfCache()

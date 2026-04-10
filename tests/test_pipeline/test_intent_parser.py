@@ -169,3 +169,62 @@ class TestGracefulDegradation:
         state = make_state("What is truth?")
         parser.execute(state)
         assert all(v is None for v in state.partial_coordinate.values())
+
+
+class TestPhraseDetection:
+    """Validate greedy longest-match phrase tokenization."""
+
+    def test_known_phrase_emitted_as_single_token(self, parser):
+        """If the bridge has a phrase in phrase_keys, tokenizing a sentence
+        containing that phrase should produce it as a single token."""
+        if not parser._phrase_vocab:
+            pytest.skip("No phrase vocabulary loaded")
+
+        # Pick a phrase from the loaded vocabulary
+        phrase = next(iter(parser._phrase_vocab))
+        sentence = f"{phrase} matters"
+        tokens = parser._tokenize(sentence)
+
+        assert phrase in tokens, (
+            f"Expected phrase '{phrase}' as a single token in {tokens}"
+        )
+
+    def test_no_phrases_falls_back_to_words(self):
+        """When phrase_vocab is empty, normal word tokenization applies."""
+        bridge = GeometricBridge()
+        bridge.load()
+        # Create a parser with empty phrase vocab
+        p = IntentParser(geometric_bridge=bridge)
+        p._phrase_vocab = set()
+        p._max_phrase_len = 0
+
+        tokens = p._tokenize("ethical obligation matters")
+        assert "ethical" in tokens
+        assert "obligation" in tokens
+        assert "matters" in tokens
+
+    def test_phrase_consumes_component_words(self, parser):
+        """A matched phrase should not also emit its component words."""
+        if not parser._phrase_vocab:
+            pytest.skip("No phrase vocabulary loaded")
+
+        # Pick a multi-word phrase
+        phrase = next(iter(parser._phrase_vocab))
+        words = phrase.split()
+        if len(words) < 2:
+            pytest.skip("No multi-word phrases in vocabulary")
+
+        sentence = f"{phrase} matters"
+        tokens = parser._tokenize(sentence)
+
+        # The phrase should appear as one token
+        assert phrase in tokens, f"Phrase '{phrase}' not found in {tokens}"
+
+        # Individual component words should NOT appear separately
+        # (unless they also appear outside the phrase context)
+        for word in words:
+            occurrences = tokens.count(word)
+            assert occurrences == 0, (
+                f"Component word '{word}' of phrase '{phrase}' "
+                f"appeared {occurrences} time(s) outside the phrase in {tokens}"
+            )

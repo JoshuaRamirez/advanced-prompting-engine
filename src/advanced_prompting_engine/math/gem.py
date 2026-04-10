@@ -51,7 +51,7 @@ def compute_gem(
     target_ratio = target_energy / max(max_energy, 1e-10)
 
     # Harmonic mean ensures both faces must contribute
-    if source_ratio + target_ratio == 0:
+    if source_ratio + target_ratio < 1e-10:
         magnitude = 0.0
     else:
         magnitude = 2 * source_ratio * target_ratio / (source_ratio + target_ratio)

@@ -108,6 +108,10 @@ class IntentParser:
         # --- Phase 1: Face relevance ---
         face_scores = self._bridge.face_relevance(tokens)
 
+        # Capture raw discriminative scores before phase modulation mutates them.
+        # Phase 2/3 needs the original discriminative scores for relevance checks.
+        raw_disc_scores = dict(face_scores)
+
         # Technique F: Phase-aware modulation of face scores
         if self._bridge.has_phase_data:
             phase_weights = self._bridge.phase_weighting(tokens)
@@ -140,8 +144,9 @@ class IntentParser:
             avg_confidence = (x_conf + y_conf) / 2.0
 
             # If discriminative relevance is below threshold AND confidence is
-            # very low, let coordinate resolver fill this face
-            disc_score = face_scores.get(face, 0.0)
+            # very low, let coordinate resolver fill this face.
+            # Use raw (pre-phase-mutation) discriminative scores for this check.
+            disc_score = raw_disc_scores.get(face, 0.0)
             if disc_score < RELEVANCE_THRESHOLD and avg_confidence < CONFIDENCE_THRESHOLD:
                 partial[face] = None
                 continue
