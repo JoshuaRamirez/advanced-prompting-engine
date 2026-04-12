@@ -2,11 +2,14 @@
 
 Authoritative source: Spec 10.
 Accepts natural language intent or pre-formed coordinate.
+Supports compact (summary fields) and focused (guidance-centric) output modes.
 """
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
+
+from advanced_prompting_engine.graph.schema import ALL_FACES
 
 if TYPE_CHECKING:
     from advanced_prompting_engine.pipeline.runner import PipelineRunner
@@ -17,6 +20,7 @@ def handle_create_prompt_basis(
     intent: str | None = None,
     coordinate: dict | None = None,
     compact: bool = False,
+    focused: bool = False,
 ) -> dict:
     """Execute the pipeline and return the construction basis."""
     if intent and coordinate:
@@ -27,7 +31,9 @@ def handle_create_prompt_basis(
     raw_input = coordinate if coordinate else intent
     try:
         result = pipeline.run(raw_input)
-        if compact:
+        if focused:
+            result = _focused(result)
+        elif compact:
             result = _compact(result)
         return {"status": "success", "construction_basis": result}
     except ValueError as e:
@@ -68,4 +74,39 @@ def _compact(basis: dict) -> dict:
             }
             for b, cq in basis.get("construction_questions", {}).items()
         },
+    }
+
+
+def _focused(basis: dict) -> dict:
+    """Guidance-centric output: only what a prompt engineer needs (~500 bytes).
+
+    Returns the guidance synthesis, top 5 faces with position data,
+    gap statements, strongest resonance, and coherence score.
+    """
+    guidance = basis.get("guidance", {})
+    coordinate = basis.get("coordinate", {})
+    construction_questions = basis.get("construction_questions", {})
+
+    # Top 5 faces by weight
+    face_weights = [
+        (face, coordinate.get(face, {}).get("weight", 0.0))
+        for face in ALL_FACES
+    ]
+    face_weights.sort(key=lambda fw: fw[1], reverse=True)
+    top_faces = []
+    for face, weight in face_weights[:5]:
+        cq = construction_questions.get(face, {})
+        top_faces.append({
+            "face": face,
+            "weight": round(weight, 2),
+            "position_summary": cq.get("position_summary"),
+            "construction_question": cq.get("template"),
+        })
+
+    return {
+        "guidance": guidance,
+        "top_faces": top_faces,
+        "gaps": guidance.get("neglected_dimensions", []),
+        "strongest_resonance": guidance.get("strongest_resonance", {}),
+        "coherence": basis.get("central_gem", {}),
     }

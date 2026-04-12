@@ -3,6 +3,7 @@
 Authoritative source: CONSTRUCT-v2.md (8-stage forward pass, Stage 8).
 Combines all accumulated pipeline state into the final output dict.
 Includes harmonization pairs for the 6 complementary cube pairs.
+Generates a guidance synthesis section from assembled data.
 """
 
 from __future__ import annotations
@@ -10,6 +11,7 @@ from __future__ import annotations
 from advanced_prompting_engine.graph.grid import degree_label
 from advanced_prompting_engine.graph.schema import (
     ALL_FACES,
+    CUBE_PAIRS,
     FACE_DEFINITIONS,
     FACE_PHASES,
     GENERATES,
@@ -24,6 +26,103 @@ _MEANING_MECHANISMS: dict[str, str] = {
     "edge": "demarcation",
     "center": "composition",
 }
+
+# Cube pair shared concern descriptions (CONSTRUCT-v2.md §4.3)
+CUBE_PAIR_CONCERNS: dict[tuple[str, str], str] = {
+    ("ontology", "praxeology"): "Being \u2194 Doing",
+    ("epistemology", "methodology"): "Knowing \u2194 Proceeding",
+    ("axiology", "ethics"): "Valuing \u2194 Judging",
+    ("teleology", "heuristics"): "Purpose \u2194 Strategy",
+    ("phenomenology", "aesthetics"): "Experiencing \u2194 Recognizing form",
+    ("semiotics", "hermeneutics"): "Encoding \u2194 Decoding",
+}
+
+
+def _generate_guidance(
+    coordinate: dict,
+    spokes: dict,
+    harmonization_pairs: list,
+    construction_questions: dict,
+) -> dict:
+    """Synthesize actionable guidance from assembled pipeline data.
+
+    Identifies dominant dimensions, neglected dimensions, strongest
+    harmonization pair, and produces a natural-language summary.
+    """
+    # Sort faces by weight descending
+    face_weights = []
+    for face in ALL_FACES:
+        weight = coordinate.get(face, {}).get("weight", 0.0)
+        face_weights.append((face, weight))
+    face_weights.sort(key=lambda fw: fw[1], reverse=True)
+
+    # Dominant: weight > 0.5 or top 3, whichever yields more
+    top_3 = face_weights[:3]
+    above_threshold = [(f, w) for f, w in face_weights if w > 0.5]
+    dominant = above_threshold if len(above_threshold) > len(top_3) else top_3
+
+    # Neglected: bottom 2 with weight < 0.2
+    neglected = [(f, w) for f, w in face_weights if w < 0.2]
+    neglected = neglected[-2:] if len(neglected) > 2 else neglected
+
+    # Build dominant dimension entries
+    dominant_dimensions = []
+    for face, weight in dominant:
+        cq = construction_questions.get(face, {})
+        dominant_dimensions.append({
+            "face": face,
+            "weight": round(weight, 2),
+            "question": cq.get("template", FACE_DEFINITIONS[face]["construction_template"]),
+            "position": cq.get("position_summary"),
+        })
+
+    # Build neglected dimension entries with gap statements
+    neglected_dimensions = []
+    for face, weight in neglected:
+        core_q = FACE_DEFINITIONS[face]["core_question"]
+        # Lower-case the first character for embedding in the gap sentence,
+        # and strip trailing punctuation so it reads naturally as a clause
+        core_q_lower = core_q[0].lower() + core_q[1:] if core_q else core_q
+        core_q_lower = core_q_lower.rstrip("?. ")
+        neglected_dimensions.append({
+            "face": face,
+            "weight": round(weight, 2),
+            "gap": f"Your intent does not address {core_q_lower}.",
+        })
+
+    # Find strongest harmonization pair
+    strongest_resonance = {}
+    if harmonization_pairs:
+        best = max(harmonization_pairs, key=lambda h: h.get("resonance", 0.0))
+        pair_tuple = tuple(best.get("pair", []))
+        concern = CUBE_PAIR_CONCERNS.get(pair_tuple, "")
+        if not concern:
+            # Try reversed order
+            concern = CUBE_PAIR_CONCERNS.get(tuple(reversed(pair_tuple)), "")
+        strongest_resonance = {
+            "pair": list(best.get("pair", [])),
+            "concern": concern,
+            "resonance": round(best.get("resonance", 0.0), 2),
+        }
+
+    # Build summary sentence
+    dominant_names = [d["face"] for d in dominant_dimensions]
+    neglected_names = [n["face"] for n in neglected_dimensions]
+    summary_parts = [
+        f"This intent is primarily grounded in {', '.join(dominant_names)}."
+    ]
+    if neglected_names:
+        summary_parts.append(
+            f" It does not address {' or '.join(neglected_names)}"
+            " \u2014 consider whether these omissions are intentional."
+        )
+
+    return {
+        "dominant_dimensions": dominant_dimensions,
+        "neglected_dimensions": neglected_dimensions,
+        "strongest_resonance": strongest_resonance,
+        "summary": "".join(summary_parts),
+    }
 
 
 class ConstructionBridge:
@@ -207,4 +306,11 @@ class ConstructionBridge:
             "construction_questions": construction_questions,
         }
 
-
+        # Synthesis: generate actionable guidance from assembled data
+        guidance = _generate_guidance(
+            coordinate=state.coordinate,
+            spokes=spokes,
+            harmonization_pairs=harmonization_pairs,
+            construction_questions=construction_questions,
+        )
+        state.construction_basis["guidance"] = guidance
