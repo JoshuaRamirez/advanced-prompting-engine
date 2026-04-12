@@ -63,31 +63,63 @@ Each face is a 12x12 grid of 144 epistemic observation points. Position determin
 | `explore_space` | Expert — graph traversal, stress testing, triangulation |
 | `extend_schema` | Authoring — add constructs and relations with contradiction detection |
 
-## Example
+## Example: Natural Language Intent
 
-```python
-# Pre-formed coordinate — place each face precisely
-coordinate = {
-    "ontology": {"x": 0, "y": 0, "weight": 1.0},      # corner: particular + static
-    "epistemology": {"x": 1, "y": 0, "weight": 0.8},    # edge: empirical + certain
-    "axiology": {"x": 5, "y": 5, "weight": 0.5},        # center: balanced evaluation
-    "teleology": {"x": 8, "y": 0, "weight": 0.9},       # edge: near-ultimate + intentional
-    "phenomenology": {"x": 5, "y": 5, "weight": 0.3},   # center: balanced experience
-    "ethics": {"x": 0, "y": 11, "weight": 0.9},         # corner: deontological + act
-    "aesthetics": {"x": 5, "y": 5, "weight": 0.2},      # center: balanced aesthetics
-    "praxeology": {"x": 5, "y": 5, "weight": 0.3},      # center: balanced action
-    "methodology": {"x": 0, "y": 0, "weight": 0.8},     # corner: analytic + deductive
-    "semiotics": {"x": 5, "y": 5, "weight": 0.2},       # center: balanced semiotics
-    "hermeneutics": {"x": 5, "y": 5, "weight": 0.2},    # center: balanced interpretation
-    "heuristics": {"x": 5, "y": 5, "weight": 0.2},      # center: balanced strategy
-}
-
-# Returns: active constructs, spectrum opposites, tensions,
-# gems, spokes, central gem, harmonization pairs, and 12 construction questions
-result = create_prompt_basis(coordinate=coordinate)
+```
+create_prompt_basis(intent="Design an ethical framework for autonomous vehicle decision-making")
 ```
 
-The construction basis tells you what your prompt assumes exists (ontology), how it establishes truth (epistemology), by what standards it evaluates (axiology), what moral obligations it implies (ethics), what aesthetic qualities it attends to (aesthetics), and so on — each with a known opposite that defines what the prompt is NOT.
+The engine locates this intent across all 12 philosophical dimensions and returns:
+
+```json
+{
+  "coordinate": {
+    "epistemology":  {"x": 4, "y": 4, "weight": 0.76},
+    "ontology":      {"x": 6, "y": 5, "weight": 0.73},
+    "praxeology":    {"x": 7, "y": 4, "weight": 0.72},
+    "heuristics":    {"x": 5, "y": 3, "weight": 0.66},
+    "phenomenology": {"x": 7, "y": 4, "weight": 0.61},
+    "ethics":        {"x": 6, "y": 4, "weight": 0.53},
+    "...": "...all 12 faces with (x,y) position and relevance weight"
+  },
+  "harmonization": [
+    {"pair": ["ontology", "praxeology"], "resonance": 0.15},
+    {"pair": ["axiology", "ethics"],     "resonance": 0.05},
+    "...6 complementary pairs with resonance scores"
+  ],
+  "spokes": {
+    "ontology":      {"classification": "weakly_integrated", "strength": 0.042},
+    "epistemology":  {"classification": "weakly_integrated", "strength": 0.039},
+    "...": "...per-face behavioral signatures"
+  },
+  "central_gem": {"coherence": 0.69, "classification": "highly_coherent"},
+  "construction_questions": {
+    "ethics": {
+      "template": "What moral obligations does this prompt impose or assume?",
+      "position_summary": "balanced Deontological/Consequential + moderately Agent-focused",
+      "meaning_mechanism": "composition",
+      "phase": "evaluation"
+    },
+    "...": "...12 position-specific philosophical questions to guide prompt construction"
+  }
+}
+```
+
+The output tells you: this intent is primarily about knowledge validation (epistemology 0.76), what entities exist (ontology 0.73), and action structure (praxeology 0.72). Ethics registers at 0.53 — present but not dominant. The harmonization shows ontology and praxeology resonate strongly (0.15) — the theoretical "what exists" aligns with the practical "how to act."
+
+## Example: Pre-formed Coordinate
+
+For precise control, pass a coordinate directly:
+
+```python
+coordinate = {
+    "ontology": {"x": 0, "y": 0, "weight": 1.0},      # corner: particular + static
+    "ethics": {"x": 0, "y": 11, "weight": 0.9},         # corner: deontological + act
+    "methodology": {"x": 0, "y": 0, "weight": 0.8},     # corner: analytic + deductive
+    # ...all 12 faces with x (0-11), y (0-11), weight (0-1)
+}
+result = create_prompt_basis(coordinate=coordinate)
+```
 
 ## Architecture
 
