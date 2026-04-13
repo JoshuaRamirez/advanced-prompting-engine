@@ -298,9 +298,15 @@ class SqliteStore:
     # ------------------------------------------------------------------
 
     def get_current_version(self) -> str | None:
-        row = self.conn.execute(
-            "SELECT version FROM version_manifest ORDER BY applied_at DESC LIMIT 1"
-        ).fetchone()
+        try:
+            row = self.conn.execute(
+                "SELECT version FROM version_manifest ORDER BY applied_at DESC LIMIT 1"
+            ).fetchone()
+        except sqlite3.OperationalError:
+            # Old schema may lack applied_at column — use rowid as insertion order
+            row = self.conn.execute(
+                "SELECT version FROM version_manifest ORDER BY rowid DESC LIMIT 1"
+            ).fetchone()
         return row["version"] if row else None
 
     def needs_initialization(self) -> bool:
@@ -339,15 +345,28 @@ class SqliteStore:
     def migrate(self, nodes: list[dict], edges: list[dict], new_version: str) -> list[dict]:
         """Replace canonical data and check for orphaned user edges.
 
-        Returns list of orphaned edges (do NOT auto-delete).
+        Drops and recreates canonical tables to handle schema changes
+        (e.g., CHECK constraint updates from 'branch' to 'face').
+        User tables are preserved. Returns list of orphaned edges.
         """
-        # Replace canonical data in a transaction
         self.drop_write_protection_triggers()
         c = self.conn
         c.execute("BEGIN")
         try:
-            c.execute("DELETE FROM canonical_edges")
-            c.execute("DELETE FROM canonical_nodes")
+            # Drop and recreate canonical tables to pick up schema changes
+            c.execute("DROP TABLE IF EXISTS canonical_edges")
+            c.execute("DROP TABLE IF EXISTS canonical_nodes")
+            c.execute("COMMIT")
+        except Exception:
+            c.execute("ROLLBACK")
+            raise
+
+        # Recreate tables with current schema (includes updated CHECK constraints)
+        self.create_tables()
+
+        # Insert new canonical data
+        c.execute("BEGIN")
+        try:
             self.insert_canonical_nodes(nodes)
             self.insert_canonical_edges(edges)
             checksum = self.compute_checksum(nodes, edges)
@@ -360,6 +379,7 @@ class SqliteStore:
             c.execute("ROLLBACK")
             raise
 
+        self.create_indexes()
         self.create_write_protection_triggers()
 
         # Re-check orphans after migration
