@@ -58,7 +58,7 @@ The engine is organized as a strict layered architecture. Each layer depends onl
 ```
 ┌──────────────────────────────────────────────────────────────────────┐
 │  External Surface                                                    │
-│  3 MCP tools + 4 prompts + 3 resources                               │
+│  4 MCP tools + 4 prompts + 4 resources                               │
 ├──────────────────────────────────────────────────────────────────────┤
 │  Multi-Pass Orchestrator                                             │
 │  stress_test, triangulate, deepen                                    │
@@ -73,6 +73,9 @@ The engine is organized as a strict layered architecture. Each layer depends onl
 │  Embedding Cache  │  TF-IDF Cache  │  Centrality Cache               │
 │  (lifecycle-managed, auto-invalidate on graph mutation)               │
 ├──────────────────────────────────────────────────────────────────────┤
+│  Semantic Bridge (GeometricBridge)                                    │
+│  Pre-computed GloVe-derived face similarity + axis projections        │
+├──────────────────────────────────────────────────────────────────────┤
 │  NetworkX (in-memory graph)     │  SQLite (durable persistence)      │
 │  ~1873 nodes, ~2000+ edges     │  canonical + user tables            │
 └──────────────────────────────────────────────────────────────────────┘
@@ -80,7 +83,7 @@ The engine is organized as a strict layered architecture. Each layer depends onl
 
 ### Layer 1: External Surface
 
-Three MCP tools, four prompts, three resources. This is the only layer visible to clients.
+Four MCP tools, four prompts, four resources. This is the only layer visible to clients.
 
 **Tools:**
 
@@ -89,14 +92,16 @@ Three MCP tools, four prompts, three resources. This is the only layer visible t
 | `create_prompt_basis` | Primary tool — measures intent, returns construction basis | Pipeline (all 8 stages) |
 | `explore_space` | Expert tool — query the manifold, run orchestrator operations | Graph Query Layer + Orchestrator |
 | `extend_schema` | Authoring tool — add user constructs and relations | Graph Mutation Layer |
+| `interpret_basis` | Interpretation tool — focused output from a construction basis | Pipeline + Synthesis Layer |
 
 **Resources:**
 
 | Resource | Content |
 |---|---|
-| `ape://axiom_manifest` | The 12 philosophical faces with core questions and sub-dimensions |
+| `ape://axiom_manifest` | The 12 philosophical faces with core questions, sub-dimensions, and action guidance |
 | `ape://schema_manifest` | Current graph state — node/edge counts by type |
 | `ape://coordinate_schema` | Schema for a valid coordinate object (12 faces, each with x, y, weight) |
+| `ape://examples` | Example intents with expected construction basis outputs |
 
 **Prompts:**
 
@@ -136,7 +141,7 @@ Three lifecycle-managed caches, computed at startup, invalidated on graph mutati
 | Cache | Content | Used by |
 |---|---|---|
 | Embedding Cache | Spectral embedding of all graph nodes (Laplacian eigendecomposition) | Stage 3 (position computation) |
-| TF-IDF Cache | TF-IDF vectors for all 1728 construct questions | Stage 1 (intent parsing) |
+| TF-IDF Cache | TF-IDF vectors for all 1728 construct questions | explore_space tool (question search) |
 | Centrality Cache | Betweenness centrality and PageRank for all nodes | Stages 5–7 (tension/spoke weighting) |
 
 ### Layer 6: NetworkX + SQLite
@@ -293,7 +298,7 @@ The pipeline runs as a single forward pass through 8 stages. Each stage reads fr
 **Input:** Natural language intent string or raw coordinate dict.
 **Output:** Partial coordinate — a sparse mapping of face names to (x, y, weight) tuples.
 
-For natural language input: tokenizes the intent, removes stop words, stems tokens, computes TF-IDF similarity against all 1728 construct questions, and resolves the top matches into face-level positions. Tags from the top-matching constructs provide the initial face-position signal.
+For natural language input: uses the GeometricBridge (pre-computed GloVe-derived artifacts) to project the intent into face-relevance scores and axis positions. Tokenizes the intent, looks up each token's pre-computed face similarity vector (20K vocabulary) and axis projection vector (24 dimensions: 2 per face), applies IDF weighting, and computes weighted averages to produce per-face relevance and per-axis positions. Contextual disambiguation resolves polysemous tokens (e.g., "state" in a physics context maps to Ontology, not political science). N-gram phrase matching handles multi-word concepts. Phase-aware weighting adjusts face relevance based on Comprehension/Evaluation/Application phase similarity to the intent. Question position matching boosts faces where the intent's vocabulary aligns with specific grid-position questions.
 
 For coordinate input: validates and passes through directly.
 
@@ -370,6 +375,49 @@ Assembles the final output:
 * **Central gem**: System-wide coherence measure
 * **Construction questions**: The domain-specific questions at each active position, for the client to use in prompt construction
 * **Harmonization pairs**: For each of the 6 complementary pairs, the correspondence between the active construct on the theoretical face and its counterpart on the applied face
+
+---
+
+## Semantic Bridge (Intent Parser Backend)
+
+The GeometricBridge provides Stage 1 with pre-computed semantic artifacts derived from GloVe 6B 100d embeddings. This replaces the earlier keyword+TF-IDF approach with geometry-integral parsing that understands face relevance and axis positions from word meaning rather than keyword overlap.
+
+### Artifacts (pre-computed at build time)
+
+| Artifact | Shape | Content |
+|---|---|---|
+| Face similarity | 20K × 12 | Per-word relevance to each of the 12 faces |
+| Axis projections | 20K × 24 | Per-word position on each face's 2 axes (x, y) |
+| IDF weights | 20K × 1 | Inverse document frequency for vocabulary weighting |
+| Phase similarity | 20K × 3 | Per-word relevance to Comprehension/Evaluation/Application phases |
+| Question position map | per-face | Mapping from vocabulary to specific grid positions via question templates |
+| Disambiguation table | 15 entries | Context-dependent sense resolution (trigger word → context tokens → face/axis override) |
+| N-gram phrases | 92 entries | Multi-word concept embeddings (e.g., "moral obligation", "causal inference") |
+
+### Build process
+
+1. Load GloVe 6B 100d vectors (400K vocabulary, 100 dimensions)
+2. Compute face centroids from authored sub-dimension pole labels (e.g., "particular", "universal" for Ontology x-axis)
+3. Expand pole vocabulary via 46 synonym clusters (curated per pole)
+4. Compute axis direction vectors (high-pole centroid minus low-pole centroid per axis per face)
+5. Score all vocabulary words against face centroids using discriminative scoring (affinity to target face minus mean affinity to other faces)
+6. Project vocabulary onto axis direction vectors for axis position estimates
+7. Expand vocabulary via question template tokens (15K base → 20K with question-guided expansion)
+8. Serialize artifacts to `src/advanced_prompting_engine/data/` as compressed numpy arrays
+
+### Runtime (numpy-only)
+
+1. Tokenize intent, apply contextual disambiguation
+2. Match n-gram phrases, replace matched spans with phrase embeddings
+3. Look up each token's face similarity and axis projection vectors
+4. Apply IDF weighting and phase-aware face adjustment
+5. Compute weighted average face scores and axis positions
+6. Apply question position matching bonus
+7. Emit partial coordinate with face weights and (x, y) positions
+
+### Focused Output Mode and Synthesis Layer
+
+Stage 8 (Construction Bridge) includes a synthesis layer that produces a guidance section: dominant dimensions, gap analysis, resonance patterns, and a concise summary. The `interpret_basis` tool and the `focused` output mode return this compact synthesis (~3KB) instead of the full construction basis (~695KB), suitable for direct client consumption.
 
 ---
 
@@ -490,6 +538,9 @@ advanced-prompting-engine/
 │   ├── DESIGN.md                              # This document
 │   ├── CONSTRUCT-v2.md                        # Standalone Construct specification
 │   ├── CONSTRUCT-v2-questions.md              # 144 parameterized question templates
+│   ├── GEOMETRY-NOTES.md                      # Latent geometric properties
+│   ├── specs/
+│   │   └── semantic-bridge-algorithms.md      # Algorithm specifications for GeometricBridge
 │   └── adr/                                   # Architecture Decision Records
 ├── src/
 │   └── advanced_prompting_engine/
@@ -535,17 +586,22 @@ advanced-prompting-engine/
 │       │   ├── spoke.py                       # Spoke shape computation
 │       │   ├── gem.py                         # Gem magnitude computation
 │       │   └── optimization.py                # Pareto front computation
+│       ├── data/                               # Pre-computed semantic bridge artifacts (GloVe-derived)
 │       └── tools/
 │           ├── __init__.py
 │           ├── create_prompt_basis.py         # Primary tool — invokes pipeline
 │           ├── explore_space.py               # Expert tool — delegates to query layer + orchestrator
-│           └── extend_schema.py               # Authoring tool — delegates to mutation layer
+│           ├── extend_schema.py               # Authoring tool — delegates to mutation layer
+│           └── interpret_basis.py             # Interpretation tool — focused output from construction basis
 ├── tests/
 │   ├── __init__.py
 │   ├── test_pipeline/                         # Per-stage unit tests (8 stages)
 │   ├── test_math/                             # Mathematical operation tests
 │   ├── test_graph/                            # Graph query/mutation/grid tests
 │   └── test_tools/                            # MCP tool integration tests
+├── scripts/
+│   ├── build_semantic_bridge.py               # Build script for GloVe-derived artifacts
+│   └── benchmark_8texts.py                    # Literary text benchmark (8 canonical texts, 20 assertions)
 ├── pyproject.toml
 └── README.md
 ```

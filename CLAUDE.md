@@ -12,13 +12,14 @@ The engine does not generate prompts. It measures intent across 12 philosophical
 - **3-Level Schema**: Axiom Layer (12 faces with 2 sub-dimensions each) → Schema Layer (12x12 grids, 144 constructs per face, 1728 total) → Coordinate Layer (computed (x,y) positions)
 - **Inter-Face**: 132 directional nexi (66 unique pairs) producing 132 gems, organized as 12 spokes converging on a central gem. Nexi stratified by cube model: 6 paired + 48 adjacent + 12 opposite.
 - **Cube Pairing**: 6 complementary pairs (theoretical/applied). Paired faces harmonize through shared surfaces and positional correspondence.
-- **External Surface**: 3 MCP tools (`create_prompt_basis`, `explore_space`, `extend_schema`) + 4 prompts + 3 resources
+- **External Surface**: 4 MCP tools (`create_prompt_basis`, `explore_space`, `extend_schema`, `interpret_basis`) + 4 prompts + 4 resources
 - **Internal Layers** (top to bottom):
   1. Multi-Pass Orchestrator (stress_test, triangulate, deepen)
   2. Pipeline (8 stages — single forward pass)
   3. Graph Query Layer + Graph Mutation Layer (structured graph access)
-  4. TF-IDF Cache (lifecycle-managed, auto-invalidate on graph mutation)
-  5. NetworkX (topology, 1873 nodes, 2279 edges) + numpy (computation) + SQLite (persist, canonical/user tables)
+  4. TF-IDF Cache (lifecycle-managed, auto-invalidate on graph mutation — used by explore_space, not by Stage 1)
+  5. Semantic Bridge (GeometricBridge — pre-computed GloVe-derived face similarity + axis projections, used by Stage 1)
+  6. NetworkX (topology, 1873 nodes, 2279 edges) + numpy (computation) + SQLite (persist, canonical/user tables)
 
 ## Key Documents
 
@@ -42,7 +43,7 @@ See `docs/adr/` for full Architecture Decision Records:
 | 005 | numpy as sole additional dependency (no scipy, no scikit-learn) |
 | 006 | Canonical/user data separation with SQLite write protection |
 | 007 | Single forward-pass pipeline with multi-pass orchestrator |
-| 008 | Tag-based + TF-IDF intent parsing (no LLM dependency) |
+| 008 | Geometry-integral intent parsing via GeometricBridge (no LLM dependency) |
 | 009 | Grid-structured Schema Layer (12x12 grids, invariant axis meta-meaning, polarity convention) |
 | 010 | Construct epistemic questions as shipped canonical content (1728 constructs from 144 templates × 12 domains) |
 | 011 | Nexus-gem-spoke inter-face architecture with cube stratification |
@@ -79,6 +80,9 @@ advanced-prompting-engine/
 │   ├── DESIGN.md                              # Full engine design specification
 │   ├── CONSTRUCT-v2.md                        # Standalone Construct specification
 │   ├── CONSTRUCT-v2-questions.md              # 144 construction question templates
+│   ├── GEOMETRY-NOTES.md                      # Latent geometric properties (cuboctahedron, rhombic dodecahedron)
+│   ├── specs/
+│   │   └── semantic-bridge-algorithms.md      # Algorithm specifications for GeometricBridge
 │   └── adr/
 │       ├── 001-networkx-as-graph-engine.md
 │       ├── 002-twelve-axis-philosophical-manifold.md
@@ -133,11 +137,13 @@ advanced-prompting-engine/
 │       │   ├── gem.py                         # Gem magnitude (potency-weighted + positional correspondence + tier modulation)
 │       │   ├── harmonization.py               # Paired face resonance (bidirectional positional alignment)
 │       │   └── optimization.py                # Pareto front computation
+│       ├── data/                               # Pre-computed semantic bridge artifacts (GloVe-derived)
 │       └── tools/
 │           ├── __init__.py
 │           ├── create_prompt_basis.py         # Primary tool — invokes pipeline
 │           ├── explore_space.py               # Expert tool — delegates to query layer + orchestrator
-│           └── extend_schema.py               # Authoring tool — delegates to mutation layer
+│           ├── extend_schema.py               # Authoring tool — delegates to mutation layer
+│           └── interpret_basis.py             # Interpretation tool — focused output from construction basis
 ├── tests/
 │   ├── __init__.py
 │   ├── test_first_principles.py               # First-principles compliance tests (66 tests across 16 principles)
@@ -146,6 +152,9 @@ advanced-prompting-engine/
 │   ├── test_graph/                            # Graph query/mutation/grid/canonical tests
 │   ├── test_tools/                            # MCP tool integration tests
 │   └── test_orchestrator/                     # Multi-pass orchestrator tests
+├── scripts/
+│   ├── build_semantic_bridge.py               # Build script for GloVe-derived artifacts
+│   └── benchmark_8texts.py                    # Literary text benchmark (8 canonical texts, 20 assertions)
 ├── Documentation/
 │   └── Temporary/Execution/                   # Work effort triad (Roadmap, WorkEffort, Results)
 ├── pyproject.toml
@@ -171,6 +180,7 @@ advanced-prompting-engine/
 - Meaning hierarchy visible in output: corners → integration, edges → demarcation, midpoints → axial_balance, center → composition
 - Use `print()` during development for debugging, remove when stable
 - Contradiction detection lives in Graph Mutation Layer, not in individual tools
+- Stage 1 intent parser uses GeometricBridge (pre-computed GloVe artifacts), not TF-IDF, for face relevance and axis projection
 - The Construct specification (`docs/CONSTRUCT-v2.md`) is the source of truth for what faces, points, spectrums, nexi, gems, spokes, and the central gem ARE — use engine-specific language only in engine code, not in the Construct spec
 
 ## Philosophical Geometry (v2)

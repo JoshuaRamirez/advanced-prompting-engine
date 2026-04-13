@@ -48,3 +48,36 @@
 - Minor fixes: deprecated branch aliases documented, FACE_PHASES constant added
 - 195 tests passed after fixes
 - Integration re-verified: Ethics (0.574) and Methodology (0.739) correctly dominate for "ethical decision-making" intent. Spokes differentiate (3x strength). Central gem coherence 0.55 (highly_coherent). Harmonization alignment varies by activation pattern.
+
+### 2026-04-07 — Geometry-Integral Parser
+- Replaced keyword+TF-IDF with GeometricBridge (GloVe 100d semantic projection)
+- 46 pole synonym clusters, discriminative face similarity, axis direction vectors
+- Benchmark: 14/20 → 15/20 (with cube contrast + synonym refinement)
+
+### 2026-04-08 — Semantic Bridge Enhancements
+- Contextual disambiguation: 15 triggers, 15 senses (Newton "state"→ontology in physics context)
+- N-gram phrase embeddings: 92 curated phrases
+- Question-guided vocabulary expansion: 15K→20K words
+- Benchmark: 15/20 → 18/20
+
+### 2026-04-09 — v0.5.0 Released
+- Phase weighting, question position matching, expanded disambiguation
+- Literary benchmark: 18/20 (Hamlet 3/3, Genesis 2/2, Marx 2/2, Tao 3/3, Descartes 3/3)
+- Remaining 2: MLK teleology #9, Newton methodology #12
+- 300 tests, v0.5.0 on GitHub + RedJay marketplace
+
+### 2026-04-10 — Code Review + Test Coverage
+- 6 code fixes (dead code removal, float guard, discriminative score capture, symmetric expansion)
+- 27 new tests: phase weighting, question position, disambiguation, phrases, MCP tools
+- 300→327 tests, all passing
+
+### 2026-04-11 — Synthesis Layer + Focused Mode
+- Guidance section in Stage 8: dominant dimensions, gaps, resonance, summary
+- Focused output mode (~3KB vs ~695KB full)
+- interpret_basis MCP tool
+- Enriched prompts, examples resource, action guidance in axiom_manifest
+- 4 tools, 4 prompts, 4 resources
+
+### 2026-04-12 — Geometry Notes
+- Documented latent polyhedral properties (cuboctahedron, rhombic dodecahedron, octahedron)
+- Structural capacities: vertex triads, edge quartets, recursive embedding, 4-neighbor topology

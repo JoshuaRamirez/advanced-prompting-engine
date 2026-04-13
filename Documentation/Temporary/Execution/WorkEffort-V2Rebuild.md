@@ -1,6 +1,6 @@
 # Work Effort: V2 Construct Rebuild
 
-**Status:** In Progress
+**Status:** Complete
 **Started:** 2026-04-03
 **Roadmap:** [Roadmap-V2Rebuild.md](Roadmap-V2Rebuild.md)
 **Results:** [Results-V2Rebuild.md](Results-V2Rebuild.md)
@@ -86,3 +86,18 @@
 - Architecture: numpy for computation, NetworkX for topology, pipeline for stages
 - Harmonization is a structural property, not a computed feature
 - Cuboctahedron is latent — deferred to stage 3 (3D extrusion)
+
+## Post-Rebuild Work (v0.4.0 → v0.5.0)
+
+Completed after the core rebuild:
+- Geometry-integral parser replacing keyword+TF-IDF
+- GloVe semantic bridge with 46 pole synonym clusters
+- Contextual disambiguation (15 triggers, 15 senses)
+- N-gram phrase embeddings (92 phrases)
+- Phase-aware face weighting
+- Question-guided vocabulary expansion (15K→20K)
+- Synthesis layer with focused output mode
+- interpret_basis MCP tool
+- Code review: 6 fixes, 27 new tests (300→327)
+- Literary benchmark: 18/20
+- v0.5.0 released 2026-04-09
