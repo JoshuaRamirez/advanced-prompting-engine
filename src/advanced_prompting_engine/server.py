@@ -38,6 +38,16 @@ def create_server(db_path: str | None = None) -> FastMCP:
     store.create_tables()
     atexit.register(store.close)
 
+    # Check for version mismatch — stale DB from older version
+    if not store.needs_initialization() and store.check_migration_needed(CANONICAL_VERSION):
+        logger.info("Version mismatch (DB: %s, code: %s) — re-initializing...",
+                     store.get_current_version(), CANONICAL_VERSION)
+        nodes, edges = build_canonical_graph()
+        orphans = store.migrate(nodes, edges, CANONICAL_VERSION)
+        if orphans:
+            logger.warning("Migration found %d orphaned user edges", len(orphans))
+        logger.info("Migration complete: %d nodes, %d edges", len(nodes), len(edges))
+
     if store.needs_initialization():
         logger.info("First run — initializing canonical data...")
         nodes, edges = build_canonical_graph()

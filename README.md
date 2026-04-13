@@ -60,6 +60,7 @@ Each face is a 12x12 grid of 144 epistemic observation points. Position determin
 | Tool | Purpose |
 |---|---|
 | `create_prompt_basis` | Primary — intent or coordinate in, construction basis out |
+| `interpret_basis` | Interpretation — plain-language reading of a construction basis |
 | `explore_space` | Expert — graph traversal, stress testing, triangulation |
 | `extend_schema` | Authoring — add constructs and relations with contradiction detection |
 

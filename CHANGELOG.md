@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] - 2026-04-13
+
+### Added
+- Synthesis/guidance layer in construction bridge (Stage 8): dominant dimensions, neglected dimensions with gap statements, strongest harmonization pair with cube pair concern, plain-language summary.
+- Focused output mode: `create_prompt_basis(focused=true)` returns ~3KB guidance-centric output instead of ~695KB full pipeline data.
+- `interpret_basis` MCP tool: takes construction basis JSON and returns markdown-formatted interpretation with dominant dimensions, gaps, and strongest resonance.
+- `ape://examples` MCP resource: 4 annotated example intents demonstrating engine output interpretation.
+- Per-face action guidance in `ape://axiom_manifest` resource: "If strongly activated: X. If weak: consider Y."
+- `docs/GEOMETRY-NOTES.md`: latent polyhedral properties and structural capacities.
+- 27 new tests: phase weighting, question position, disambiguation, phrase detection, MCP tool handlers.
+
+### Changed
+- MCP prompts rewritten with face definitions, interpretation guidance, and usage instructions.
+- External surface: 4 tools (was 3), 4 resources (was 3), 4 prompts.
+- 327 tests (up from 300).
+
+### Fixed
+- Dead causal propagation code removed (~40 lines).
+- Float equality guard in gem computation (`== 0` → `< 1e-10`).
+- Raw discriminative scores captured before phase mutation in intent parser.
+- Test fixture expanded SYMMETRIC_RELATIONS for production graph parity.
+- Consistent ALL_FACES fallback in face_relevance no-match paths.
+
 ## [0.5.0] - 2026-04-09
 
 ### Added
@@ -134,6 +157,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Spectral embedding cache and TF-IDF cache with lifecycle management.
 - 12 Architecture Decision Records.
 
+[0.6.0]: https://github.com/JoshuaRamirez/advanced-prompting-engine/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/JoshuaRamirez/advanced-prompting-engine/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/JoshuaRamirez/advanced-prompting-engine/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/JoshuaRamirez/advanced-prompting-engine/compare/v0.2.0...v0.3.0

@@ -38,7 +38,7 @@ See `docs/adr/` for full Architecture Decision Records:
 |---|---|
 | 001 | NetworkX as graph engine (topology container; computation is numpy) |
 | 002 | 12-axis philosophical manifold with Vector Equilibrium + cube pairing |
-| 003 | 3-tool external surface |
+| 003 | External tool surface (originally 3, now 4 with interpret_basis) |
 | 004 | Single-process stdio deployment via uvx |
 | 005 | numpy as sole additional dependency (no scipy, no scikit-learn) |
 | 006 | Canonical/user data separation with SQLite write protection |
