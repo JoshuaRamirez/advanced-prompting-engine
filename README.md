@@ -135,7 +135,7 @@ result = create_prompt_basis(coordinate=coordinate)
 - `docs/DESIGN.md` — Full design specification
 - `docs/CONSTRUCT-v2.md` — The Construct specification (what faces, points, spectrums, nexi, gems, spokes ARE)
 - `docs/CONSTRUCT-v2-questions.md` — 144 construction question templates by zone
-- `docs/adr/` — 12 Architecture Decision Records
+- `docs/adr/` — 13 Architecture Decision Records
 
 ## Development
 
@@ -143,6 +143,18 @@ result = create_prompt_basis(coordinate=coordinate)
 pip install -e ".[dev]"
 pytest tests/ -v
 ```
+
+### Rebuilding the semantic bridge (optional)
+
+The shipped package includes pre-computed BGE-derived artifacts (`semantic_bridge.npz`, `semantic_vocab.json`). To rebuild them from scratch (e.g., after pole-synonym edits), install the build extras:
+
+```bash
+pip install -e ".[build]"
+python -m nltk.downloader wordnet omw-1.4
+python scripts/build_semantic_bridge.py
+```
+
+The build uses BAAI/bge-large-en-v1.5 (~1.3 GB, downloaded once to HuggingFace cache) and `wordfreq` for frequency ordering. Runtime dependencies are unaffected — end users only receive the pre-computed artifacts.
 
 ## Contributing
 

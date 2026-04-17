@@ -1,22 +1,31 @@
 # Semantic Bridge Enhancement Algorithms
 
-Reference specification for three build-time-only algorithms that improve the GeometricBridge's face discrimination quality. All runtime costs are zero — these modify pre-computed artifacts only.
+Reference specification for build-time-only algorithms that produce the GeometricBridge's pre-computed artifacts. All runtime costs are zero — artifacts are loaded as numpy arrays at runtime.
+
+## Vector Source (ADR-013)
+
+`BAAI/bge-large-en-v1.5` via `sentence-transformers`, at native **1024 dimensions**, no reduction. GloVe and Model2Vec paths are retired. Frequency ordering comes from `wordfreq`.
 
 ## Build Pipeline Order
 
 ```
-load_all_glove()
-    → [Alg 1] retrofit_vectors()          # modifies GloVe vectors in-place
-        → build_face_centroids()           # uses retrofitted vectors
-        → build_axis_directions()          # uses retrofitted vectors
-            → select_runtime_vocab()
-                → compute_face_sim()
-                → compute_axis_proj()
-                → compute_idf()
-                    → [Alg 2] compute_disambiguation_table()
-                    → [Alg 3] compute_ngram_embeddings()
-                        → extend & save artifacts
+load_bge()
+    → build_target_vocab()                # wordfreq top-K ∪ pole/question/phrase words
+        → encode(vocab)                    # BGE → (N, 1024) unit-normalized
+            → build_face_centroids()        # authored-layer weighted means
+            → build_axis_directions()       # high_pole − low_pole, calibration
+                → compute_face_sim()         # cos(word, centroid) − mean
+                → compute_axis_proj()        # calibrated to [0,1]
+                → compute_idf()              # from wordfreq Zipf
+                    → compute_disambiguation_table()   # BGE-encoded senses
+                    → compute_phrase_embeddings()      # BGE-encoded phrases
+                        → build_phase_centroids()
+                        → compute_word_phase_sim()
+                        → compute_question_position_maps()  # BGE-encoded 1728 questions
+                            → extend & save artifacts
 ```
+
+Counter-fitting / retrofitting is **disabled** in the current build to isolate the BGE variable; may be revisited once benchmark evidence is in.
 
 ## Algorithm 1: Retrofitting + Counter-fitting
 

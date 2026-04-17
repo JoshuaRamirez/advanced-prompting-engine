@@ -4,7 +4,7 @@ Authoritative source: CONSTRUCT-v2.md (8-stage forward pass, Stage 1).
 Geometry-integral parsing built from the Construct's own authored layers:
 
   Phase 1: Face relevance via GeometricBridge discriminative face similarity
-           (IDF-weighted GloVe cosine to authored-layer centroids minus mean)
+           (IDF-weighted BGE cosine to authored-layer centroids minus mean)
   Phase 2: Axis projection via GeometricBridge pre-computed direction vectors
            (IDF-weighted dot product onto high_pole - low_pole direction)
   Phase 3: Scalar-to-grid mapping via polarity convention (0.0 -> 0, 1.0 -> 11)
@@ -25,10 +25,10 @@ RELEVANCE_THRESHOLD = 0.0
 # Minimum combined confidence (average of x and y axis confidence) to emit a coordinate
 CONFIDENCE_THRESHOLD = 0.05
 
-# Stop words for tokenization — functional words that carry no domain signal in GloVe space.
-# Expanded beyond the original stemmed set: GloVe needs full word forms, so we must
-# filter out common function words, pronouns, modals, and auxiliaries that dilute
-# discriminative face relevance when left in the token set.
+# Stop words for tokenization — functional words that carry no domain signal.
+# BGE needs full word forms, so we must filter out common function words,
+# pronouns, modals, and auxiliaries that dilute discriminative face relevance
+# when left in the token set.
 _STOP_WORDS = frozenset({
     # Determiners and articles
     "a", "an", "the", "this", "that", "these", "those",
@@ -61,7 +61,7 @@ class IntentParser:
     """Stage 1: Map natural language intent to partial grid coordinates.
 
     Uses the GeometricBridge to determine face relevance and axis positions
-    from pre-computed GloVe-derived artifacts. No TF-IDF cache or query layer
+    from pre-computed BGE-derived artifacts. No TF-IDF cache or query layer
     needed — all geometry is baked into the bridge at build time.
 
     Enhanced with greedy longest-match phrase detection: trigrams are checked

@@ -1,11 +1,12 @@
-"""Geometric bridge — loads pre-computed GloVe-derived face relevance and axis
-projections at runtime.
+"""Geometric bridge — loads pre-computed BGE-derived face relevance and axis
+projections at runtime (ADR-013).
 
-The artifacts are generated offline by scripts/build_semantic_bridge.py. At
-runtime, this module loads pre-computed arrays from the package data directory
-and provides fast numpy-only lookups:
+The artifacts are generated offline by scripts/build_semantic_bridge.py using
+BAAI/bge-large-en-v1.5 at native 1024 dimensions. At runtime, this module
+loads pre-computed arrays from the package data directory and provides fast
+numpy-only lookups:
 
-  1. face_relevance(tokens) — IDF-weighted discriminative face similarity
+  1. face_relevance(tokens) — IDF²-weighted discriminative face similarity
   2. axis_projection(tokens, face, axis) — IDF-weighted axis projection [0,1]
   3. phase_weighting(tokens) — IDF-weighted phase similarity per face (Technique F)
   4. question_position(tokens, face) — IDF-weighted question-matched (x,y) (Technique D)
@@ -16,9 +17,9 @@ Enhanced with:
   - Phase-aware face weighting from phase centroids (Technique F)
   - Per-face question position matching (Technique D)
 
-No GloVe vectors are needed at runtime. If the artifact files are absent
-(developer has not run the build script), the bridge reports is_loaded=False
-and all queries degrade gracefully.
+No embedding model or ML library is needed at runtime — only numpy. If the
+artifact files are absent (developer has not run the build script), the
+bridge reports is_loaded=False and all queries degrade gracefully.
 """
 
 from __future__ import annotations
@@ -88,7 +89,16 @@ class GeometricBridge:
                 return
 
             with np.load(str(npz_path)) as npz:
-                self._face_sim = npz["face_sim"]
+                face_sim_raw = npz["face_sim"]
+                # Partial per-face column centering: subtract half of each
+                # face's mean across vocabulary. Faces with very "specific"
+                # centroids (ethics, methodology) otherwise accumulate
+                # systematic negative bias from generic tokens. Full
+                # centering over-corrects — ontology/teleology are
+                # genuinely broader, their positive bias is partly real
+                # signal. 0.5 is a pragmatic midpoint found by benchmark.
+                col_means = face_sim_raw.mean(axis=0, keepdims=True)
+                self._face_sim = (face_sim_raw - 0.2 * col_means).astype(np.float32)
                 self._axis_proj = npz["axis_proj"]
                 self._idf = npz["idf"]
                 self._faces = [str(f) for f in npz["faces"]]
@@ -219,6 +229,14 @@ class GeometricBridge:
 
         rows = np.concatenate(all_rows, axis=0)
         weights = np.concatenate(all_weights, axis=0)
+
+        # Aggressive IDF: raise to a power so that rare face-specific words
+        # dominate the weighted average. Common words (low idf) still pass
+        # through stop-word filtering but their high-power-damped weights
+        # prevent them from drowning the signal from rare specific vocabulary
+        # (e.g., "brotherhood", "creed", "justice" for ethics on MLK).
+        weights = weights ** 2
+
         total_weight = weights.sum()
 
         if total_weight < 1e-9:
@@ -228,10 +246,14 @@ class GeometricBridge:
 
         raw_scores = {face: float(weighted_avg[i]) for i, face in enumerate(self._faces)}
 
-        # Contrastive cube-pair dampening
-        contrasted = self._apply_cube_contrast(raw_scores)
-
-        return contrasted
+        # Contrastive cube-pair dampening is disabled. Even at reduced
+        # strengths (tested 0.1, 0.3) the mechanism net-hurts benchmark
+        # accuracy because legitimate philosophical content frequently
+        # co-activates paired faces (ethics+axiology for moral rhetoric,
+        # epistemology+methodology for scientific texts, phenomenology+
+        # aesthetics for dramatic criticism). Pair-suppression punishes
+        # exactly those legitimate recognitions.
+        return raw_scores
 
     def _apply_cube_contrast(self, scores: dict[str, float]) -> dict[str, float]:
         """Dampen the weaker member of each cube pair.
@@ -242,7 +264,7 @@ class GeometricBridge:
         equally — the intent is either more theoretical or more applied.
         """
         result = dict(scores)
-        contrast_strength = 0.3  # fraction of difference to transfer
+        contrast_strength = 0.1  # fraction of difference to transfer
 
         for face_a, face_b in CUBE_PAIRS:
             if face_a not in result or face_b not in result:

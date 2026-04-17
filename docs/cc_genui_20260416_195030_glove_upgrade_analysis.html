@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GloVe Upgrade Analysis — Semantic Bridge Embedding Options</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            padding: 20px;
+            background: #f0f0f0;
+        }
+        code {
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Courier New', monospace;
+        }
+        article {
+            max-width: 900px;
+            margin: 0 auto;
+            background: #fff;
+            padding: 40px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+        }
+        h1 { color: #2c3e50; margin-bottom: 8px; }
+        h2 { color: #2c3e50; border-bottom: 2px solid #3498db; padding-bottom: 6px; margin-top: 36px; }
+        h3 { color: #34495e; margin-top: 24px; }
+        .timestamp { color: #95a5a6; font-style: italic; font-size: 0.9em; }
+        .report-meta {
+            margin: 12px 0 16px 0;
+            padding: 10px 14px;
+            background: #f8f9fa;
+            border-radius: 4px;
+            font-size: 0.92em;
+            color: #555;
+            line-height: 1.7;
+        }
+        .report-meta code {
+            background: #eef1f3;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 0.88em;
+        }
+        .meta-label { font-weight: 600; color: #34495e; }
+        .executive-summary {
+            margin: 16px 0 24px 0;
+            padding: 14px 18px;
+            background: #e8f4f8;
+            border-left: 4px solid #3498db;
+            border-radius: 0 4px 4px 0;
+            font-size: 0.95em;
+            line-height: 1.65;
+            color: #2c3e50;
+        }
+        .executive-summary p { margin: 0; }
+        .mermaid-diagram { margin: 20px 0; text-align: center; }
+        .mermaid-diagram svg { max-width: 100%; height: auto; overflow: visible; }
+        .mermaid-diagram svg * { overflow: visible; }
+        .mermaid-diagram figcaption { font-size: 0.88em; color: #7f8c8d; font-style: italic; margin-top: 8px; }
+        .error-section {
+            background: #fdf0ef;
+            border-left: 4px solid #e74c3c;
+            padding: 14px 18px;
+            border-radius: 0 4px 4px 0;
+            margin: 16px 0;
+        }
+        .error-section h3 { color: #e74c3c; margin-top: 0; }
+        .info-section {
+            background: #e8f4f8;
+            border-left: 4px solid #3498db;
+            padding: 14px 18px;
+            border-radius: 0 4px 4px 0;
+            margin: 16px 0;
+        }
+        .info-section h3 { color: #2c3e50; margin-top: 0; }
+        .success-section {
+            background: #eafaf1;
+            border-left: 4px solid #27ae60;
+            padding: 14px 18px;
+            border-radius: 0 4px 4px 0;
+            margin: 16px 0;
+        }
+        .success-section h3 { color: #27ae60; margin-top: 0; }
+        .warning-section {
+            background: #fef9e7;
+            border-left: 4px solid #f39c12;
+            padding: 14px 18px;
+            border-radius: 0 4px 4px 0;
+            margin: 16px 0;
+        }
+        .warning-section h3 { color: #f39c12; margin-top: 0; }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 16px 0;
+        }
+        th, td {
+            padding: 10px 14px;
+            text-align: left;
+            border: 1px solid #dee2e6;
+        }
+        th { background: #f8f9fa; color: #2c3e50; font-weight: 600; }
+        tr:nth-child(even) { background: #fafbfc; }
+        pre {
+            background: #f8f9fa;
+            border-left: 3px solid #007acc;
+            padding: 14px;
+            border-radius: 4px;
+            overflow-x: auto;
+            font-size: 0.9em;
+        }
+        code.inline {
+            background: #f5f5f5;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 0.9em;
+        }
+        ul { padding-left: 24px; }
+        li { margin-bottom: 6px; }
+        .tier-badge {
+            display: inline-block;
+            padding: 2px 10px;
+            border-radius: 12px;
+            font-size: 0.82em;
+            font-weight: 600;
+            margin-right: 6px;
+        }
+        .tier-1 { background: #e8f4f8; color: #2980b9; border: 1px solid #3498db; }
+        .tier-2 { background: #fef9e7; color: #d68910; border: 1px solid #f39c12; }
+        .tier-3 { background: #eafaf1; color: #1e8449; border: 1px solid #27ae60; }
+        .tier-proj { background: #f5f5f5; color: #7f8c8d; border: 1px solid #95a5a6; }
+        footer {
+            margin-top: 40px;
+            padding-top: 20px;
+            border-top: 1px solid #dee2e6;
+            color: #7f8c8d;
+            font-size: 0.85em;
+        }
+    </style>
+</head>
+<body>
+    <article>
+        <header>
+            <h1>GloVe Upgrade Analysis</h1>
+            <div class="timestamp">Generated: 2026-04-16 19:50:30</div>
+            <div class="report-meta">
+                <span class="meta-label">Workspace:</span> <code>/Users/joshua/Developer/AspenESS/BusinessLogic.Transformation</code><br>
+                <span class="meta-label">Topic:</span> Semantic bridge embedding model upgrade path from GloVe to modern alternatives
+            </div>
+            <div class="executive-summary">
+                <p>The APE semantic bridge's GloVe layer returned degenerate coordinates (all faces at origin, 0.0 coherence) because static 2014-era word vectors cannot disambiguate domain-specific vocabulary like software architecture concepts. Three tiers of replacement are available: sentence-level contextual embeddings (immediate drop-in), domain-adapted fine-tuning (highest precision), and frontier commercial APIs (lowest effort). The recommended path is BGE-large-en-v1.5 as a first swap, followed by contrastive fine-tuning on architecture concept pairs if the domain ceiling persists.</p>
+            </div>
+        </header>
+        <main>
+
+            <h2>The Problem: Why GloVe Failed</h2>
+
+            <section class="error-section">
+                <h3>Observed Failure Mode</h3>
+                <p>All 12 philosophical faces returned coordinates <code class="inline">(0, 0)</code> with <strong>0.4 weight</strong> and <strong>0.0 coherence</strong>. This is a known domain-specific ceiling — not a bug in the bridge logic.</p>
+            </section>
+
+            <p>Three root causes compound:</p>
+            <table>
+                <thead>
+                    <tr><th>Cause</th><th>Explanation</th></tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><strong>Static vectors</strong></td>
+                        <td>GloVe assigns one vector per word regardless of context. "Architecture" (building) and "architecture" (software) are identical.</td>
+                    </tr>
+                    <tr>
+                        <td><strong>No compositional semantics</strong></td>
+                        <td>Multi-word concepts like "hierarchical coordination" or "behavioral schema" have no single vector. Averaging sub-word vectors dilutes meaning to the centroid.</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Training corpus mismatch</strong></td>
+                        <td>GloVe was trained on Wikipedia/Gigaword. Software architecture vocabulary is sparse in those corpora, so domain terms cluster near generic regions of the space.</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h2>Upgrade Ladder</h2>
+
+            <figure class="mermaid-diagram">
+                <svg overflow="visible" id="diagram-glove-upgrade" width="100%" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" class="flowchart" style="max-width: 1211.68px; background-color: transparent;" viewBox="-50.0 -50.0 1311.6796875 850.0" role="graphics-document document" aria-roledescription="flowchart-v2"><style>#diagram-glove-upgrade{font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif;font-size:16px;fill:#2c3e50;}@keyframes edge-animation-frame{from{stroke-dashoffset:0;}}@keyframes dash{to{stroke-dashoffset:0;}}#diagram-glove-upgrade .edge-animation-slow{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 50s linear infinite;stroke-linecap:round;}#diagram-glove-upgrade .edge-animation-fast{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 20s linear infinite;stroke-linecap:round;}#diagram-glove-upgrade .error-icon{fill:#fdf0ef;}#diagram-glove-upgrade .error-text{fill:#e74c3c;stroke:#e74c3c;}#diagram-glove-upgrade .edge-thickness-normal{stroke-width:1px;}#diagram-glove-upgrade .edge-thickness-thick{stroke-width:3.5px;}#diagram-glove-upgrade .edge-pattern-solid{stroke-dasharray:0;}#diagram-glove-upgrade .edge-thickness-invisible{stroke-width:0;fill:none;}#diagram-glove-upgrade .edge-pattern-dashed{stroke-dasharray:3;}#diagram-glove-upgrade .edge-pattern-dotted{stroke-dasharray:2;}#diagram-glove-upgrade .marker{fill:#34495e;stroke:#34495e;}#diagram-glove-upgrade .marker.cross{stroke:#34495e;}#diagram-glove-upgrade svg{font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif;font-size:16px;}#diagram-glove-upgrade p{margin:0;}#diagram-glove-upgrade .label{font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif;color:#2c3e50;}#diagram-glove-upgrade .cluster-label text{fill:#2c3e50;}#diagram-glove-upgrade .cluster-label span{color:#2c3e50;}#diagram-glove-upgrade .cluster-label span p{background-color:transparent;}#diagram-glove-upgrade .label text,#diagram-glove-upgrade span{fill:#2c3e50;color:#2c3e50;}#diagram-glove-upgrade .node rect,#diagram-glove-upgrade .node circle,#diagram-glove-upgrade .node ellipse,#diagram-glove-upgrade .node polygon,#diagram-glove-upgrade .node path{fill:#e8f4f8;stroke:#3498db;stroke-width:1px;}#diagram-glove-upgrade .rough-node .label text,#diagram-glove-upgrade .node .label text,#diagram-glove-upgrade .image-shape .label,#diagram-glove-upgrade .icon-shape .label{text-anchor:middle;}#diagram-glove-upgrade .node .katex path{fill:#000;stroke:#000;stroke-width:1px;}#diagram-glove-upgrade .rough-node .label,#diagram-glove-upgrade .node .label,#diagram-glove-upgrade .image-shape .label,#diagram-glove-upgrade .icon-shape .label{text-align:center;}#diagram-glove-upgrade .node.clickable{cursor:pointer;}#diagram-glove-upgrade .root .anchor path{fill:#34495e!important;stroke-width:0;stroke:#34495e;}#diagram-glove-upgrade .arrowheadPath{fill:#0b0b0b;}#diagram-glove-upgrade .edgePath .path{stroke:#34495e;stroke-width:2.0px;}#diagram-glove-upgrade .flowchart-link{stroke:#34495e;fill:none;}#diagram-glove-upgrade .edgeLabel{background-color:#f5f5f5;text-align:center;}#diagram-glove-upgrade .edgeLabel p{background-color:#f5f5f5;}#diagram-glove-upgrade .edgeLabel rect{opacity:0.5;background-color:#f5f5f5;fill:#f5f5f5;}#diagram-glove-upgrade .labelBkg{background-color:rgba(245, 245, 245, 0.5);}#diagram-glove-upgrade .cluster rect{fill:#f8f9fa;stroke:#dee2e6;stroke-width:1px;}#diagram-glove-upgrade .cluster text{fill:#2c3e50;}#diagram-glove-upgrade .cluster span{color:#2c3e50;}#diagram-glove-upgrade div.mermaidTooltip{position:absolute;text-align:center;max-width:200px;padding:2px;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif;font-size:12px;background:#eafaf1;border:1px solid #27ae60;border-radius:2px;pointer-events:none;z-index:100;}#diagram-glove-upgrade .flowchartTitleText{text-anchor:middle;font-size:18px;fill:#2c3e50;}#diagram-glove-upgrade rect.text{fill:none;stroke-width:0;}#diagram-glove-upgrade .icon-shape,#diagram-glove-upgrade .image-shape{background-color:#f5f5f5;text-align:center;}#diagram-glove-upgrade .icon-shape p,#diagram-glove-upgrade .image-shape p{background-color:#f5f5f5;padding:2px;}#diagram-glove-upgrade .icon-shape rect,#diagram-glove-upgrade .image-shape rect{opacity:0.5;background-color:#f5f5f5;fill:#f5f5f5;}#diagram-glove-upgrade .label-icon{display:inline-block;height:1em;overflow:visible;vertical-align:-0.125em;}#diagram-glove-upgrade .node .label-icon path{fill:currentColor;stroke:revert;stroke-width:revert;}#diagram-glove-upgrade :root{--mermaid-font-family:"trebuchet ms",verdana,arial,sans-serif;}#diagram-glove-upgrade .current&gt;*{fill:#fdf0ef!important;stroke:#e74c3c!important;color:#2c3e50!important;}#diagram-glove-upgrade .current span{fill:#fdf0ef!important;stroke:#e74c3c!important;color:#2c3e50!important;}#diagram-glove-upgrade .current tspan{fill:#2c3e50!important;}#diagram-glove-upgrade .tier1&gt;*{fill:#e8f4f8!important;stroke:#3498db!important;color:#2c3e50!important;}#diagram-glove-upgrade .tier1 span{fill:#e8f4f8!important;stroke:#3498db!important;color:#2c3e50!important;}#diagram-glove-upgrade .tier1 tspan{fill:#2c3e50!important;}#diagram-glove-upgrade .tier2&gt;*{fill:#fef9e7!important;stroke:#f39c12!important;color:#34495e!important;}#diagram-glove-upgrade .tier2 span{fill:#fef9e7!important;stroke:#f39c12!important;color:#34495e!important;}#diagram-glove-upgrade .tier2 tspan{fill:#34495e!important;}#diagram-glove-upgrade .tier3&gt;*{fill:#eafaf1!important;stroke:#27ae60!important;color:#2c3e50!important;}#diagram-glove-upgrade .tier3 span{fill:#eafaf1!important;stroke:#27ae60!important;color:#2c3e50!important;}#diagram-glove-upgrade .tier3 tspan{fill:#2c3e50!important;}#diagram-glove-upgrade .proj&gt;*{fill:#f5f5f5!important;stroke:#95a5a6!important;color:#34495e!important;}#diagram-glove-upgrade .proj span{fill:#f5f5f5!important;stroke:#95a5a6!important;color:#34495e!important;}#diagram-glove-upgrade .proj tspan{fill:#34495e!important;}</style><g><marker id="diagram-glove-upgrade_flowchart-v2-pointEnd" class="marker flowchart-v2" viewBox="0 0 10 10" refX="5" refY="5" markerUnits="userSpaceOnUse" markerWidth="8" markerHeight="8" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"/></marker><marker id="diagram-glove-upgrade_flowchart-v2-pointStart" class="marker flowchart-v2" viewBox="0 0 10 10" refX="4.5" refY="5" markerUnits="userSpaceOnUse" markerWidth="8" markerHeight="8" orient="auto"><path d="M 0 5 L 10 10 L 10 0 z" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"/></marker><marker id="diagram-glove-upgrade_flowchart-v2-circleEnd" class="marker flowchart-v2" viewBox="0 0 10 10" refX="11" refY="5" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><circle cx="5" cy="5" r="5" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"/></marker><marker id="diagram-glove-upgrade_flowchart-v2-circleStart" class="marker flowchart-v2" viewBox="0 0 10 10" refX="-1" refY="5" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><circle cx="5" cy="5" r="5" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"/></marker><marker id="diagram-glove-upgrade_flowchart-v2-crossEnd" class="marker cross flowchart-v2" viewBox="0 0 11 11" refX="12" refY="5.2" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><path d="M 1,1 l 9,9 M 10,1 l -9,9" class="arrowMarkerPath" style="stroke-width: 2; stroke-dasharray: 1, 0;"/></marker><marker id="diagram-glove-upgrade_flowchart-v2-crossStart" class="marker cross flowchart-v2" viewBox="0 0 11 11" refX="-1" refY="5.2" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><path d="M 1,1 l 9,9 M 10,1 l -9,9" class="arrowMarkerPath" style="stroke-width: 2; stroke-dasharray: 1, 0;"/></marker><g class="root"><g class="clusters"><g class="cluster" id="Projection" data-look="classic"><rect style="" x="93.63671875" y="614" width="980.96484375" height="128"/><g class="cluster-label" transform="translate(525.650390625, 614)"><foreignObject width="116.9375" height="24"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="nodeLabel"><p>Projection Layer</p></span></div></foreignObject></g></g><g class="cluster" id="Tier3" data-look="classic"><rect style="" x="593.4765625" y="412" width="610.203125" height="152"/><g class="cluster-label" transform="translate(830.9609375, 412)"><foreignObject width="135.234375" height="24"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="nodeLabel"><p>Tier 3: Frontier API</p></span></div></foreignObject></g></g><g class="cluster" id="Tier2" data-look="classic"><rect style="" x="10.3828125" y="412" width="563.09375" height="152"/><g class="cluster-label" transform="translate(197.7734375, 412)"><foreignObject width="188.3125" height="24"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="nodeLabel"><p>Tier 2: Domain Adaptation</p></span></div></foreignObject></g></g><g class="cluster" id="Tier1" data-look="classic"><rect style="" x="8" y="210" width="1147.609375" height="128"/><g class="cluster-label" transform="translate(481.8046875, 210)"><foreignObject width="200" height="48"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table; white-space: break-spaces; line-height: 1.5; max-width: 200px; text-align: center; width: 200px;"><span class="nodeLabel"><p>Tier 1: Drop-in Replacement</p></span></div></foreignObject></g></g><g class="cluster" id="Current" data-look="classic"><rect style="" x="53.65625" y="8" width="1020.9453125" height="128"/><g class="cluster-label" transform="translate(515.48046875, 8)"><foreignObject width="97.296875" height="24"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="nodeLabel"><p>Current State</p></span></div></foreignObject></g></g></g><g class="edgePaths"><path d="M554.434,84.464L485.55,93.053C416.667,101.642,278.9,118.821,210.016,133.577C141.133,148.333,141.133,160.667,141.133,173C141.133,185.333,141.133,197.667,141.133,207.333C141.133,217,141.133,224,141.133,227.5L141.133,231" id="L_G_SBERT_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style=";" data-edge="true" data-et="edge" data-id="L_G_SBERT_0" data-points="W3sieCI6NTU0LjQzMzU5Mzc1LCJ5Ijo4NC40NjM2MTY3ODMyMzgwN30seyJ4IjoxNDEuMTMyODEyNSwieSI6MTM2fSx7IngiOjE0MS4xMzI4MTI1LCJ5IjoxNzN9LHsieCI6MTQxLjEzMjgxMjUsInkiOjIxMH0seyJ4IjoxNDEuMTMyODEyNSwieSI6MjM1fV0=" marker-end="url(#diagram-glove-upgrade_flowchart-v2-pointEnd)"/><path d="M654.941,111L655.001,115.167C655.06,119.333,655.178,127.667,655.238,138C655.297,148.333,655.297,160.667,655.297,173C655.297,185.333,655.297,197.667,655.297,207.333C655.297,217,655.297,224,655.297,227.5L655.297,231" id="L_G_BGE_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style=";" data-edge="true" data-et="edge" data-id="L_G_BGE_0" data-points="W3sieCI6NjU0Ljk0MTM0NTIxNDg0MzgsInkiOjExMX0seyJ4Ijo2NTUuMjk2ODc1LCJ5IjoxMzZ9LHsieCI6NjU1LjI5Njg3NSwieSI6MTczfSx7IngiOjY1NS4yOTY4NzUsInkiOjIxMH0seyJ4Ijo2NTUuMjk2ODc1LCJ5IjoyMzV9XQ==" marker-end="url(#diagram-glove-upgrade_flowchart-v2-pointEnd)"/><path d="M754.34,88.154L803.683,96.128C853.026,104.102,951.712,120.051,1001.055,134.192C1050.398,148.333,1050.398,160.667,1050.398,173C1050.398,185.333,1050.398,197.667,1050.398,207.333C1050.398,217,1050.398,224,1050.398,227.5L1050.398,231" id="L_G_E5_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style=";" data-edge="true" data-et="edge" data-id="L_G_E5_0" data-points="W3sieCI6NzU0LjMzOTg0Mzc1LCJ5Ijo4OC4xNTM1NjIzNzQ4NTA4MX0seyJ4IjoxMDUwLjM5ODQzNzUsInkiOjEzNn0seyJ4IjoxMDUwLjM5ODQzNzUsInkiOjE3M30seyJ4IjoxMDUwLjM5ODQzNzUsInkiOjIxMH0seyJ4IjoxMDUwLjM5ODQzNzUsInkiOjIzNX1d" marker-end="url(#diagram-glove-upgrade_flowchart-v2-pointEnd)"/><path d="M138.572,313L138.298,317.167C138.024,321.333,137.477,329.667,137.203,340C136.93,350.333,136.93,362.667,136.93,375C136.93,387.333,136.93,399.667,136.93,411.333C136.93,423,136.93,434,136.93,439.5L136.93,445" id="L_SBERT_FT_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style=";" data-edge="true" data-et="edge" data-id="L_SBERT_FT_0" data-points="W3sieCI6MTM4LjU3MTUzMzIwMzEyNSwieSI6MzEzfSx7IngiOjEzNi45Mjk2ODc1LCJ5IjozMzh9LHsieCI6MTM2LjkyOTY4NzUsInkiOjM3NX0seyJ4IjoxMzYuOTI5Njg3NSwieSI6NDEyfSx7IngiOjEzNi45Mjk2ODc1LCJ5Ijo0NDl9XQ==" marker-end="url(#diagram-glove-upgrade_flowchart-v2-pointEnd)"/><path d="M589.056,313L581.979,317.167C574.902,321.333,560.748,329.667,553.671,340C546.594,350.333,546.594,362.667,546.594,375C546.594,387.333,546.594,399.667,494.23,415.548C441.866,431.429,337.138,450.858,284.774,460.572L232.409,470.287" id="L_BGE_FT_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style=";" data-edge="true" data-et="edge" data-id="L_BGE_FT_0" data-points="W3sieCI6NTg5LjA1NTkwODIwMzEyNSwieSI6MzEzfSx7IngiOjU0Ni41OTM3NSwieSI6MzM4fSx7IngiOjU0Ni41OTM3NSwieSI6Mzc1fSx7IngiOjU0Ni41OTM3NSwieSI6NDEyfSx7IngiOjIyOC40NzY1NjI1LCJ5Ijo0NzEuMDE2NDE5NzAzNjQ0NH1d" marker-end="url(#diagram-glove-upgrade_flowchart-v2-pointEnd)"/><path d="M239.266,297.492L267.467,304.244C295.669,310.995,352.073,324.497,380.275,337.415C408.477,350.333,408.477,362.667,408.477,375C408.477,387.333,408.477,399.667,408.477,409.333C408.477,419,408.477,426,408.477,429.5L408.477,433" id="L_SBERT_INST_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style=";" data-edge="true" data-et="edge" data-id="L_SBERT_INST_0" data-points="W3sieCI6MjM5LjI2NTYyNSwieSI6Mjk3LjQ5MjIyNjc2Nzk3MTk0fSx7IngiOjQwOC40NzY1NjI1LCJ5IjozMzh9LHsieCI6NDA4LjQ3NjU2MjUsInkiOjM3NX0seyJ4Ijo0MDguNDc2NTYyNSwieSI6NDEyfSx7IngiOjQwOC40NzY1NjI1LCJ5Ijo0Mzd9XQ==" marker-end="url(#diagram-glove-upgrade_flowchart-v2-pointEnd)"/><path d="M716.234,313L722.745,317.167C729.255,321.333,742.276,329.667,748.786,340C755.297,350.333,755.297,362.667,755.297,375C755.297,387.333,755.297,399.667,755.297,411.333C755.297,423,755.297,434,755.297,439.5L755.297,445" id="L_BGE_VOY_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style=";" data-edge="true" data-et="edge" data-id="L_BGE_VOY_0" data-points="W3sieCI6NzE2LjIzNDM3NSwieSI6MzEzfSx7IngiOjc1NS4yOTY4NzUsInkiOjMzOH0seyJ4Ijo3NTUuMjk2ODc1LCJ5IjozNzV9LHsieCI6NzU1LjI5Njg3NSwieSI6NDEyfSx7IngiOjc1NS4yOTY4NzUsInkiOjQ0OX1d" marker-end="url(#diagram-glove-upgrade_flowchart-v2-pointEnd)"/><path d="M1050.398,313L1050.398,317.167C1050.398,321.333,1050.398,329.667,1050.398,340C1050.398,350.333,1050.398,362.667,1050.398,375C1050.398,387.333,1050.398,399.667,1050.398,411.333C1050.398,423,1050.398,434,1050.398,439.5L1050.398,445" id="L_E5_OAI_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style=";" data-edge="true" data-et="edge" data-id="L_E5_OAI_0" data-points="W3sieCI6MTA1MC4zOTg0Mzc1LCJ5IjozMTN9LHsieCI6MTA1MC4zOTg0Mzc1LCJ5IjozMzh9LHsieCI6MTA1MC4zOTg0Mzc1LCJ5IjozNzV9LHsieCI6MTA1MC4zOTg0Mzc1LCJ5Ijo0MTJ9LHsieCI6MTA1MC4zOTg0Mzc1LCJ5Ijo0NDl9XQ==" marker-end="url(#diagram-glove-upgrade_flowchart-v2-pointEnd)"/><path d="M136.93,527L136.93,533.167C136.93,539.333,136.93,551.667,136.93,562C136.93,572.333,136.93,580.667,136.93,589C136.93,597.333,136.93,605.667,194.291,618.067C251.652,630.467,366.373,646.934,423.734,655.168L481.095,663.402" id="L_FT_UMAP_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style=";" data-edge="true" data-et="edge" data-id="L_FT_UMAP_0" data-points="W3sieCI6MTM2LjkyOTY4NzUsInkiOjUyN30seyJ4IjoxMzYuOTI5Njg3NSwieSI6NTY0fSx7IngiOjEzNi45Mjk2ODc1LCJ5Ijo1ODl9LHsieCI6MTM2LjkyOTY4NzUsInkiOjYxNH0seyJ4Ijo0ODUuMDU0Njg3NSwieSI6NjYzLjk3MDAzNzMyMTkzMjN9XQ==" marker-end="url(#diagram-glove-upgrade_flowchart-v2-pointEnd)"/><path d="M408.477,539L408.477,543.167C408.477,547.333,408.477,555.667,408.477,564C408.477,572.333,408.477,580.667,408.477,589C408.477,597.333,408.477,605.667,420.614,614.289C432.751,622.912,457.025,631.824,469.163,636.28L481.3,640.736" id="L_INST_UMAP_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style=";" data-edge="true" data-et="edge" data-id="L_INST_UMAP_0" data-points="W3sieCI6NDA4LjQ3NjU2MjUsInkiOjUzOX0seyJ4Ijo0MDguNDc2NTYyNSwieSI6NTY0fSx7IngiOjQwOC40NzY1NjI1LCJ5Ijo1ODl9LHsieCI6NDA4LjQ3NjU2MjUsInkiOjYxNH0seyJ4Ijo0ODUuMDU0Njg3NSwieSI6NjQyLjExNDkxMDU5MDIzODl9XQ==" marker-end="url(#diagram-glove-upgrade_flowchart-v2-pointEnd)"/><path d="M1050.398,527L1050.398,533.167C1050.398,539.333,1050.398,551.667,1050.398,562C1050.398,572.333,1050.398,580.667,1050.398,589C1050.398,597.333,1050.398,605.667,989.416,618.18C928.433,630.693,806.468,647.386,745.485,655.733L684.502,664.08" id="L_OAI_UMAP_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style=";" data-edge="true" data-et="edge" data-id="L_OAI_UMAP_0" data-points="W3sieCI6MTA1MC4zOTg0Mzc1LCJ5Ijo1Mjd9LHsieCI6MTA1MC4zOTg0Mzc1LCJ5Ijo1NjR9LHsieCI6MTA1MC4zOTg0Mzc1LCJ5Ijo1ODl9LHsieCI6MTA1MC4zOTg0Mzc1LCJ5Ijo2MTR9LHsieCI6NjgwLjUzOTA2MjUsInkiOjY2NC42MjIxNTc2MTk1MDExfV0=" marker-end="url(#diagram-glove-upgrade_flowchart-v2-pointEnd)"/><path d="M755.297,527L755.297,533.167C755.297,539.333,755.297,551.667,755.297,562C755.297,572.333,755.297,580.667,755.297,589C755.297,597.333,755.297,605.667,743.462,614.224C731.628,622.782,707.958,631.563,696.124,635.954L684.289,640.345" id="L_VOY_UMAP_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style=";" data-edge="true" data-et="edge" data-id="L_VOY_UMAP_0" data-points="W3sieCI6NzU1LjI5Njg3NSwieSI6NTI3fSx7IngiOjc1NS4yOTY4NzUsInkiOjU2NH0seyJ4Ijo3NTUuMjk2ODc1LCJ5Ijo1ODl9LHsieCI6NzU1LjI5Njg3NSwieSI6NjE0fSx7IngiOjY4MC41MzkwNjI1LCJ5Ijo2NDEuNzM2MjMxODg0MDU3OX1d" marker-end="url(#diagram-glove-upgrade_flowchart-v2-pointEnd)"/></g><g class="edgeLabels"><g class="edgeLabel" transform="translate(141.1328125, 173)"><g class="label" data-id="L_G_SBERT_0" transform="translate(-28.953125, -12)"><foreignObject width="57.90625" height="24"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel"><p>Replace</p></span></div></foreignObject></g></g><g class="edgeLabel" transform="translate(655.296875, 173)"><g class="label" data-id="L_G_BGE_0" transform="translate(-28.953125, -12)"><foreignObject width="57.90625" height="24"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel"><p>Replace</p></span></div></foreignObject></g></g><g class="edgeLabel" transform="translate(1050.3984375, 173)"><g class="label" data-id="L_G_E5_0" transform="translate(-28.953125, -12)"><foreignObject width="57.90625" height="24"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel"><p>Replace</p></span></div></foreignObject></g></g><g class="edgeLabel" transform="translate(136.9296875, 375)"><g class="label" data-id="L_SBERT_FT_0" transform="translate(-60.8828125, -12)"><foreignObject width="121.765625" height="24"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel"><p>If ceiling persists</p></span></div></foreignObject></g></g><g class="edgeLabel" transform="translate(546.59375, 375)"><g class="label" data-id="L_BGE_FT_0" transform="translate(-60.8828125, -12)"><foreignObject width="121.765625" height="24"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel"><p>If ceiling persists</p></span></div></foreignObject></g></g><g class="edgeLabel" transform="translate(408.4765625, 375)"><g class="label" data-id="L_SBERT_INST_0" transform="translate(-50.3515625, -12)"><foreignObject width="100.703125" height="24"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel"><p>Small-data alt</p></span></div></foreignObject></g></g><g class="edgeLabel" transform="translate(755.296875, 375)"><g class="label" data-id="L_BGE_VOY_0" transform="translate(-54.171875, -12)"><foreignObject width="108.34375" height="24"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel"><p>Commercial alt</p></span></div></foreignObject></g></g><g class="edgeLabel" transform="translate(1050.3984375, 375)"><g class="label" data-id="L_E5_OAI_0" transform="translate(-54.171875, -12)"><foreignObject width="108.34375" height="24"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel"><p>Commercial alt</p></span></div></foreignObject></g></g><g class="edgeLabel"><g class="label" data-id="L_FT_UMAP_0" transform="translate(0, 0)"><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel"></span></div></foreignObject></g></g><g class="edgeLabel"><g class="label" data-id="L_INST_UMAP_0" transform="translate(0, 0)"><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel"></span></div></foreignObject></g></g><g class="edgeLabel"><g class="label" data-id="L_OAI_UMAP_0" transform="translate(0, 0)"><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel"></span></div></foreignObject></g></g><g class="edgeLabel"><g class="label" data-id="L_VOY_UMAP_0" transform="translate(0, 0)"><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel"></span></div></foreignObject></g></g></g><g class="nodes"><g class="node default current" id="flowchart-G-0" transform="translate(654.38671875, 72)"><rect class="basic label-container" style="fill:#fdf0ef !important;stroke:#e74c3c !important" x="-99.953125" y="-39" width="199.90625" height="78"/><g class="label" style="color:#2c3e50 !important" transform="translate(-69.953125, -24)"><rect/><foreignObject width="139.90625" height="48"><div style="color: rgb(44, 62, 80) !important; display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;" xmlns="http://www.w3.org/1999/xhtml"><span style="color:#2c3e50 !important" class="nodeLabel"><p>GloVe (2014)<br />Static word vectors</p></span></div></foreignObject></g></g><g class="node default tier1" id="flowchart-SBERT-1" transform="translate(141.1328125, 274)"><rect class="basic label-container" style="fill:#e8f4f8 !important;stroke:#3498db !important" x="-98.1328125" y="-39" width="196.265625" height="78"/><g class="label" style="color:#2c3e50 !important" transform="translate(-68.1328125, -24)"><rect/><foreignObject width="136.265625" height="48"><div style="color: rgb(44, 62, 80) !important; display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;" xmlns="http://www.w3.org/1999/xhtml"><span style="color:#2c3e50 !important" class="nodeLabel"><p>Sentence-BERT<br />all-mpnet-base-v2</p></span></div></foreignObject></g></g><g class="node default tier1" id="flowchart-BGE-2" transform="translate(655.296875, 274)"><rect class="basic label-container" style="fill:#e8f4f8 !important;stroke:#3498db !important" x="-103.8203125" y="-39" width="207.640625" height="78"/><g class="label" style="color:#2c3e50 !important" transform="translate(-73.8203125, -24)"><rect/><foreignObject width="147.640625" height="48"><div style="color: rgb(44, 62, 80) !important; display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;" xmlns="http://www.w3.org/1999/xhtml"><span style="color:#2c3e50 !important" class="nodeLabel"><p>BGE-large-en-v1.5<br />(BAAI, MTEB leader)</p></span></div></foreignObject></g></g><g class="node default tier1" id="flowchart-E5-3" transform="translate(1050.3984375, 274)"><rect class="basic label-container" style="fill:#e8f4f8 !important;stroke:#3498db !important" x="-70.2109375" y="-39" width="140.421875" height="78"/><g class="label" style="color:#2c3e50 !important" transform="translate(-40.2109375, -24)"><rect/><foreignObject width="80.421875" height="48"><div style="color: rgb(44, 62, 80) !important; display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;" xmlns="http://www.w3.org/1999/xhtml"><span style="color:#2c3e50 !important" class="nodeLabel"><p>E5 Family<br />(Microsoft)</p></span></div></foreignObject></g></g><g class="node default tier2" id="flowchart-FT-4" transform="translate(136.9296875, 488)"><rect class="basic label-container" style="fill:#fef9e7 !important;stroke:#f39c12 !important" x="-91.546875" y="-39" width="183.09375" height="78"/><g class="label" style="color:#34495e !important" transform="translate(-61.546875, -24)"><rect/><foreignObject width="123.09375" height="48"><div style="color: rgb(52, 73, 94) !important; display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;" xmlns="http://www.w3.org/1999/xhtml"><span style="color:#34495e !important" class="nodeLabel"><p>Fine-tune SBERT<br />Contrastive pairs</p></span></div></foreignObject></g></g><g class="node default tier2" id="flowchart-INST-5" transform="translate(408.4765625, 488)"><rect class="basic label-container" style="fill:#fef9e7 !important;stroke:#f39c12 !important" x="-130" y="-51" width="260" height="102"/><g class="label" style="color:#34495e !important" transform="translate(-100, -36)"><rect/><foreignObject width="200" height="72"><div style="color: rgb(52, 73, 94) !important; display: table; white-space: break-spaces; line-height: 1.5; max-width: 200px; text-align: center; width: 200px;" xmlns="http://www.w3.org/1999/xhtml"><span style="color:#34495e !important" class="nodeLabel"><p>Instruction-tuned<br />instructor-xl / nomic-embed</p></span></div></foreignObject></g></g><g class="node default tier3" id="flowchart-OAI-6" transform="translate(1050.3984375, 488)"><rect class="basic label-container" style="fill:#eafaf1 !important;stroke:#27ae60 !important" x="-118.28125" y="-39" width="236.5625" height="78"/><g class="label" style="color:#2c3e50 !important" transform="translate(-88.28125, -24)"><rect/><foreignObject width="176.5625" height="48"><div style="color: rgb(44, 62, 80) !important; display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;" xmlns="http://www.w3.org/1999/xhtml"><span style="color:#2c3e50 !important" class="nodeLabel"><p>text-embedding-3-large<br />(OpenAI)</p></span></div></foreignObject></g></g><g class="node default tier3" id="flowchart-VOY-7" transform="translate(755.296875, 488)"><rect class="basic label-container" style="fill:#eafaf1 !important;stroke:#27ae60 !important" x="-126.8203125" y="-39" width="253.640625" height="78"/><g class="label" style="color:#2c3e50 !important" transform="translate(-96.8203125, -24)"><rect/><foreignObject width="193.640625" height="48"><div style="color: rgb(44, 62, 80) !important; display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;" xmlns="http://www.w3.org/1999/xhtml"><span style="color:#2c3e50 !important" class="nodeLabel"><p>voyage-3 / voyage-code-3<br />(Voyage AI)</p></span></div></foreignObject></g></g><g class="node default proj" id="flowchart-UMAP-8" transform="translate(582.796875, 678)"><rect class="basic label-container" style="fill:#f5f5f5 !important;stroke:#95a5a6 !important" x="-97.7421875" y="-39" width="195.484375" height="78"/><g class="label" style="color:#34495e !important" transform="translate(-67.7421875, -24)"><rect/><foreignObject width="135.484375" height="48"><div style="color: rgb(52, 73, 94) !important; display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;" xmlns="http://www.w3.org/1999/xhtml"><span style="color:#34495e !important" class="nodeLabel"><p>UMAP / PaCMAP<br />+ anchor concepts</p></span></div></foreignObject></g></g></g></g></g></svg>
+                <figcaption>Figure 1: Three-tier upgrade path from GloVe to modern embedding models, with projection layer</figcaption>
+            </figure>
+
+            <h2>Tier 1: Contextual Sentence Embeddings</h2>
+            <p><span class="tier-badge tier-1">Drop-in</span> Biggest immediate improvement. Replace word-level averaging with whole-phrase embeddings that capture context.</p>
+
+            <table>
+                <thead>
+                    <tr><th>Model</th><th>Source</th><th>Dims</th><th>Strengths</th><th>Notes</th></tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><strong>all-mpnet-base-v2</strong></td>
+                        <td>sentence-transformers</td>
+                        <td>768</td>
+                        <td>Strong general-purpose, well-tested</td>
+                        <td>Good default if no domain tuning planned</td>
+                    </tr>
+                    <tr>
+                        <td><strong>bge-large-en-v1.5</strong></td>
+                        <td>BAAI (HuggingFace)</td>
+                        <td>1024</td>
+                        <td>MTEB leaderboard top-tier, retrieval-optimized</td>
+                        <td>Recommended first swap. Free, runs locally</td>
+                    </tr>
+                    <tr>
+                        <td><strong>E5-large-v2</strong></td>
+                        <td>Microsoft</td>
+                        <td>1024</td>
+                        <td>MTEB competitive, instruction-prefix support</td>
+                        <td>Alternative to BGE with similar performance</td>
+                    </tr>
+                    <tr>
+                        <td><strong>nomic-embed-text-v1.5</strong></td>
+                        <td>Nomic AI</td>
+                        <td>768</td>
+                        <td>Open-source, Matryoshka (variable dims)</td>
+                        <td>Can truncate to 256/384 dims for speed</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <section class="info-section">
+                <h3>Why This Tier Helps</h3>
+                <p>Sentence embeddings encode "hierarchical coordination" as a single coherent vector rather than averaging "hierarchical" + "coordination" independently. Context-dependent representations mean "architecture" near "software" produces a different embedding than "architecture" near "building." This alone should break the (0,0) clustering.</p>
+            </section>
+
+            <h2>Tier 2: Domain Adaptation</h2>
+            <p><span class="tier-badge tier-2">Precision</span> If Tier 1 moves the needle but doesn't fully resolve domain coherence, adapt the model to your specific vocabulary.</p>
+
+            <h3>Option A: Contrastive Fine-tuning</h3>
+            <ul>
+                <li>Take a Tier 1 model (e.g., BGE-large) and fine-tune on <strong>pairs of related/unrelated architecture concepts</strong></li>
+                <li>SBERT supports this directly with <code class="inline">InputExample</code> pairs and contrastive loss</li>
+                <li>A few thousand pairs (drawn from your own documentation, specs, ADRs) can dramatically improve in-domain coherence</li>
+                <li>Example pair: ("behavioral schema processing", "schema-driven code generation") = related; ("behavioral schema processing", "CSS grid layout") = unrelated</li>
+            </ul>
+
+            <h3>Option B: Instruction-tuned Models</h3>
+            <ul>
+                <li><strong>instructor-xl</strong>: Prefix queries with task descriptions — "Represent this software architecture concept for semantic similarity"</li>
+                <li><strong>nomic-embed-text-v1.5</strong>: Supports task-type prefixes (<code class="inline">search_document:</code>, <code class="inline">search_query:</code>)</li>
+                <li>Often beats fine-tuning for small-data cases where you don't have thousands of labeled pairs</li>
+            </ul>
+
+            <section class="warning-section">
+                <h3>Effort vs. Payoff</h3>
+                <p>Fine-tuning requires curating concept pairs and running training. Only pursue this if Tier 1 still shows domain-ceiling behavior (concepts clustering too tightly or coordinates lacking discriminative spread). The instruction-tuned approach is lower effort and may suffice.</p>
+            </section>
+
+            <h2>Tier 3: Frontier Commercial APIs</h2>
+            <p><span class="tier-badge tier-3">Managed</span> Lowest self-hosting effort. Pay per token, get top-of-line performance.</p>
+
+            <table>
+                <thead>
+                    <tr><th>Model</th><th>Provider</th><th>Dims</th><th>Best For</th></tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><strong>text-embedding-3-large</strong></td>
+                        <td>OpenAI</td>
+                        <td>3072 (truncatable)</td>
+                        <td>General-purpose, broad coverage</td>
+                    </tr>
+                    <tr>
+                        <td><strong>voyage-3</strong></td>
+                        <td>Voyage AI</td>
+                        <td>1024</td>
+                        <td>High-quality retrieval, competitive pricing</td>
+                    </tr>
+                    <tr>
+                        <td><strong>voyage-code-3</strong></td>
+                        <td>Voyage AI</td>
+                        <td>1024</td>
+                        <td>Code and technical vocabulary — closest to software architecture content</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h2>The Projection Layer: Fixing the Coordinate Space</h2>
+            <p><span class="tier-badge tier-proj">All Tiers</span> The embedding is only one half. The coordinate projection matters equally.</p>
+
+            <p>The current bridge maps embeddings to a 2D coordinate space where all concepts collapsed to the origin. Even with better embeddings, a naive projection can reproduce this. The fix is structural:</p>
+
+            <table>
+                <thead>
+                    <tr><th>Technique</th><th>What It Does</th><th>Why It Helps</th></tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><strong>UMAP</strong></td>
+                        <td>Non-linear dimensionality reduction preserving local + global structure</td>
+                        <td>Maintains cluster separations that PCA/linear projections collapse</td>
+                    </tr>
+                    <tr>
+                        <td><strong>PaCMAP</strong></td>
+                        <td>Pairwise-Controlled Manifold Approximation</td>
+                        <td>Better global structure preservation than UMAP; fewer hyperparameters</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Anchor concepts</strong></td>
+                        <td>Hand-place 4-8 reference concepts at known coordinates</td>
+                        <td>Gives the space semantic orientation — "center" and "edge" become meaningful</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <section class="success-section">
+                <h3>Recommended Combination</h3>
+                <p>Domain-adapted embeddings + UMAP/PaCMAP + anchor concepts eliminates the "all clustered at origin" failure mode. The anchors give the coordinate space a semantic frame of reference, and the non-linear projection preserves the structure that the embeddings encode.</p>
+            </section>
+
+            <h2>Recommended Action Path</h2>
+
+            <table>
+                <thead>
+                    <tr><th>Step</th><th>Action</th><th>Effort</th><th>Expected Impact</th></tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>1</td>
+                        <td>Swap GloVe for <strong>bge-large-en-v1.5</strong> (local, free)</td>
+                        <td>Low — model download + inference code change</td>
+                        <td>Break the (0,0) clustering; get discriminative coordinates</td>
+                    </tr>
+                    <tr>
+                        <td>2</td>
+                        <td>Replace linear projection with <strong>UMAP</strong> + 6 anchor concepts</td>
+                        <td>Medium — projection code rewrite</td>
+                        <td>Meaningful coordinate semantics (not just relative distance)</td>
+                    </tr>
+                    <tr>
+                        <td>3</td>
+                        <td>If domain ceiling persists: <strong>contrastive fine-tune</strong> on architecture pairs</td>
+                        <td>Medium-High — curate pairs, run training</td>
+                        <td>Domain-specific coherence for software architecture vocabulary</td>
+                    </tr>
+                    <tr>
+                        <td>4</td>
+                        <td>Alternatively: try <strong>voyage-code-3</strong> API for zero-effort domain alignment</td>
+                        <td>Low — API integration</td>
+                        <td>Technical vocabulary coverage without training</td>
+                    </tr>
+                </tbody>
+            </table>
+
+        </main>
+        <footer>
+            <div class="timestamp">Generated: 2026-04-16 19:50:30</div>
+            <p>Analysis context: Advanced Prompting Engine semantic bridge measurement failure on software architecture vocabulary. GloVe coordinate-mode measurement returned degenerate results across all 12 philosophical dimensions.</p>
+        </footer>
+    </article>
+</body>
+</html>

@@ -1,29 +1,23 @@
 #!/usr/bin/env python3
-"""Build the geometric semantic bridge artifacts from word vectors.
+"""Build the geometric semantic bridge artifacts from BGE embeddings.
 
 This script runs on the DEVELOPER machine at build time — never at runtime.
 
-Vector source (selected automatically):
-  1. Model2Vec (preferred) — distilled sentence transformer at
-     ~/.cache/model2vec/minilm-distilled. 256d encoded, PCA-compressed to 100d.
-     Produces sentence-transformer-quality vectors for single words.
-  2. GloVe 6B 100d (fallback) — downloads ~130MB if not cached.
-
-GloVe is always loaded for vocabulary frequency ordering and as fallback.
-When Model2Vec is available, all 400K GloVe vocabulary words are re-encoded
-through Model2Vec and PCA-compressed to VECTOR_DIM. The rest of the pipeline
-(centroids, axis directions, face_sim, axis_proj, disambiguation, phrases,
-question matching, phase sim, vocabulary expansion) works identically on
-whichever vector source is active.
+Vector source: BAAI/bge-large-en-v1.5 via sentence-transformers at native 1024
+dimensions. No dimensionality reduction. No GloVe. No Model2Vec. Frequency
+ordering comes from wordfreq.
 
 Pre-computes per-word artifacts:
   - Discriminative face similarity: cosine(word, centroid) - mean → (N, 12)
   - Axis projections: dot(word, direction_unit) normalized by calibration → (N, 24)
-  - IDF weights from frequency rank → (N,)
+  - IDF weights from wordfreq Zipf rank → (N,)
 
 Artifacts saved:
   src/advanced_prompting_engine/data/semantic_bridge.npz
   src/advanced_prompting_engine/data/semantic_vocab.json
+
+Build-time dependencies (install via `pip install -e .[build]`):
+  sentence-transformers, torch, wordfreq, nltk
 
 Usage:
     python3 scripts/build_semantic_bridge.py
@@ -32,10 +26,7 @@ Usage:
 from __future__ import annotations
 
 import json
-import os
 import sys
-import urllib.request
-import zipfile
 from pathlib import Path
 
 import numpy as np
@@ -58,13 +49,10 @@ from advanced_prompting_engine.graph.canonical import BASE_QUESTIONS
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
-GLOVE_URL = "https://nlp.stanford.edu/data/glove.6B.zip"
-GLOVE_CACHE_DIR = Path.home() / ".cache" / "glove"
-GLOVE_ZIP_PATH = GLOVE_CACHE_DIR / "glove.6B.zip"
-GLOVE_TXT_PATH = GLOVE_CACHE_DIR / "glove.6B.100d.txt"
-VECTOR_DIM = 100
-TOP_K_FREQUENT = 15000  # Top 15K most frequent GloVe words
-MAX_GLOVE_WORDS = 400000  # Load all 400K GloVe vectors for centroid/axis construction
+BGE_MODEL_NAME = "BAAI/bge-large-en-v1.5"
+BGE_DIM = 1024  # native output dim — not a hard constraint, reported for clarity
+TOP_K_FREQUENT = 15000  # frequent English words to include in runtime vocab
+BGE_BATCH_SIZE = 64
 
 OUTPUT_DIR = PROJECT_ROOT / "src" / "advanced_prompting_engine" / "data"
 NPZ_PATH = OUTPUT_DIR / "semantic_bridge.npz"
@@ -72,7 +60,7 @@ VOCAB_PATH = OUTPUT_DIR / "semantic_vocab.json"
 
 
 # ---------------------------------------------------------------------------
-# Pole synonyms — curated to disambiguate each pole in GloVe space
+# Pole synonyms — curated to disambiguate each pole in embedding space
 # ---------------------------------------------------------------------------
 
 POLE_SYNONYMS: dict[str, list[str]] = {
@@ -87,37 +75,31 @@ POLE_SYNONYMS: dict[str, list[str]] = {
     "certain": ["definite", "assured", "confident", "established", "proven", "absolute", "verified"],
     "provisional": ["tentative", "temporary", "conditional", "preliminary", "revisable", "uncertain"],
     # Axiology
-    # Axiology — evaluation-specific. Avoid "objective"/"subjective" (overlaps Phenomenology),
-    # "contextual"/"situated" (overlaps Aesthetics), "universal" (overlaps Ontology).
     "absolute": ["unconditional", "invariant", "inherent", "intrinsic", "categorical", "non-negotiable"],
     "relative": ["conditional", "comparative", "dependent", "variable", "proportional", "graduated"],
     "quantitative": ["measurable", "numerical", "counted", "metric", "scored", "statistical"],
     "qualitative": ["descriptive", "interpretive", "narrative", "textured", "nuanced", "holistic"],
-    # Teleology — purpose-specific. Avoid common/broad words ("direct", "short", "present",
-    # "final", "long", "fundamental", "designed", "conscious") that attract all text.
+    # Teleology
     "immediate": ["proximate", "near", "tactical", "urgent", "pressing", "momentary"],
     "ultimate": ["destiny", "culmination", "telos", "paramount", "supreme", "terminal"],
     "intentional": ["deliberate", "purposeful", "willed", "motivated", "purposive", "teleological"],
     "emergent": ["spontaneous", "arising", "unplanned", "organic", "serendipitous", "unexpected"],
-    # Phenomenology — experience-specific. Avoid "independent" (overlaps Praxeology/Aesthetics),
-    # "fundamental" (overlaps Teleology), "structural" (overlaps Methodology).
+    # Phenomenology
     "objective": ["external", "observable", "measurable", "public", "factual", "verifiable"],
     "subjective": ["internal", "personal", "felt", "experienced", "private", "perceived", "lived"],
     "surface": ["apparent", "visible", "shallow", "exterior", "obvious", "manifest", "overt"],
     "deep": ["hidden", "underlying", "profound", "interior", "latent", "buried", "unconscious"],
-    # Ethics — morally specific vocabulary only. Avoid general action/outcome words
-    # that also describe physics or drama (no "action", "impact", "effect", "performance").
+    # Ethics
     "deontological": ["duty", "obligation", "principle", "commandment", "rights", "imperative", "law"],
     "consequential": ["welfare", "happiness", "suffering", "harm", "benefit", "utilitarian", "good"],
     "agent": ["character", "virtue", "conscience", "integrity", "moral", "righteous", "noble"],
     "act": ["deed", "conduct", "wrongdoing", "transgression", "sin", "justice", "judgment"],
-    # Aesthetics — art/beauty/form specific. Avoid generic intellectual vocabulary
-    # that overlaps with Epistemology or Methodology (no "intellectual", "theoretical", "cognitive").
+    # Aesthetics
     "autonomous": ["intrinsic", "pure", "self-contained", "formalist", "disinterested", "absolute"],
     "contextual": ["cultural", "historical", "situated", "institutional", "social", "tradition"],
     "sensory": ["perceptual", "beautiful", "visual", "auditory", "tactile", "sublime", "elegant"],
     "conceptual": ["artistic", "creative", "imaginative", "symbolic", "expressive", "aesthetic"],
-    # Praxeology — action-structure specific. "individual" means solo agent, not philosophical individuality.
+    # Praxeology
     "individual": ["solo", "singular", "alone", "solitary", "unilateral", "lone"],
     "coordinated": ["collaborative", "collective", "organized", "synchronized", "joint", "team"],
     "reactive": ["responsive", "defensive", "adapting", "following", "triggered", "passive"],
@@ -146,227 +128,39 @@ POLE_SYNONYMS: dict[str, list[str]] = {
 
 
 # ---------------------------------------------------------------------------
-# Algorithm 1: Counter-fitting (Mrksic et al. 2016 SGD, antonym-only + VSP)
+# Face vernacular — object-level vocabulary per face
 # ---------------------------------------------------------------------------
+# These words are NOT pole synonyms (pole synonyms must preserve opposition
+# for axis direction vectors). They are face-identifying object-level
+# vocabulary used only to enrich the face centroid. Feeds the centroid with
+# concrete words that actually appear in domain texts, not just meta-level
+# philosophical terms. Added at 4x weight in centroid construction.
 
-def _build_antonym_pairs(
-    full_vocab: dict[str, int],
-) -> dict[int, set[int]]:
-    """Build antonym constraint sets from POLE_SYNONYMS.
-
-    For each of 24 axes, all words in the low-pole synonym cluster are
-    antonyms of all words in the high-pole synonym cluster. This yields
-    approximately 24 x 7 x 7 = ~1176 antonym pairs.
-
-    Returns:
-        A: word_idx -> set of antonym word indices (bidirectional)
-    """
-    A: dict[int, set[int]] = {}
-
-    for face in ALL_FACES:
-        defn = FACE_DEFINITIONS[face]
-        for low_key, high_key in [
-            ("x_axis_low", "x_axis_high"),
-            ("y_axis_low", "y_axis_high"),
-        ]:
-            low_label = defn[low_key].lower()
-            high_label = defn[high_key].lower()
-            low_words = [low_label] + POLE_SYNONYMS.get(low_label, [])
-            high_words = [high_label] + POLE_SYNONYMS.get(high_label, [])
-
-            low_indices = [full_vocab[w] for w in low_words if w in full_vocab]
-            high_indices = [full_vocab[w] for w in high_words if w in full_vocab]
-
-            # Cross-product: every low word is antonym of every high word
-            for idx in low_indices:
-                if idx not in A:
-                    A[idx] = set()
-                A[idx].update(high_indices)
-            for idx in high_indices:
-                if idx not in A:
-                    A[idx] = set()
-                A[idx].update(low_indices)
-
-    return A
-
-
-def _build_vsp_neighbors(
-    full_vectors: np.ndarray,
-    constrained_indices: list[int],
-    k: int = 10,
-    rho: float = 0.2,
-) -> dict[int, list[tuple[int, float]]]:
-    """Build Vector Space Preservation (VSP) neighbor sets.
-
-    For each constrained word, find its top-K neighbors within rho cosine
-    distance in the ORIGINAL vector space. These neighbors will be pulled
-    back if they drift during SGD.
-
-    Returns:
-        VSP: word_idx -> list of (neighbor_idx, original_euclidean_distance)
-    """
-    print(f"[COUNTERFIT] Building VSP neighbors (K={k}, rho={rho}) ...")
-
-    # Normalize all vectors for cosine computation
-    norms = np.linalg.norm(full_vectors, axis=1, keepdims=True)
-    norms = np.where(norms < 1e-9, 1.0, norms)
-    normed = full_vectors / norms
-
-    VSP: dict[int, list[tuple[int, float]]] = {}
-    n_total = full_vectors.shape[0]
-
-    # For each constrained word, compute cosine sim to ALL words and find
-    # top-K within rho distance. Process in batches for memory efficiency.
-    batch_size = 64
-    constrained_arr = np.array(constrained_indices)
-
-    for batch_start in range(0, len(constrained_arr), batch_size):
-        batch_end = min(batch_start + batch_size, len(constrained_arr))
-        batch_indices = constrained_arr[batch_start:batch_end]
-
-        # Cosine similarities: (batch, n_total)
-        batch_normed = normed[batch_indices]
-        sims = batch_normed @ normed.T
-
-        for local_i, global_idx in enumerate(batch_indices):
-            row_sims = sims[local_i]
-            # Cosine distance = 1 - cosine_similarity
-            # Find words with cosine distance < rho (i.e., sim > 1 - rho)
-            threshold = 1.0 - rho
-            mask = row_sims > threshold
-            mask[global_idx] = False  # exclude self
-
-            candidate_indices = np.where(mask)[0]
-            candidate_sims = row_sims[candidate_indices]
-
-            # Sort by similarity descending, take top K
-            if len(candidate_indices) > k:
-                top_k_local = np.argsort(candidate_sims)[::-1][:k]
-                candidate_indices = candidate_indices[top_k_local]
-
-            # Store with original euclidean distances
-            neighbors = []
-            vi = full_vectors[global_idx]
-            for nidx in candidate_indices:
-                orig_dist = float(np.linalg.norm(vi - full_vectors[nidx]))
-                neighbors.append((int(nidx), orig_dist))
-
-            VSP[int(global_idx)] = neighbors
-
-    total_vsp_pairs = sum(len(v) for v in VSP.values())
-    print(f"[COUNTERFIT] {len(VSP)} constrained words, "
-          f"{total_vsp_pairs} total VSP neighbor pairs")
-    return VSP
-
-
-def counterfit_vectors(
-    full_vocab: dict[str, int],
-    full_vectors: np.ndarray,
-) -> None:
-    """Counter-fit GloVe vectors using antonym-only constraints + VSP.
-
-    Implements the Mrksic et al. 2016 SGD procedure:
-      - k1 = 0.1 (antonym repulsion weight)
-      - k2 = 0   (NO synonym attraction -- antonym-only mode)
-      - k3 = 0.1 (VSP preservation weight)
-      - delta = 1.0 (antonym distance margin)
-      - rho = 0.2 (VSP neighborhood cosine radius)
-      - 20 SGD iterations
-
-    Only modifies words that appear in antonym pairs (the 24 axis pole
-    synonym clusters). Other words are indirectly affected by VSP.
-    Modifies full_vectors in-place.
-    """
-    k1 = 0.1   # antonym repulsion
-    # k2 = 0   # synonym attraction (disabled)
-    k3 = 0.1   # VSP preservation
-    delta = 1.0  # antonym distance margin
-    rho = 0.2    # VSP neighborhood radius
-    T = 20       # SGD iterations
-
-    print(f"\n[COUNTERFIT] Mrksic SGD: k1={k1}, k3={k3}, delta={delta}, "
-          f"rho={rho}, T={T}")
-
-    # Build antonym constraints
-    A = _build_antonym_pairs(full_vocab)
-    constrained = sorted(A.keys())
-    n_antonym_pairs = sum(len(v) for v in A.values()) // 2
-    print(f"[COUNTERFIT] {len(constrained)} constrained words, "
-          f"{n_antonym_pairs} antonym pairs")
-
-    # Save original vectors for VSP distance reference
-    original_vectors = full_vectors.copy()
-
-    # Build VSP neighbors from original space
-    VSP = _build_vsp_neighbors(original_vectors, constrained, k=10, rho=rho)
-
-    # Measure coherence using cosine similarity (robust to normalization changes)
-    def _measure_antonym_cosine() -> float:
-        """Average cosine similarity between antonym pairs (lower = better separated)."""
-        cosines = []
-        for idx in constrained:
-            vi = full_vectors[idx]
-            vi_norm = np.linalg.norm(vi)
-            if vi_norm < 1e-9:
-                continue
-            vi_unit = vi / vi_norm
-            for j in A.get(idx, set()):
-                if j > idx:
-                    vj = full_vectors[j]
-                    vj_norm = np.linalg.norm(vj)
-                    if vj_norm < 1e-9:
-                        continue
-                    cosines.append(float(np.dot(vi_unit, vj / vj_norm)))
-        return float(np.mean(cosines)) if cosines else 0.0
-
-    cos_before = _measure_antonym_cosine()
-    print(f"[COUNTERFIT] BEFORE: avg antonym cosine = {cos_before:.4f} "
-          f"(lower = better separated)")
-
-    # SGD iterations
-    for t in range(T):
-        for idx in constrained:
-            vi = full_vectors[idx]
-            gradient = np.zeros(VECTOR_DIM, dtype=np.float32)
-            count = 0
-
-            # Antonym repulsion (k1): push apart if closer than delta
-            for j in A.get(idx, set()):
-                diff = vi - full_vectors[j]
-                dist = float(np.linalg.norm(diff))
-                if dist < delta and dist > 1e-9:
-                    gradient += k1 * (diff / dist)  # push away
-                    count += 1
-
-            # VSP preservation (k3): pull back if neighbors have drifted
-            for (nidx, orig_dist) in VSP.get(idx, []):
-                current_diff = vi - full_vectors[nidx]
-                current_dist = float(np.linalg.norm(current_diff))
-                if current_dist > orig_dist and current_dist > 1e-9:
-                    gradient += k3 * (full_vectors[nidx] - vi)  # pull back
-                    count += 1
-
-            # Apply averaged gradient
-            if count > 0:
-                full_vectors[idx] = vi + gradient / count
-
-            # Renormalize to unit length
-            norm = float(np.linalg.norm(full_vectors[idx]))
-            if norm > 1e-9:
-                full_vectors[idx] /= norm
-
-        if (t + 1) % 5 == 0 or t == 0:
-            cos_t = _measure_antonym_cosine()
-            print(f"  iteration {t+1}/{T}: avg antonym cosine = {cos_t:.4f}")
-
-    cos_after = _measure_antonym_cosine()
-    print(f"[COUNTERFIT] AFTER: avg antonym cosine = {cos_after:.4f}")
-    print(f"[COUNTERFIT] Delta: {cos_after - cos_before:+.4f} "
-          f"({'improved' if cos_after < cos_before else 'worsened'})")
+FACE_VERNACULAR: dict[str, list[str]] = {
+    # Only target faces that underperformed on the benchmark. Leaving
+    # well-performing faces untouched avoids diluting their centroids with
+    # broadly-shared vocabulary.
+    "ethics": [
+        "justice", "injustice", "fairness", "virtue",
+        "sin", "duty", "obligation", "rights", "morality",
+        "oppression", "liberation", "equality", "freedom",
+        "righteous", "evil",
+    ],
+    "axiology": [
+        "worth", "value", "standard", "criterion",
+        "creed", "merit", "desirable", "esteem",
+        "evaluation", "priority",
+    ],
+    "methodology": [
+        "method", "procedure", "experiment", "observation", "hypothesis",
+        "derivation", "theorem", "proposition", "inference",
+        "technique",
+    ],
+}
 
 
 # ---------------------------------------------------------------------------
-# Algorithm 2: Contextual Disambiguation Table
+# Disambiguation entries — polysemous triggers with sense-specific overrides
 # ---------------------------------------------------------------------------
 
 DISAMBIGUATION_ENTRIES: dict[str, list[dict]] = {
@@ -406,12 +200,10 @@ DISAMBIGUATION_ENTRIES: dict[str, list[dict]] = {
         {"context_words": {"drama", "scene", "play", "performance", "theater", "film", "actor", "stage", "screenplay", "imitation"},
          "target_face": "aesthetics", "seed_words": ["dramatic", "performance", "theatrical", "scene", "staging"]},
     ],
-    # Physics/science -> methodology
     "motion": [
         {"context_words": {"force", "body", "rest", "velocity", "acceleration", "uniform", "line", "state", "change", "impressed"},
          "target_face": "methodology", "seed_words": ["systematic", "deductive", "formal", "mathematical", "law"]},
     ],
-    # Aristotle/drama -> aesthetics
     "magnitude": [
         {"context_words": {"tragedy", "action", "serious", "complete", "language", "ornament", "imitation", "artistic"},
          "target_face": "aesthetics", "seed_words": ["artistic", "dramatic", "theatrical", "magnitude", "sublime"]},
@@ -420,7 +212,6 @@ DISAMBIGUATION_ENTRIES: dict[str, list[dict]] = {
         {"context_words": {"tragedy", "action", "complete", "magnitude", "language", "imitation", "artistic"},
          "target_face": "aesthetics", "seed_words": ["dramatic", "weighty", "solemn", "dignified", "gravitas"]},
     ],
-    # MLK/rhetoric -> semiotics
     "meaning": [
         {"context_words": {"creed", "true", "nation", "dream", "equal", "content", "character", "judged"},
          "target_face": "semiotics", "seed_words": ["meaning", "signify", "symbol", "creed", "declaration"]},
@@ -432,104 +223,10 @@ DISAMBIGUATION_ENTRIES: dict[str, list[dict]] = {
 }
 
 
-def compute_disambiguation_table(
-    full_vocab: dict[str, int],
-    full_vectors: np.ndarray,
-    centroids: np.ndarray,
-    directions: np.ndarray,
-    cal_low: np.ndarray,
-    cal_high: np.ndarray,
-    runtime_vocab: dict[str, int],
-) -> tuple[np.ndarray, np.ndarray, dict]:
-    """Compute override face_sim and axis_proj for polysemous words.
-
-    For each disambiguation entry with seed_words:
-      1. Average GloVe vectors of seed words -> sense vector
-      2. Compute face_sim through standard pipeline (cosine - mean)
-      3. Compute axis_proj through standard pipeline (dot, calibrate, clamp)
-
-    For suppress entries: override with zeros (no face signal).
-
-    Returns:
-        disambig_face_sim: shape (N_senses, 12) — override face similarity per sense
-        disambig_axis_proj: shape (N_senses, 24) — override axis projection per sense
-        disambig_meta: {trigger_word: [{context_words, sense_idx, override_type, target_face, threshold}]}
-    """
-    print(f"\n[DISAMBIG] Computing disambiguation table ...")
-
-    sense_face_sims = []
-    sense_axis_projs = []
-    disambig_meta: dict[str, list[dict]] = {}
-    sense_idx = 0
-
-    for trigger_word, entries in DISAMBIGUATION_ENTRIES.items():
-        disambig_meta[trigger_word] = []
-
-        for entry in entries:
-            override_type = entry.get("override_type", "redirect")
-            context_words = sorted(entry["context_words"])  # sort for determinism
-            threshold = 2
-
-            if override_type == "suppress":
-                # Suppress: zeros for face_sim, 0.5 for axis_proj (neutral)
-                sense_face_sims.append(np.zeros(12, dtype=np.float32))
-                sense_axis_projs.append(np.full(24, 0.5, dtype=np.float32))
-            else:
-                # Redirect: compute from seed words
-                seed_words = entry["seed_words"]
-                seed_indices = [full_vocab[w] for w in seed_words if w in full_vocab]
-
-                if seed_indices:
-                    sense_vec = np.mean(full_vectors[seed_indices], axis=0)
-                else:
-                    sense_vec = np.zeros(VECTOR_DIM, dtype=np.float32)
-
-                # Face sim: cosine(sense_vec, centroid) - mean
-                norm = np.linalg.norm(sense_vec)
-                if norm > 1e-9:
-                    sense_unit = sense_vec / norm
-                else:
-                    sense_unit = np.zeros(VECTOR_DIM, dtype=np.float32)
-
-                raw_sim = sense_unit @ centroids.T  # (12,)
-                disc_sim = raw_sim - np.mean(raw_sim)
-
-                # Axis proj: dot(sense_vec, direction) calibrated
-                raw_proj = sense_vec @ directions.T  # (24,)
-                cal_range = cal_high - cal_low
-                cal_range = np.where(np.abs(cal_range) < 1e-8, 1.0, cal_range)
-                normalized = (raw_proj - cal_low) / cal_range
-                clamped = np.clip(normalized, 0.0, 1.0)
-
-                sense_face_sims.append(disc_sim.astype(np.float32))
-                sense_axis_projs.append(clamped.astype(np.float32))
-
-            meta_entry = {
-                "context_words": context_words,
-                "sense_idx": sense_idx,
-                "override_type": override_type,
-                "threshold": threshold,
-            }
-            if "target_face" in entry:
-                meta_entry["target_face"] = entry["target_face"]
-
-            disambig_meta[trigger_word].append(meta_entry)
-            sense_idx += 1
-
-    disambig_face_sim = np.stack(sense_face_sims) if sense_face_sims else np.zeros((0, 12), dtype=np.float32)
-    disambig_axis_proj = np.stack(sense_axis_projs) if sense_axis_projs else np.zeros((0, 24), dtype=np.float32)
-
-    print(f"[DISAMBIG] {len(DISAMBIGUATION_ENTRIES)} trigger words, "
-          f"{sense_idx} total senses, arrays shape {disambig_face_sim.shape}")
-
-    return disambig_face_sim, disambig_axis_proj, disambig_meta
-
-
 # ---------------------------------------------------------------------------
-# Algorithm 3: N-gram/Phrase Embeddings
+# Curated phrases
 # ---------------------------------------------------------------------------
 
-# Curated phrase lists organized by source
 QUESTION_PHRASES: list[str] = [
     "fundamentally exist",
     "true or justified",
@@ -548,454 +245,40 @@ QUESTION_PHRASES: list[str] = [
 ]
 
 POLE_PAIR_PHRASES: list[str] = [
-    # Ontology
-    "particular universal",
-    "static dynamic",
-    # Epistemology
-    "empirical rational",
-    "certain provisional",
-    # Axiology
-    "absolute relative",
-    "quantitative qualitative",
-    # Teleology
-    "immediate ultimate",
-    "intentional emergent",
-    # Phenomenology
-    "objective subjective",
-    "surface deep",
-    # Ethics
-    "deontological consequential",
-    "agent act",
-    # Aesthetics
-    "autonomous contextual",
-    "sensory conceptual",
-    # Praxeology
-    "individual coordinated",
-    "reactive proactive",
-    # Methodology
-    "analytic synthetic",
-    "deductive inductive",
-    # Semiotics
-    "explicit implicit",
-    "syntactic semantic",
-    # Hermeneutics
-    "literal figurative",
-    "author intent",
-    "reader response",
-    # Heuristics
-    "systematic intuitive",
-    "conservative exploratory",
+    "particular universal", "static dynamic",
+    "empirical rational", "certain provisional",
+    "absolute relative", "quantitative qualitative",
+    "immediate ultimate", "intentional emergent",
+    "objective subjective", "surface deep",
+    "deontological consequential", "agent act",
+    "autonomous contextual", "sensory conceptual",
+    "individual coordinated", "reactive proactive",
+    "analytic synthetic", "deductive inductive",
+    "explicit implicit", "syntactic semantic",
+    "literal figurative", "author intent", "reader response",
+    "systematic intuitive", "conservative exploratory",
 ]
 
 COMPOSITIONAL_PHRASES: list[str] = [
-    # Philosophical key phrases
-    "first principles",
-    "root cause",
-    "mental model",
-    "frame of reference",
-    "chain of reasoning",
-    "burden of proof",
-    "thought experiment",
-    "moral reasoning",
-    "moral compass",
-    "ethical framework",
-    "value judgment",
-    "decision making",
-    "problem solving",
-    "critical thinking",
-    "abstract reasoning",
-    "logical structure",
-    "causal mechanism",
-    "feedback loop",
-    "emergent behavior",
-    "self organization",
-    "collective action",
-    "game theory",
-    "information theory",
-    "signal processing",
-    "pattern recognition",
-    "knowledge representation",
-    "natural language",
-    "formal logic",
-    "modal logic",
-    "deductive reasoning",
-    "inductive reasoning",
-    "abductive reasoning",
-    "analogical reasoning",
-    "means and ends",
-    "form and function",
-    "cause and effect",
-    "trial and error",
-    "risk assessment",
-    "cost benefit",
-    "trade off",
-    "paradigm shift",
-    "cognitive bias",
-    "confirmation bias",
-    "selection bias",
-    "base rate",
-    "prior knowledge",
-    "posterior probability",
-    "null hypothesis",
-    "statistical significance",
-    "body of knowledge",
-    "state of affairs",
-    "point of view",
-    "line of inquiry",
+    "first principles", "root cause", "mental model", "frame of reference",
+    "chain of reasoning", "burden of proof", "thought experiment",
+    "moral reasoning", "moral compass", "ethical framework", "value judgment",
+    "decision making", "problem solving", "critical thinking",
+    "abstract reasoning", "logical structure", "causal mechanism",
+    "feedback loop", "emergent behavior", "self organization",
+    "collective action", "game theory", "information theory",
+    "signal processing", "pattern recognition", "knowledge representation",
+    "natural language", "formal logic", "modal logic",
+    "deductive reasoning", "inductive reasoning", "abductive reasoning",
+    "analogical reasoning", "means and ends", "form and function",
+    "cause and effect", "trial and error", "risk assessment",
+    "cost benefit", "trade off", "paradigm shift", "cognitive bias",
+    "confirmation bias", "selection bias", "base rate", "prior knowledge",
+    "posterior probability", "null hypothesis", "statistical significance",
+    "body of knowledge", "state of affairs", "point of view", "line of inquiry",
 ]
 
-# All curated phrases
 ALL_CURATED_PHRASES = QUESTION_PHRASES + POLE_PAIR_PHRASES + COMPOSITIONAL_PHRASES
-
-
-def compute_ngram_embeddings(
-    full_vocab: dict[str, int],
-    full_vectors: np.ndarray,
-    centroids: np.ndarray,
-    directions: np.ndarray,
-    cal_low: np.ndarray,
-    cal_high: np.ndarray,
-    runtime_vocab: dict[str, int],
-    runtime_vectors: np.ndarray,
-    disc_face_sim: np.ndarray,
-    axis_proj: np.ndarray,
-    idf_weights: np.ndarray,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, dict[str, int], list[str], dict[str, str]]:
-    """Compute phrase embeddings and their face_sim/axis_proj/idf arrays.
-
-    Phrase embedding = mean of component RETROFITTED word vectors from full_vocab.
-    Face_sim and axis_proj computed through the standard pipeline.
-
-    Returns:
-        phrase_face_sim: shape (N_phrases, 12)
-        phrase_axis_proj: shape (N_phrases, 24)
-        phrase_idf: shape (N_phrases,) — IDF as max of component word IDFs
-        phrase_vocab: canonical_phrase -> index in phrase arrays (0-based, before offset)
-        phrase_keys: list of canonical phrase keys
-        surface_to_canonical: surface form (with stop words) -> canonical form
-    """
-    print(f"\n[PHRASES] Computing n-gram/phrase embeddings ...")
-
-    phrase_face_sims = []
-    phrase_axis_projs = []
-    phrase_idfs = []
-    phrase_vocab: dict[str, int] = {}
-    phrase_keys: list[str] = []
-    surface_to_canonical: dict[str, str] = {}
-
-    # Stop words for surface-to-canonical mapping
-    phrase_stop_words = {"and", "of", "the", "or", "a", "an", "in", "on", "to", "for"}
-
-    for phrase in ALL_CURATED_PHRASES:
-        # Canonical form: lowercase, no punctuation, stop words removed
-        canonical_words = []
-        surface_words = phrase.lower().split()
-        for w in surface_words:
-            cleaned = "".join(c for c in w if c.isalpha())
-            if cleaned and cleaned not in phrase_stop_words:
-                canonical_words.append(cleaned)
-
-        if len(canonical_words) < 2:
-            continue  # Not a valid phrase (need at least bigram)
-
-        canonical = " ".join(canonical_words)
-
-        if canonical in phrase_vocab:
-            continue  # Deduplicate
-
-        # Surface form (original with stop words) -> canonical
-        surface = " ".join(surface_words)
-        if surface != canonical:
-            surface_to_canonical[surface] = canonical
-
-        # Compute phrase embedding from full (retrofitted) vectors
-        word_indices = [full_vocab[w] for w in canonical_words if w in full_vocab]
-        if not word_indices:
-            continue  # No component words found in GloVe
-
-        phrase_vec = np.mean(full_vectors[word_indices], axis=0)
-
-        # Face sim: cosine(phrase_vec, centroid) - mean
-        norm = np.linalg.norm(phrase_vec)
-        if norm > 1e-9:
-            phrase_unit = phrase_vec / norm
-        else:
-            phrase_unit = np.zeros(VECTOR_DIM, dtype=np.float32)
-
-        raw_sim = phrase_unit @ centroids.T  # (12,)
-        phrase_disc_sim = raw_sim - np.mean(raw_sim)
-
-        # Axis proj: dot(phrase_vec, direction) calibrated
-        raw_proj = phrase_vec @ directions.T  # (24,)
-        cal_range = cal_high - cal_low
-        cal_range = np.where(np.abs(cal_range) < 1e-8, 1.0, cal_range)
-        normalized = (raw_proj - cal_low) / cal_range
-        clamped = np.clip(normalized, 0.0, 1.0)
-
-        # IDF: max of component word IDFs (phrases are rarer than any single word)
-        component_idfs = []
-        for w in canonical_words:
-            if w in runtime_vocab:
-                component_idfs.append(float(idf_weights[runtime_vocab[w]]))
-        phrase_idf = max(component_idfs) if component_idfs else 0.8  # default high
-
-        idx = len(phrase_keys)
-        phrase_vocab[canonical] = idx
-        phrase_keys.append(canonical)
-        phrase_face_sims.append(phrase_disc_sim.astype(np.float32))
-        phrase_axis_projs.append(clamped.astype(np.float32))
-        phrase_idfs.append(phrase_idf)
-
-    if phrase_keys:
-        pf_sim = np.stack(phrase_face_sims)
-        pa_proj = np.stack(phrase_axis_projs)
-        p_idf = np.array(phrase_idfs, dtype=np.float32)
-    else:
-        pf_sim = np.zeros((0, 12), dtype=np.float32)
-        pa_proj = np.zeros((0, 24), dtype=np.float32)
-        p_idf = np.zeros(0, dtype=np.float32)
-
-    print(f"[PHRASES] {len(phrase_keys)} phrases computed, "
-          f"{len(surface_to_canonical)} surface-to-canonical mappings")
-
-    return pf_sim, pa_proj, p_idf, phrase_vocab, phrase_keys, surface_to_canonical
-
-
-# ---------------------------------------------------------------------------
-# GloVe download and loading
-# ---------------------------------------------------------------------------
-
-def download_glove() -> None:
-    """Download GloVe 6B zip if not already cached."""
-    if GLOVE_TXT_PATH.exists():
-        print(f"[OK] GloVe vectors already cached at {GLOVE_TXT_PATH}")
-        return
-
-    GLOVE_CACHE_DIR.mkdir(parents=True, exist_ok=True)
-
-    if not GLOVE_ZIP_PATH.exists():
-        print(f"[DOWNLOAD] Fetching GloVe 6B from {GLOVE_URL} ...")
-        print(f"           Destination: {GLOVE_ZIP_PATH}")
-        print(f"           This is ~862MB — please wait.")
-        urllib.request.urlretrieve(GLOVE_URL, str(GLOVE_ZIP_PATH))
-        print(f"[OK] Download complete.")
-    else:
-        print(f"[OK] GloVe zip already cached at {GLOVE_ZIP_PATH}")
-
-    print(f"[EXTRACT] Extracting glove.6B.100d.txt from zip ...")
-    with zipfile.ZipFile(str(GLOVE_ZIP_PATH), "r") as zf:
-        target_name = "glove.6B.100d.txt"
-        zf.extract(target_name, str(GLOVE_CACHE_DIR))
-    print(f"[OK] Extracted to {GLOVE_TXT_PATH}")
-
-
-def load_all_glove() -> tuple[dict[str, int], np.ndarray]:
-    """Load ALL GloVe vectors (up to MAX_GLOVE_WORDS).
-
-    Returns:
-        vocab: word -> index mapping (all 400K words)
-        vectors: shape (n_words, VECTOR_DIM)
-    """
-    print(f"[LOAD] Reading all GloVe vectors (up to {MAX_GLOVE_WORDS}) ...")
-    vocab: dict[str, int] = {}
-    vectors: list[np.ndarray] = []
-
-    with open(str(GLOVE_TXT_PATH), "r", encoding="utf-8") as f:
-        for i, line in enumerate(f):
-            if i >= MAX_GLOVE_WORDS:
-                break
-            parts = line.rstrip().split(" ")
-            word = parts[0]
-            vec = np.array([float(x) for x in parts[1:]], dtype=np.float32)
-            if vec.shape[0] != VECTOR_DIM:
-                continue
-            vocab[word] = len(vectors)
-            vectors.append(vec)
-
-    matrix = np.stack(vectors)  # shape (n_words, 50)
-    print(f"[OK] Loaded {len(vocab)} words, matrix shape {matrix.shape}")
-    return vocab, matrix
-
-
-# ---------------------------------------------------------------------------
-# Model2Vec vector encoding (replaces GloVe vectors when available)
-# ---------------------------------------------------------------------------
-
-M2V_MODEL_PATH = Path.home() / ".cache" / "model2vec" / "minilm-distilled"
-
-
-def _build_face_directions_raw(
-    m2v_model,
-    vocab: dict[str, int],
-    words_list: list[str],
-    raw_vectors: np.ndarray,
-) -> np.ndarray:
-    """Build face-discriminative directions in the raw Model2Vec 256d space.
-
-    Computes 12 centroid directions + 24 axis directions = 36 directions
-    from the same authored content used by build_face_centroids() and
-    build_axis_directions(). These directions define the face-relevant
-    subspace that must be preserved during dimensionality reduction.
-
-    Returns:
-        directions: shape (K, raw_dim) where K <= 36, each unit-normalized.
-                    K may be less than 36 if some directions are linearly dependent.
-    """
-    raw_dim = raw_vectors.shape[1]
-    directions = []
-
-    def _words_to_vec(word_list: list[str]) -> np.ndarray:
-        """Average raw vectors for words in vocab."""
-        indices = [vocab[w] for w in word_list if w in vocab]
-        if not indices:
-            return np.zeros(raw_dim, dtype=np.float64)
-        return np.mean(raw_vectors[indices], axis=0)
-
-    # 12 face centroid directions (same weighting as build_face_centroids)
-    for face in ALL_FACES:
-        defn = FACE_DEFINITIONS[face]
-        all_words: list[str] = []
-        all_words.extend([face] * 2)
-        all_words.extend(_tokenize_text(defn["core_question"]))
-        for key in ("x_axis_low", "x_axis_high", "y_axis_low", "y_axis_high"):
-            label_words = _tokenize_text(defn[key])
-            all_words.extend(label_words * 5)
-        for key in ("x_axis_low", "x_axis_high", "y_axis_low", "y_axis_high"):
-            label = defn[key].lower()
-            synonyms = POLE_SYNONYMS.get(label, [])
-            for syn in synonyms:
-                all_words.extend(_tokenize_text(syn) * 3)
-        all_words.extend(_tokenize_text(DOMAIN_REPLACEMENTS[face]) * 2)
-        centroid = _words_to_vec(all_words)
-        norm = np.linalg.norm(centroid)
-        if norm > 1e-9:
-            directions.append(centroid / norm)
-
-    # 24 axis direction vectors (high_pole - low_pole)
-    for face in ALL_FACES:
-        defn = FACE_DEFINITIONS[face]
-        for low_key, high_key in [("x_axis_low", "x_axis_high"), ("y_axis_low", "y_axis_high")]:
-            low_words = _tokenize_text(defn[low_key])
-            high_words = _tokenize_text(defn[high_key])
-            for w in list(low_words):
-                if w in POLE_SYNONYMS:
-                    low_words.extend(POLE_SYNONYMS[w])
-            for w in list(high_words):
-                if w in POLE_SYNONYMS:
-                    high_words.extend(POLE_SYNONYMS[w])
-            low_vec = _words_to_vec(low_words)
-            high_vec = _words_to_vec(high_words)
-            direction = high_vec - low_vec
-            norm = np.linalg.norm(direction)
-            if norm > 1e-9:
-                directions.append(direction / norm)
-
-    return np.stack(directions)  # (K, raw_dim)
-
-
-def encode_vocab_with_model2vec(
-    m2v_model,  # StaticModel instance
-    vocab: dict[str, int],
-) -> np.ndarray:
-    """Encode vocabulary through Model2Vec with face-informed dimensionality reduction.
-
-    Model2Vec produces 256d vectors from a distilled sentence transformer.
-    Standard PCA to 100d loses face-discriminative directions that sit outside
-    the top principal components. This function uses a two-stage projection:
-
-      Stage 1: Extract face-relevant directions (12 centroids + 24 axes = 36d)
-               in the raw 256d space. QR-orthogonalize to get the face subspace.
-      Stage 2: PCA on the residual (component orthogonal to face subspace) to
-               fill the remaining (VECTOR_DIM - face_rank) dimensions.
-      Stage 3: Combine into a single VECTOR_DIM projection matrix.
-
-    This guarantees that face-discriminative directions are always preserved,
-    while PCA captures maximum remaining variance for general vocabulary coverage.
-
-    Args:
-        m2v_model: Loaded Model2Vec StaticModel instance
-        vocab: word -> index mapping (GloVe frequency-ordered)
-
-    Returns:
-        vectors: shape (len(vocab), VECTOR_DIM), unit-normalized float32
-    """
-    # Build ordered word list matching vocab indices
-    words = [""] * len(vocab)
-    for word, idx in vocab.items():
-        words[idx] = word
-
-    n_words = len(words)
-    print(f"[MODEL2VEC] Encoding {n_words} vocabulary words through Model2Vec ...")
-
-    # Encode in batches for progress reporting
-    batch_size = 50000
-    raw_parts = []
-    for b_start in range(0, n_words, batch_size):
-        b_end = min(b_start + batch_size, n_words)
-        batch = words[b_start:b_end]
-        raw_parts.append(m2v_model.encode(batch))
-        print(f"  encoded {b_end}/{n_words} ...")
-
-    m2v_raw = np.concatenate(raw_parts, axis=0)  # (n_words, 256)
-    raw_dim = m2v_raw.shape[1]
-    print(f"[MODEL2VEC] Raw vectors: {m2v_raw.shape}, dtype={m2v_raw.dtype}")
-
-    # Center the vectors
-    mean_vec = m2v_raw.mean(axis=0)
-    centered = m2v_raw - mean_vec
-
-    # Stage 1: Build face-relevant directions in 256d space
-    print(f"[MODEL2VEC] Building face-informed projection basis ...")
-    face_dirs = _build_face_directions_raw(m2v_model, vocab, words, m2v_raw)
-    print(f"[MODEL2VEC] {face_dirs.shape[0]} face directions extracted")
-
-    # QR-orthogonalize the face directions to get an orthonormal basis
-    # for the face-relevant subspace
-    Q_face, R_face = np.linalg.qr(face_dirs.T)  # Q: (256, K), R: (K, K)
-    # Rank = number of columns with non-negligible R diagonal
-    r_diag = np.abs(np.diag(R_face))
-    face_rank = int(np.sum(r_diag > 1e-8))
-    Q_face = Q_face[:, :face_rank]  # (256, face_rank) — orthonormal face basis
-    print(f"[MODEL2VEC] Face subspace rank: {face_rank} "
-          f"(from {face_dirs.shape[0]} raw directions)")
-
-    # Stage 2: PCA on the residual (component orthogonal to face subspace)
-    # Project centered vectors onto face subspace
-    face_components = centered @ Q_face  # (n_words, face_rank)
-    # Residual: remove face subspace component
-    residual = centered - face_components @ Q_face.T  # (n_words, 256)
-
-    # PCA on residual
-    pca_dim = VECTOR_DIM - face_rank
-    print(f"[MODEL2VEC] PCA on residual: {raw_dim}d -> {pca_dim}d ...")
-    _, S_res, Vt_res = np.linalg.svd(residual, full_matrices=False)
-    Q_residual = Vt_res[:pca_dim].T  # (256, pca_dim)
-    residual_components = residual @ Q_residual  # (n_words, pca_dim)
-
-    # Variance reporting
-    _, S_full, _ = np.linalg.svd(centered, full_matrices=False)
-    face_var = np.sum(face_components ** 2)
-    res_var = np.sum(residual_components ** 2)
-    total_var = np.sum(S_full ** 2)
-    captured = (face_var + res_var) / total_var * 100
-    print(f"[MODEL2VEC] Variance: face subspace {face_var/total_var*100:.1f}%, "
-          f"residual PCA {res_var/total_var*100:.1f}%, "
-          f"total captured {captured:.1f}%")
-
-    # Stage 3: Combine into final VECTOR_DIM vectors
-    # First face_rank columns = face subspace, remaining = residual PCA
-    vectors = np.concatenate([face_components, residual_components],
-                             axis=1).astype(np.float32)
-    print(f"[MODEL2VEC] Combined projection: {vectors.shape}")
-
-    # L2-normalize to unit length
-    norms = np.linalg.norm(vectors, axis=1, keepdims=True)
-    norms = np.where(norms < 1e-8, 1.0, norms)
-    vectors = vectors / norms
-
-    print(f"[MODEL2VEC] Final vectors: {vectors.shape}, "
-          f"dtype={vectors.dtype}, all unit-normed")
-    return vectors
 
 
 # ---------------------------------------------------------------------------
@@ -1010,374 +293,10 @@ def _tokenize_text(text: str) -> list[str]:
     return [w for w in cleaned.split() if len(w) > 1]
 
 
-def _text_to_vector(words: list[str], vocab: dict[str, int], vectors: np.ndarray) -> np.ndarray:
-    """Average the GloVe vectors for all words found in vocab."""
-    indices = [vocab[w] for w in words if w in vocab]
-    if not indices:
-        return np.zeros(VECTOR_DIM, dtype=np.float32)
-    return np.mean(vectors[indices], axis=0)
-
-
 # ---------------------------------------------------------------------------
-# Runtime vocabulary selection (~16K words)
+# Question stop words (shared with intent parser)
 # ---------------------------------------------------------------------------
 
-def select_runtime_vocab(
-    full_vocab: dict[str, int],
-    full_vectors: np.ndarray,
-) -> tuple[dict[str, int], np.ndarray]:
-    """Select ~16K runtime vocabulary: top 15K frequent + face/domain/axis/pole words.
-
-    Returns:
-        runtime_vocab: word -> index in runtime matrix
-        runtime_vectors: shape (runtime_size, VECTOR_DIM)
-    """
-    # Collect all domain-specific words that MUST be in runtime vocab
-    must_include: set[str] = set()
-
-    for face in ALL_FACES:
-        defn = FACE_DEFINITIONS[face]
-        # Face name
-        must_include.add(face)
-        # Domain replacement tokens
-        must_include.update(_tokenize_text(DOMAIN_REPLACEMENTS[face]))
-        # Core question tokens
-        must_include.update(_tokenize_text(defn["core_question"]))
-        # Sub-dimension labels
-        for key in ("x_axis_low", "x_axis_high", "y_axis_low", "y_axis_high"):
-            label = defn[key]
-            # Split hyphenated labels (e.g., "Author-intent" -> "author", "intent")
-            must_include.update(_tokenize_text(label))
-
-    # Pole synonyms
-    for pole_word, synonyms in POLE_SYNONYMS.items():
-        must_include.add(pole_word)
-        must_include.update(synonyms)
-
-    # Filter to words actually in GloVe
-    must_include = {w for w in must_include if w in full_vocab}
-
-    # Top 15K frequent words (GloVe is sorted by frequency)
-    # Take the first TOP_K_FREQUENT words from the full vocab ordering
-    frequent_words = set()
-    for word, idx in full_vocab.items():
-        if idx < TOP_K_FREQUENT:
-            frequent_words.add(word)
-
-    # Union
-    all_runtime_words = frequent_words | must_include
-
-    # Build runtime vocab and vectors
-    runtime_vocab: dict[str, int] = {}
-    runtime_vecs: list[np.ndarray] = []
-    # Preserve GloVe frequency order for IDF computation
-    sorted_words = sorted(all_runtime_words, key=lambda w: full_vocab[w])
-
-    for word in sorted_words:
-        runtime_vocab[word] = len(runtime_vecs)
-        runtime_vecs.append(full_vectors[full_vocab[word]])
-
-    runtime_vectors = np.stack(runtime_vecs)
-    extra = len(must_include - frequent_words)
-    print(f"[VOCAB] {len(frequent_words)} frequent + {extra} domain-specific "
-          f"= {len(runtime_vocab)} total runtime words")
-    return runtime_vocab, runtime_vectors
-
-
-# ---------------------------------------------------------------------------
-# Face centroid construction (AUTHORED LAYERS ONLY)
-# ---------------------------------------------------------------------------
-
-def build_face_centroids(
-    full_vocab: dict[str, int],
-    full_vectors: np.ndarray,
-) -> np.ndarray:
-    """Build a centroid vector for each of the 12 faces from AUTHORED layers only.
-
-    Sources per face (authored content only — NOT derived 144 question templates):
-      - Core question words
-      - Sub-dimension labels (x_axis_low, x_axis_high, y_axis_low, y_axis_high)
-      - Domain replacement string words
-      - Face name
-
-    Returns: shape (12, VECTOR_DIM), unit-normalized.
-    """
-    centroids = []
-
-    for face in ALL_FACES:
-        defn = FACE_DEFINITIONS[face]
-        all_words: list[str] = []
-
-        # Face name (2x weight — primary identity)
-        all_words.extend([face] * 2)
-
-        # Core question (1x weight)
-        all_words.extend(_tokenize_text(defn["core_question"]))
-
-        # Sub-dimension labels (5x weight — these are the most face-specific content,
-        # they define the axes and are what discriminates this face from all others)
-        for key in ("x_axis_low", "x_axis_high", "y_axis_low", "y_axis_high"):
-            label_words = _tokenize_text(defn[key])
-            all_words.extend(label_words * 5)
-
-        # Sub-dimension pole synonyms (3x weight — expands the axis vocabulary)
-        for key in ("x_axis_low", "x_axis_high", "y_axis_low", "y_axis_high"):
-            label = defn[key].lower()
-            synonyms = POLE_SYNONYMS.get(label, [])
-            for syn in synonyms:
-                syn_words = _tokenize_text(syn)
-                all_words.extend(syn_words * 3)
-
-        # Domain replacement string (2x weight)
-        all_words.extend(_tokenize_text(DOMAIN_REPLACEMENTS[face]) * 2)
-
-        centroid = _text_to_vector(all_words, full_vocab, full_vectors)
-
-        # Normalize to unit length for cosine similarity
-        norm = np.linalg.norm(centroid)
-        if norm > 0:
-            centroid = centroid / norm
-
-        in_vocab = sum(1 for w in all_words if w in full_vocab)
-        centroids.append(centroid)
-        print(f"  {face:15s}: {len(all_words)} authored words, "
-              f"{in_vocab} in GloVe vocab")
-
-    return np.stack(centroids)  # shape (12, 50)
-
-
-# ---------------------------------------------------------------------------
-# Axis direction vectors (24 total: 12 faces x 2 axes)
-# ---------------------------------------------------------------------------
-
-def _get_pole_label_words(label: str) -> list[str]:
-    """Split a pole label into words, handling hyphens (e.g., 'Author-intent' -> ['author', 'intent'])."""
-    return _tokenize_text(label)
-
-
-def build_axis_directions(
-    full_vocab: dict[str, int],
-    full_vectors: np.ndarray,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Build 24 axis direction vectors (high_pole - low_pole).
-
-    For each face, for each axis (x=0, y=1):
-      - low_pole = average GloVe vector of (low_label + POLE_SYNONYMS)
-      - high_pole = average GloVe vector of (high_label + POLE_SYNONYMS)
-      - direction = high_pole - low_pole
-
-    Also performs calibration: projects each pole onto its direction to get
-    (expected_low, expected_high) per axis.
-
-    Returns:
-        directions: shape (24, VECTOR_DIM) — unit-normalized direction vectors
-        cal_low: shape (24,) — expected projection of low pole
-        cal_high: shape (24,) — expected projection of high pole
-    """
-    directions = []
-    cal_low_arr = []
-    cal_high_arr = []
-
-    for face in ALL_FACES:
-        defn = FACE_DEFINITIONS[face]
-        for axis_idx, (low_key, high_key) in enumerate([
-            ("x_axis_low", "x_axis_high"),
-            ("y_axis_low", "y_axis_high"),
-        ]):
-            low_label = defn[low_key].lower()
-            high_label = defn[high_key].lower()
-
-            # Gather all words for each pole
-            low_words = _get_pole_label_words(defn[low_key])
-            high_words = _get_pole_label_words(defn[high_key])
-
-            # Add pole synonyms for each word in the label
-            for w in list(low_words):
-                if w in POLE_SYNONYMS:
-                    low_words.extend(POLE_SYNONYMS[w])
-            for w in list(high_words):
-                if w in POLE_SYNONYMS:
-                    high_words.extend(POLE_SYNONYMS[w])
-
-            low_vec = _text_to_vector(low_words, full_vocab, full_vectors)
-            high_vec = _text_to_vector(high_words, full_vocab, full_vectors)
-
-            direction = high_vec - low_vec
-            dir_norm = np.linalg.norm(direction)
-            if dir_norm > 0:
-                direction_unit = direction / dir_norm
-            else:
-                direction_unit = np.zeros(VECTOR_DIM, dtype=np.float32)
-
-            # Calibration: project each pole onto direction
-            proj_low = float(np.dot(low_vec, direction_unit))
-            proj_high = float(np.dot(high_vec, direction_unit))
-
-            directions.append(direction_unit)
-            cal_low_arr.append(proj_low)
-            cal_high_arr.append(proj_high)
-
-    return (
-        np.stack(directions),  # shape (24, 50)
-        np.array(cal_low_arr, dtype=np.float32),  # shape (24,)
-        np.array(cal_high_arr, dtype=np.float32),  # shape (24,)
-    )
-
-
-# ---------------------------------------------------------------------------
-# Per-word artifact computation
-# ---------------------------------------------------------------------------
-
-def compute_discriminative_face_similarity(
-    runtime_vectors: np.ndarray,
-    centroids: np.ndarray,
-) -> np.ndarray:
-    """Compute discriminative face similarity for each word.
-
-    For each word:
-      raw_sim[face] = cosine(word, centroid[face])
-      disc_sim[face] = raw_sim[face] - mean(raw_sim across all faces)
-
-    Returns: shape (vocab_size, 12)
-    """
-    print(f"[COMPUTE] Discriminative face similarity ({runtime_vectors.shape[0]} x 12) ...")
-
-    # Normalize word vectors
-    norms = np.linalg.norm(runtime_vectors, axis=1, keepdims=True)
-    norms = np.where(norms == 0, 1, norms)
-    normed = runtime_vectors / norms
-
-    # centroids are already unit-normalized
-    raw_sim = normed @ centroids.T  # (vocab_size, 12)
-    mean_sim = np.mean(raw_sim, axis=1, keepdims=True)  # (vocab_size, 1)
-    disc_sim = raw_sim - mean_sim  # (vocab_size, 12)
-
-    print(f"[OK] Discriminative face similarity shape: {disc_sim.shape}")
-    return disc_sim.astype(np.float32)
-
-
-def compute_axis_projections(
-    runtime_vectors: np.ndarray,
-    directions: np.ndarray,
-    cal_low: np.ndarray,
-    cal_high: np.ndarray,
-) -> np.ndarray:
-    """Compute per-word axis projections, normalized by calibration to [0,1].
-
-    For each word and each of 24 axes:
-      raw_proj = dot(word_vec, direction_unit)
-      normalized = (raw_proj - cal_low) / (cal_high - cal_low)
-      clamped to [0, 1]
-
-    Returns: shape (vocab_size, 24)
-    """
-    print(f"[COMPUTE] Axis projections ({runtime_vectors.shape[0]} x 24) ...")
-
-    # Project all words onto all directions
-    raw_proj = runtime_vectors @ directions.T  # (vocab_size, 24)
-
-    # Normalize using calibration
-    cal_range = cal_high - cal_low  # (24,)
-    # Avoid division by zero
-    cal_range = np.where(np.abs(cal_range) < 1e-8, 1.0, cal_range)
-    normalized = (raw_proj - cal_low[np.newaxis, :]) / cal_range[np.newaxis, :]
-
-    # Clamp to [0, 1]
-    clamped = np.clip(normalized, 0.0, 1.0)
-
-    print(f"[OK] Axis projections shape: {clamped.shape}")
-    return clamped.astype(np.float32)
-
-
-def compute_idf_weights(vocab_size: int) -> np.ndarray:
-    """Compute IDF-like weights from frequency rank.
-
-    GloVe words are ordered by frequency. Uses log-inverse-rank formula:
-      idf[i] = log(vocab_size / (rank + 1))
-    Normalized to [0, 1].
-
-    Returns: shape (vocab_size,)
-    """
-    print(f"[COMPUTE] IDF weights for {vocab_size} words ...")
-    ranks = np.arange(vocab_size, dtype=np.float32) + 1.0
-    idf = np.log(float(vocab_size) / ranks)
-    # Normalize to [0, 1]
-    idf_min = idf.min()
-    idf_max = idf.max()
-    if idf_max - idf_min > 1e-9:
-        idf = (idf - idf_min) / (idf_max - idf_min)
-    else:
-        idf = np.ones(vocab_size, dtype=np.float32)
-    print(f"[OK] IDF range: [{idf.min():.4f}, {idf.max():.4f}]")
-    return idf.astype(np.float32)
-
-
-# ---------------------------------------------------------------------------
-# Technique F: Phase-Aware Face Weighting
-# ---------------------------------------------------------------------------
-
-PHASE_NAMES = ["comprehension", "evaluation", "application"]
-
-PHASE_FACES: dict[str, list[str]] = {
-    "comprehension": [f for f in ALL_FACES if FACE_PHASES[f] == "comprehension"],
-    "evaluation": [f for f in ALL_FACES if FACE_PHASES[f] == "evaluation"],
-    "application": [f for f in ALL_FACES if FACE_PHASES[f] == "application"],
-}
-
-
-def build_phase_centroids(
-    centroids: np.ndarray,
-) -> np.ndarray:
-    """Build phase centroid vectors by averaging face centroids per phase.
-
-    Returns: shape (3, VECTOR_DIM), unit-normalized.
-    """
-    print(f"\n[PHASE] Computing phase centroids ...")
-    face_index = {face: i for i, face in enumerate(ALL_FACES)}
-    phase_centroids = []
-
-    for phase_name in PHASE_NAMES:
-        faces_in_phase = PHASE_FACES[phase_name]
-        face_indices = [face_index[f] for f in faces_in_phase]
-        phase_vec = np.mean(centroids[face_indices], axis=0)
-        norm = np.linalg.norm(phase_vec)
-        if norm > 1e-9:
-            phase_vec = phase_vec / norm
-        phase_centroids.append(phase_vec)
-        print(f"  {phase_name:15s}: {len(faces_in_phase)} faces, "
-              f"norm before normalize = {norm:.4f}")
-
-    return np.stack(phase_centroids).astype(np.float32)  # (3, VECTOR_DIM)
-
-
-def compute_word_phase_sim(
-    runtime_vectors: np.ndarray,
-    phase_centroids: np.ndarray,
-) -> np.ndarray:
-    """Compute per-word cosine similarity to each phase centroid.
-
-    Returns: shape (vocab_size, 3)
-    """
-    print(f"\n[PHASE] Computing word-phase similarity ({runtime_vectors.shape[0]} x 3) ...")
-
-    # Normalize word vectors
-    norms = np.linalg.norm(runtime_vectors, axis=1, keepdims=True)
-    norms = np.where(norms == 0, 1, norms)
-    normed = runtime_vectors / norms
-
-    # Phase centroids are already unit-normalized
-    sim = normed @ phase_centroids.T  # (vocab_size, 3)
-
-    print(f"[OK] Word-phase similarity shape: {sim.shape}, "
-          f"range [{sim.min():.4f}, {sim.max():.4f}]")
-    return sim.astype(np.float32)
-
-
-# ---------------------------------------------------------------------------
-# Technique D: Per-Face Question Position Matching
-# ---------------------------------------------------------------------------
-
-# Stop words for question tokenization (shared with intent parser)
 _Q_STOP_WORDS = frozenset({
     "a", "an", "the", "this", "that", "these", "those",
     "at", "in", "on", "of", "from", "to", "into", "as", "by", "with",
@@ -1398,484 +317,278 @@ _Q_STOP_WORDS = frozenset({
     "here", "there", "now", "already", "still", "even",
 })
 
+PHRASE_STOP_WORDS = {"and", "of", "the", "or", "a", "an", "in", "on", "to", "for"}
 
-def _idf_weighted_average(
-    words: list[str],
+
+# ---------------------------------------------------------------------------
+# BGE encoder
+# ---------------------------------------------------------------------------
+
+def load_bge():
+    """Load the BGE-large-en-v1.5 sentence transformer."""
+    from sentence_transformers import SentenceTransformer
+
+    print(f"[BGE] Loading {BGE_MODEL_NAME} ...")
+    model = SentenceTransformer(BGE_MODEL_NAME)
+    print(f"[BGE] Model loaded. Max seq length: {model.max_seq_length}")
+    return model
+
+
+def encode(model, texts: list[str]) -> np.ndarray:
+    """Encode a list of texts through BGE, returning L2-normalized float32 vectors."""
+    vectors = model.encode(
+        texts,
+        batch_size=BGE_BATCH_SIZE,
+        convert_to_numpy=True,
+        normalize_embeddings=True,
+        show_progress_bar=len(texts) > 500,
+    )
+    return vectors.astype(np.float32)
+
+
+# ---------------------------------------------------------------------------
+# Vocabulary assembly
+# ---------------------------------------------------------------------------
+
+def build_target_vocab() -> list[str]:
+    """Assemble the target vocabulary to encode through BGE.
+
+    Union of:
+      - Top-K frequent English words from wordfreq
+      - Face names
+      - All pole synonym words (keys and values)
+      - All words from axis-pole labels
+      - All words from core questions
+      - All words from domain replacements
+      - All words from disambiguation seed_words and context_words
+      - All words from curated phrases
+
+    Returns a list sorted by wordfreq Zipf rank (most frequent first).
+    """
+    from wordfreq import top_n_list, zipf_frequency
+
+    print(f"[VOCAB] Loading top {TOP_K_FREQUENT} frequent English words from wordfreq ...")
+    frequent = top_n_list("en", TOP_K_FREQUENT, wordlist="large")
+    frequent_set = set(frequent)
+    print(f"[VOCAB] Got {len(frequent_set)} frequent words")
+
+    domain_words: set[str] = set()
+
+    # Face names
+    for face in ALL_FACES:
+        domain_words.add(face)
+
+    # Face definitions: axis pole labels, core questions, domain replacements
+    for face in ALL_FACES:
+        defn = FACE_DEFINITIONS[face]
+        domain_words.update(_tokenize_text(defn["core_question"]))
+        domain_words.update(_tokenize_text(DOMAIN_REPLACEMENTS[face]))
+        for key in ("x_axis_low", "x_axis_high", "y_axis_low", "y_axis_high"):
+            domain_words.update(_tokenize_text(defn[key]))
+
+    # Pole synonyms: both keys and values
+    for pole_word, synonyms in POLE_SYNONYMS.items():
+        domain_words.add(pole_word.lower())
+        for syn in synonyms:
+            domain_words.update(_tokenize_text(syn))
+
+    # Face vernacular: object-level vocabulary per face
+    for vern_list in FACE_VERNACULAR.values():
+        for word in vern_list:
+            domain_words.update(_tokenize_text(word))
+
+    # Disambiguation: seed_words and context_words
+    for trigger, entries in DISAMBIGUATION_ENTRIES.items():
+        domain_words.add(trigger.lower())
+        for entry in entries:
+            domain_words.update(w.lower() for w in entry.get("context_words", set()))
+            domain_words.update(w.lower() for w in entry.get("seed_words", []))
+
+    # Phrase component words
+    for phrase in ALL_CURATED_PHRASES:
+        for w in _tokenize_text(phrase):
+            if w not in PHRASE_STOP_WORDS:
+                domain_words.add(w)
+
+    # Question templates — every word in any template
+    for template in BASE_QUESTIONS.values():
+        for domain in DOMAIN_REPLACEMENTS.values():
+            text = template.replace("{domain}", domain)
+            for w in _tokenize_text(text):
+                if w not in _Q_STOP_WORDS and len(w) > 2:
+                    domain_words.add(w)
+
+    # Clean: ensure lowercase, strip whitespace
+    domain_words = {w.strip().lower() for w in domain_words if w.strip()}
+    domain_words = {w for w in domain_words if all(c.isalpha() or c in "-" for c in w) and len(w) > 1}
+
+    # Union with frequent
+    all_words = frequent_set | domain_words
+
+    # Sort: preserve wordfreq rank for frequent words; append domain-only words after
+    # by their own Zipf frequency (descending)
+    def sort_key(word: str) -> tuple[int, float]:
+        # Primary: 0 if in wordfreq list, 1 otherwise (so frequent come first)
+        primary = 0 if word in frequent_set else 1
+        # Secondary: negative Zipf so higher frequency comes first
+        try:
+            zipf = zipf_frequency(word, "en")
+        except Exception:
+            zipf = 0.0
+        return (primary, -zipf)
+
+    sorted_words = sorted(all_words, key=sort_key)
+
+    domain_only = domain_words - frequent_set
+    print(f"[VOCAB] Domain-specific words not in top-{TOP_K_FREQUENT}: {len(domain_only)}")
+    print(f"[VOCAB] Total vocabulary: {len(sorted_words)}")
+    return sorted_words
+
+
+# ---------------------------------------------------------------------------
+# Face centroid construction (AUTHORED LAYERS ONLY)
+# ---------------------------------------------------------------------------
+
+def build_face_centroids(
     vocab: dict[str, int],
     vectors: np.ndarray,
+    question_vecs: np.ndarray | None = None,
+    question_weight: float = 0.4,
 ) -> np.ndarray:
-    """Compute IDF-weighted average vector for a list of words.
+    """Build a centroid vector for each of the 12 faces.
 
-    IDF approximation: words later in GloVe (higher index = less frequent)
-    get higher weight. Uses log(vocab_size / (rank+1)) formula.
+    Authored-layer centroid (weighted mean of word vectors):
+      - Face name (2x)
+      - Core question words (1x)
+      - Sub-dimension labels (5x) — axis pole labels
+      - Pole synonyms (3x)
+      - Face vernacular (4x) — object-level domain vocabulary
+      - Domain replacement words (2x)
+
+    If question_vecs is provided (1728 BGE-encoded questions in face-blocks
+    of 144), a per-face question centroid is computed and blended with the
+    authored centroid:
+        final = normalize((1 - qw) * authored + qw * question)
+    where qw is the question_weight.
+
+    Question centroids bring BGE-encoded philosophical vernacular from the
+    construction questions into the face anchor without requiring explicit
+    vocabulary curation.
+
+    Returns: shape (12, embedding_dim), unit-normalized.
     """
-    indices = [vocab[w] for w in words if w in vocab]
-    if not indices:
-        return np.zeros(VECTOR_DIM, dtype=np.float32)
+    centroids = []
+    embed_dim = vectors.shape[1]
+    n_questions_per_face = 144  # from BASE_QUESTIONS
 
-    vs = vectors[indices]
-    vocab_size = len(vocab)
-    ranks = np.array(indices, dtype=np.float32) + 1.0
-    idf = np.log(float(vocab_size) / ranks)
-    # Normalize IDF to [0, 1]
-    idf_min, idf_max = idf.min(), idf.max()
-    if idf_max - idf_min > 1e-9:
-        idf = (idf - idf_min) / (idf_max - idf_min)
-    else:
-        idf = np.ones_like(idf)
+    for face_idx, face in enumerate(ALL_FACES):
+        defn = FACE_DEFINITIONS[face]
+        all_words: list[str] = []
 
-    total = idf.sum()
-    if total < 1e-9:
-        return np.mean(vs, axis=0)
-    return (vs * idf[:, np.newaxis]).sum(axis=0) / total
+        all_words.extend([face] * 2)
+        all_words.extend(_tokenize_text(defn["core_question"]))
+
+        for key in ("x_axis_low", "x_axis_high", "y_axis_low", "y_axis_high"):
+            label_words = _tokenize_text(defn[key])
+            all_words.extend(label_words * 5)
+
+        for key in ("x_axis_low", "x_axis_high", "y_axis_low", "y_axis_high"):
+            label = defn[key].lower()
+            synonyms = POLE_SYNONYMS.get(label, [])
+            for syn in synonyms:
+                syn_words = _tokenize_text(syn)
+                all_words.extend(syn_words * 3)
+
+        # Face vernacular — object-level vocabulary (4x weight)
+        for vern in FACE_VERNACULAR.get(face, []):
+            all_words.extend(_tokenize_text(vern) * 4)
+
+        all_words.extend(_tokenize_text(DOMAIN_REPLACEMENTS[face]) * 2)
+
+        # Average vectors for words in vocab
+        indices = [vocab[w] for w in all_words if w in vocab]
+        if not indices:
+            authored = np.zeros(embed_dim, dtype=np.float32)
+        else:
+            authored = np.mean(vectors[indices], axis=0)
+
+        authored_norm = np.linalg.norm(authored)
+        if authored_norm > 1e-9:
+            authored_unit = authored / authored_norm
+        else:
+            authored_unit = np.zeros(embed_dim, dtype=np.float32)
+
+        # Optional: blend with question centroid
+        if question_vecs is not None:
+            q_start = face_idx * n_questions_per_face
+            q_end = q_start + n_questions_per_face
+            face_q_vecs = question_vecs[q_start:q_end]  # (144, dim)
+            question_centroid = np.mean(face_q_vecs, axis=0)
+            q_norm = np.linalg.norm(question_centroid)
+            if q_norm > 1e-9:
+                question_unit = question_centroid / q_norm
+            else:
+                question_unit = np.zeros(embed_dim, dtype=np.float32)
+
+            combined = (1.0 - question_weight) * authored_unit + question_weight * question_unit
+            final_norm = np.linalg.norm(combined)
+            if final_norm > 1e-9:
+                centroid = combined / final_norm
+            else:
+                centroid = authored_unit
+        else:
+            centroid = authored_unit
+
+        in_vocab = len(indices)
+        blend_note = f", +question centroid (w={question_weight})" if question_vecs is not None else ""
+        print(f"  {face:15s}: {len(all_words)} authored words, {in_vocab} in vocab{blend_note}")
+        centroids.append(centroid.astype(np.float32))
+
+    return np.stack(centroids)
 
 
-def compute_question_position_maps(
-    full_vocab: dict[str, int],
-    full_vectors: np.ndarray,
-    runtime_vocab: dict[str, int],
-    runtime_vectors: np.ndarray,
-) -> tuple[np.ndarray, np.ndarray, list[tuple[int, int]]]:
-    """Compute per-word best-matching question position for each face.
+# ---------------------------------------------------------------------------
+# Axis direction vectors (24 total: 12 faces x 2 axes)
+# ---------------------------------------------------------------------------
 
-    For each of 12 faces, embed all 144 questions as IDF-weighted GloVe vectors.
-    For each word in runtime vocab, find the best-matching question within each
-    face and record its (x, y) position.
+def build_axis_directions(
+    vocab: dict[str, int],
+    vectors: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Build 24 axis direction vectors (high_pole - low_pole).
+
+    For each face, for each axis (x=0, y=1):
+      - low_pole = average BGE vector of (low_label + POLE_SYNONYMS)
+      - high_pole = average BGE vector of (high_label + POLE_SYNONYMS)
+      - direction = high_pole - low_pole, unit-normalized
+
+    Also performs calibration: projects each pole onto its direction.
 
     Returns:
-        word_question_x: shape (vocab_size, 12) dtype int8
-        word_question_y: shape (vocab_size, 12) dtype int8
-        question_positions: ordered list of (x, y) for the 144 questions
+        directions: shape (24, embedding_dim) — unit-normalized
+        cal_low: shape (24,) — expected projection of low pole
+        cal_high: shape (24,) — expected projection of high pole
     """
-    print(f"\n[QUESTIONS] Computing per-face question position maps ...")
-
-    question_positions = list(BASE_QUESTIONS.keys())  # 144 (x,y) pairs
-    n_questions = len(question_positions)
-    vocab_size = runtime_vectors.shape[0]
-
-    # Normalize runtime word vectors
-    word_norms = np.linalg.norm(runtime_vectors, axis=1, keepdims=True)
-    word_norms = np.where(word_norms == 0, 1, word_norms)
-    word_normed = runtime_vectors / word_norms
-
-    word_question_x = np.zeros((vocab_size, 12), dtype=np.int8)
-    word_question_y = np.zeros((vocab_size, 12), dtype=np.int8)
-
-    for face_idx, face in enumerate(ALL_FACES):
-        domain = DOMAIN_REPLACEMENTS[face]
-        question_vecs = []
-
-        for (x, y) in question_positions:
-            template = BASE_QUESTIONS[(x, y)]
-            question_text = template.replace("{domain}", domain)
-            # Tokenize: lowercase, remove punctuation, filter short/stop words
-            cleaned = question_text.lower()
-            for ch in "?.,;:!'\"()[]{}—-–/":
-                cleaned = cleaned.replace(ch, " ")
-            words = [w for w in cleaned.split() if w not in _Q_STOP_WORDS and len(w) > 2]
-
-            vec = _idf_weighted_average(words, full_vocab, full_vectors)
-            question_vecs.append(vec)
-
-        q_matrix = np.stack(question_vecs)  # (144, VECTOR_DIM)
-        # Normalize question vectors
-        q_norms = np.linalg.norm(q_matrix, axis=1, keepdims=True)
-        q_norms = np.where(q_norms == 0, 1, q_norms)
-        q_normed = q_matrix / q_norms
-
-        # Cosine similarity: (vocab_size, 144)
-        similarities = word_normed @ q_normed.T
-        best_idx = similarities.argmax(axis=1)  # (vocab_size,)
-
-        for i, idx in enumerate(best_idx):
-            pos = question_positions[idx]
-            word_question_x[i, face_idx] = pos[0]
-            word_question_y[i, face_idx] = pos[1]
-
-        # Report a few top-matching positions
-        print(f"  {face:15s}: {n_questions} questions embedded, "
-              f"best-match positions range x=[{word_question_x[:, face_idx].min()}, "
-              f"{word_question_x[:, face_idx].max()}], "
-              f"y=[{word_question_y[:, face_idx].min()}, "
-              f"{word_question_y[:, face_idx].max()}]")
-
-    print(f"[OK] Question position maps: x={word_question_x.shape}, y={word_question_y.shape}")
-    return word_question_x, word_question_y, question_positions
-
-
-# ---------------------------------------------------------------------------
-# Question-Guided Vocabulary Expansion
-# ---------------------------------------------------------------------------
-
-def expand_vocab_by_question_proximity(
-    full_vocab: dict[str, int],
-    full_vectors: np.ndarray,
-    runtime_vocab: dict[str, int],
-    runtime_vectors: np.ndarray,
-    centroids: np.ndarray,
-    directions: np.ndarray,
-    cal_low: np.ndarray,
-    cal_high: np.ndarray,
-    idf_weights: np.ndarray,
-    disc_face_sim: np.ndarray,
-    axis_proj: np.ndarray,
-    word_phase_sim: np.ndarray,
-    word_question_x: np.ndarray,
-    word_question_y: np.ndarray,
-    phase_centroids: np.ndarray,
-    max_additions: int = 5000,
-) -> tuple[dict[str, int], np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    """Expand vocabulary with OOV words most relevant to the 1728 construction questions.
-
-    For each face's 144 questions, embed the question as IDF-weighted average of
-    GloVe word vectors. For each OOV word (in full GloVe but not runtime vocab),
-    compute max cosine similarity to any question embedding. Select the top
-    max_additions words by this max similarity score.
-
-    Each added word enters with a known best-matching question, which gives it
-    a natural (face, x, y) position grounded in the geometry.
-
-    Returns updated: (disc_face_sim, axis_proj, idf_weights, word_phase_sim,
-                      word_question_x, word_question_y, runtime_vocab)
-    """
-    print(f"\n[EXPAND] Question-guided vocabulary expansion (max {max_additions}) ...")
-
-    # Step 1: Embed all 1728 questions as IDF-weighted GloVe averages
-    question_positions = list(BASE_QUESTIONS.keys())  # 144 (x,y) pairs
-    all_q_vecs = []      # (1728,) list -> (1728, VECTOR_DIM)
-    all_q_faces = []     # face index per question
-    all_q_pos = []       # (x, y) per question
-
-    for face_idx, face in enumerate(ALL_FACES):
-        domain = DOMAIN_REPLACEMENTS[face]
-        for (x, y) in question_positions:
-            template = BASE_QUESTIONS[(x, y)]
-            question_text = template.replace("{domain}", domain)
-            cleaned = question_text.lower()
-            for ch in "?.,;:!'\"()[]{}—-–/":
-                cleaned = cleaned.replace(ch, " ")
-            words = [w for w in cleaned.split() if w not in _Q_STOP_WORDS and len(w) > 2]
-
-            vec = _idf_weighted_average(words, full_vocab, full_vectors)
-            all_q_vecs.append(vec)
-            all_q_faces.append(face_idx)
-            all_q_pos.append((x, y))
-
-    q_matrix = np.stack(all_q_vecs)  # (1728, VECTOR_DIM)
-
-    # Step 2: Normalize question vectors to unit length
-    q_norms = np.linalg.norm(q_matrix, axis=1, keepdims=True)
-    q_norms = np.where(q_norms < 1e-9, 1.0, q_norms)
-    q_normed = q_matrix / q_norms
-
-    # Step 3: Identify OOV words (in full GloVe but not runtime vocab)
-    runtime_set = set(runtime_vocab.keys())
-    oov_words = []
-    oov_indices = []
-    for word, idx in full_vocab.items():
-        if word not in runtime_set:
-            oov_words.append(word)
-            oov_indices.append(idx)
-
-    if not oov_words:
-        print(f"[EXPAND] No OOV words found — skipping expansion")
-        return (disc_face_sim, axis_proj, idf_weights, word_phase_sim,
-                word_question_x, word_question_y, runtime_vocab)
-
-    print(f"[EXPAND] {len(oov_words)} OOV candidates ...")
-
-    # Step 4: Compute max cosine similarity to any question for each OOV word
-    oov_vecs = full_vectors[oov_indices]  # (N_oov, VECTOR_DIM)
-    oov_norms = np.linalg.norm(oov_vecs, axis=1, keepdims=True)
-    oov_norms = np.where(oov_norms < 1e-9, 1.0, oov_norms)
-    oov_normed = oov_vecs / oov_norms
-
-    # Process in batches to limit memory: (batch, 1728) similarities
-    batch_size = 10000
-    max_sims = np.zeros(len(oov_words), dtype=np.float32)
-    best_q_idx = np.zeros(len(oov_words), dtype=np.int32)
-
-    for b_start in range(0, len(oov_words), batch_size):
-        b_end = min(b_start + batch_size, len(oov_words))
-        batch_normed = oov_normed[b_start:b_end]  # (batch, dim)
-        sims = batch_normed @ q_normed.T            # (batch, 1728)
-        max_sims[b_start:b_end] = sims.max(axis=1)
-        best_q_idx[b_start:b_end] = sims.argmax(axis=1)
-
-    # Step 5: Select top max_additions by max question similarity
-    top_k = min(max_additions, len(oov_words))
-    top_local_indices = np.argsort(max_sims)[::-1][:top_k]
-
-    # Filter: require minimum similarity threshold
-    min_sim = 0.3
-    top_local_indices = [i for i in top_local_indices if max_sims[i] >= min_sim]
-
-    if not top_local_indices:
-        print(f"[EXPAND] No OOV words above similarity threshold {min_sim} — skipping")
-        return (disc_face_sim, axis_proj, idf_weights, word_phase_sim,
-                word_question_x, word_question_y, runtime_vocab)
-
-    print(f"[EXPAND] Selected {len(top_local_indices)} OOV words "
-          f"(sim range [{max_sims[top_local_indices[-1]]:.4f}, "
-          f"{max_sims[top_local_indices[0]]:.4f}])")
-
-    # Step 6: Compute all arrays for the new words
-    new_face_sims = []
-    new_axis_projs = []
-    new_idfs = []
-    new_phase_sims = []
-    new_qx = []
-    new_qy = []
-    new_words = []
-
-    # Pre-compute calibration range
-    cal_range = cal_high - cal_low
-    cal_range = np.where(np.abs(cal_range) < 1e-8, 1.0, cal_range)
-
-    # Normalize phase centroids for cosine sim
-    pc_norms = np.linalg.norm(phase_centroids, axis=1, keepdims=True)
-    pc_norms = np.where(pc_norms < 1e-9, 1.0, pc_norms)
-    pc_normed = phase_centroids / pc_norms
-
-    base_runtime_size = len(runtime_vocab)
-
-    for rank, local_i in enumerate(top_local_indices):
-        word = oov_words[local_i]
-        full_idx = oov_indices[local_i]
-        vec = full_vectors[full_idx]
-
-        # Face similarity: cosine(word, centroid) - mean
-        vec_norm = np.linalg.norm(vec)
-        if vec_norm > 1e-9:
-            vec_unit = vec / vec_norm
-        else:
-            vec_unit = np.zeros(VECTOR_DIM, dtype=np.float32)
-
-        raw_sim = vec_unit @ centroids.T  # (12,)
-        disc_sim = raw_sim - np.mean(raw_sim)
-        new_face_sims.append(disc_sim.astype(np.float32))
-
-        # Axis projections: dot(word, direction) calibrated
-        raw_proj = vec @ directions.T  # (24,)
-        normalized = (raw_proj - cal_low) / cal_range
-        clamped = np.clip(normalized, 0.0, 1.0)
-        new_axis_projs.append(clamped.astype(np.float32))
-
-        # IDF: based on GloVe frequency rank, same formula as compute_idf_weights
-        # but for the full vocab index. Higher index = less frequent = higher IDF.
-        total_full = len(full_vocab)
-        idf_val = np.log(float(total_full) / (full_idx + 1.0))
-        # Normalize same way: use the observed range from runtime IDF
-        idf_min = 0.0  # runtime IDF is already [0, 1]
-        idf_max = np.log(float(base_runtime_size))
-        if idf_max > 1e-9:
-            idf_normed = min(1.0, max(0.0, idf_val / idf_max))
-        else:
-            idf_normed = 0.5
-        new_idfs.append(idf_normed)
-
-        # Phase similarity: cosine(word, phase_centroid)
-        phase_sim = vec_unit @ pc_normed.T  # (3,)
-        new_phase_sims.append(phase_sim.astype(np.float32))
-
-        # Question position: use the best-matching question's (face, x, y)
-        best_q = best_q_idx[local_i]
-        best_face_idx = all_q_faces[best_q]
-        best_pos = all_q_pos[best_q]
-
-        # For the best-matching face, use that question's position.
-        # For other faces, find the best matching question within that face.
-        qx_row = np.zeros(12, dtype=np.int8)
-        qy_row = np.zeros(12, dtype=np.int8)
-
-        # Compute per-face best question match
-        for fi in range(12):
-            # Slice of questions for this face: indices fi*144 to (fi+1)*144
-            face_q_start = fi * 144
-            face_q_end = face_q_start + 144
-            face_q_sims = vec_unit @ q_normed[face_q_start:face_q_end].T  # (144,)
-            best_local_q = int(np.argmax(face_q_sims))
-            pos = question_positions[best_local_q]
-            qx_row[fi] = pos[0]
-            qy_row[fi] = pos[1]
-
-        new_qx.append(qx_row)
-        new_qy.append(qy_row)
-        new_words.append(word)
-
-    # Step 7: Extend all arrays
-    n_new = len(new_words)
-    new_face_sim_arr = np.stack(new_face_sims)         # (n_new, 12)
-    new_axis_proj_arr = np.stack(new_axis_projs)       # (n_new, 24)
-    new_idf_arr = np.array(new_idfs, dtype=np.float32) # (n_new,)
-    new_phase_sim_arr = np.stack(new_phase_sims)       # (n_new, 3)
-    new_qx_arr = np.stack(new_qx)                     # (n_new, 12)
-    new_qy_arr = np.stack(new_qy)                     # (n_new, 12)
-
-    disc_face_sim = np.concatenate([disc_face_sim, new_face_sim_arr], axis=0)
-    axis_proj = np.concatenate([axis_proj, new_axis_proj_arr], axis=0)
-    idf_weights = np.concatenate([idf_weights, new_idf_arr], axis=0)
-    word_phase_sim = np.concatenate([word_phase_sim, new_phase_sim_arr], axis=0)
-    word_question_x = np.concatenate([word_question_x, new_qx_arr], axis=0)
-    word_question_y = np.concatenate([word_question_y, new_qy_arr], axis=0)
-
-    # Add to runtime vocab with offset indices
-    # disc_face_sim now has (old_size + n_new) rows; new words start at old_size
-    expansion_offset = disc_face_sim.shape[0] - n_new
-    for i, word in enumerate(new_words):
-        runtime_vocab[word] = expansion_offset + i
-
-    # Report some interesting additions
-    print(f"[EXPAND] Added {n_new} words to vocabulary")
-    print(f"[EXPAND] New array sizes: face_sim={disc_face_sim.shape}, "
-          f"axis_proj={axis_proj.shape}, idf={idf_weights.shape}")
-    # Show a few examples
-    sample_count = min(10, n_new)
-    print(f"[EXPAND] Sample additions (top {sample_count} by question proximity):")
-    for i in range(sample_count):
-        local_i = top_local_indices[i]
-        word = oov_words[local_i]
-        sim = max_sims[local_i]
-        best_q = best_q_idx[local_i]
-        best_face = ALL_FACES[all_q_faces[best_q]]
-        best_pos = all_q_pos[best_q]
-        print(f"  {word:20s} sim={sim:.4f} -> {best_face} ({best_pos[0]},{best_pos[1]})")
-
-    # Check specific words of interest
-    check_words = ["imitation", "ornament", "embellished", "perseveres",
-                   "catharsis", "sovereignty", "metaphorical"]
-    found = [w for w in check_words if w in runtime_vocab]
-    missing = [w for w in check_words if w not in runtime_vocab]
-    if found:
-        print(f"[EXPAND] Check words now in vocab: {', '.join(found)}")
-    if missing:
-        print(f"[EXPAND] Check words still missing: {', '.join(missing)}")
-
-    return (disc_face_sim, axis_proj, idf_weights, word_phase_sim,
-            word_question_x, word_question_y, runtime_vocab)
-
-
-# ---------------------------------------------------------------------------
-# Output and reporting
-# ---------------------------------------------------------------------------
-
-def save_artifacts(
-    runtime_vocab: dict[str, int],
-    disc_face_sim: np.ndarray,
-    axis_proj: np.ndarray,
-    idf_weights: np.ndarray,
-    disambig_face_sim: np.ndarray | None = None,
-    disambig_axis_proj: np.ndarray | None = None,
-    disambig_meta: dict | None = None,
-    phrase_keys: list[str] | None = None,
-    surface_to_canonical: dict[str, str] | None = None,
-    phase_centroids: np.ndarray | None = None,
-    word_phase_sim: np.ndarray | None = None,
-    word_question_x: np.ndarray | None = None,
-    word_question_y: np.ndarray | None = None,
-    vector_source: str = "GloVe 6B 100d",
-) -> None:
-    """Save all artifacts to disk."""
-    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-
-    npz_dict = {
-        "face_sim": disc_face_sim,
-        "axis_proj": axis_proj,
-        "idf": idf_weights,
-        "faces": np.array(ALL_FACES),
-    }
-
-    # Add disambiguation arrays if present
-    if disambig_face_sim is not None:
-        npz_dict["disambig_face_sim"] = disambig_face_sim
-    if disambig_axis_proj is not None:
-        npz_dict["disambig_axis_proj"] = disambig_axis_proj
-
-    # Add phase weighting arrays (Technique F)
-    if phase_centroids is not None:
-        npz_dict["phase_centroids"] = phase_centroids
-    if word_phase_sim is not None:
-        npz_dict["word_phase_sim"] = word_phase_sim
-
-    # Add question position maps (Technique D)
-    if word_question_x is not None:
-        npz_dict["word_question_x"] = word_question_x
-    if word_question_y is not None:
-        npz_dict["word_question_y"] = word_question_y
-
-    np.savez_compressed(str(NPZ_PATH), **npz_dict)
-    print(f"[SAVE] {NPZ_PATH} ({NPZ_PATH.stat().st_size / 1024:.1f} KB)")
-
-    # Build vocab JSON with optional sections
-    vocab_data: dict = dict(runtime_vocab)
-
-    # Wrap in structured format if we have extra sections
-    if disambig_meta is not None or phrase_keys is not None:
-        vocab_data = {
-            "words": runtime_vocab,
-        }
-        if disambig_meta is not None:
-            vocab_data["disambiguation"] = disambig_meta
-        if phrase_keys is not None:
-            vocab_data["phrases"] = phrase_keys
-        if surface_to_canonical is not None:
-            vocab_data["surface_to_canonical"] = surface_to_canonical
-        # Add phase names for runtime lookup
-        vocab_data["phase_names"] = PHASE_NAMES
-        # Record which vector source was used
-        vocab_data["vector_source"] = vector_source
-
-    with open(str(VOCAB_PATH), "w", encoding="utf-8") as f:
-        json.dump(vocab_data, f)
-    print(f"[SAVE] {VOCAB_PATH} ({VOCAB_PATH.stat().st_size / 1024:.1f} KB)")
-
-
-def report_top_words(
-    runtime_vocab: dict[str, int],
-    disc_face_sim: np.ndarray,
-    top_n: int = 10,
-) -> None:
-    """Print the top-N most discriminative words per face."""
-    idx_to_word = {i: w for w, i in runtime_vocab.items()}
-
-    print(f"\n{'='*70}")
-    print(f"Top {top_n} discriminative words per face")
-    print(f"{'='*70}")
-
-    for col_idx, face in enumerate(ALL_FACES):
-        scores = disc_face_sim[:, col_idx]
-        top_indices = np.argsort(scores)[::-1][:top_n]
-        top_words = [(idx_to_word[i], float(scores[i])) for i in top_indices]
-        words_str = ", ".join(f"{w}({s:.3f})" for w, s in top_words)
-        print(f"\n{face}:")
-        print(f"  {words_str}")
-
-
-def report_pole_self_test(
-    runtime_vocab: dict[str, int],
-    axis_proj: np.ndarray,
-) -> bool:
-    """Project pole synonym words onto their own axis and verify correct placement.
-
-    Low poles should project < 0.3, high poles should project > 0.7.
-    Returns True if all pass.
-    """
-    print(f"\n{'='*70}")
-    print(f"Pole self-test (low < 0.3, high > 0.7)")
-    print(f"{'='*70}")
-
-    all_pass = True
-    axis_idx = 0
+    directions = []
+    cal_low_arr = []
+    cal_high_arr = []
+    embed_dim = vectors.shape[1]
+
+    def _avg(words: list[str]) -> np.ndarray:
+        indices = [vocab[w] for w in words if w in vocab]
+        if not indices:
+            return np.zeros(embed_dim, dtype=np.float32)
+        return np.mean(vectors[indices], axis=0)
 
     for face in ALL_FACES:
         defn = FACE_DEFINITIONS[face]
-        for low_key, high_key in [("x_axis_low", "x_axis_high"), ("y_axis_low", "y_axis_high")]:
-            low_label = defn[low_key].lower()
-            high_label = defn[high_key].lower()
+        for low_key, high_key in [
+            ("x_axis_low", "x_axis_high"),
+            ("y_axis_low", "y_axis_high"),
+        ]:
+            low_words = _tokenize_text(defn[low_key])
+            high_words = _tokenize_text(defn[high_key])
 
-            # Get words for each pole
-            low_words = _get_pole_label_words(defn[low_key])
-            high_words = _get_pole_label_words(defn[high_key])
             for w in list(low_words):
                 if w in POLE_SYNONYMS:
                     low_words.extend(POLE_SYNONYMS[w])
@@ -1883,34 +596,466 @@ def report_pole_self_test(
                 if w in POLE_SYNONYMS:
                     high_words.extend(POLE_SYNONYMS[w])
 
-            # Project low pole words
-            low_indices = [runtime_vocab[w] for w in low_words if w in runtime_vocab]
-            high_indices = [runtime_vocab[w] for w in high_words if w in runtime_vocab]
+            low_vec = _avg(low_words)
+            high_vec = _avg(high_words)
 
-            if low_indices:
-                low_proj = float(np.mean(axis_proj[low_indices, axis_idx]))
+            direction = high_vec - low_vec
+            dir_norm = np.linalg.norm(direction)
+            if dir_norm > 0:
+                direction_unit = direction / dir_norm
             else:
-                low_proj = 0.5
-            if high_indices:
-                high_proj = float(np.mean(axis_proj[high_indices, axis_idx]))
+                direction_unit = np.zeros(embed_dim, dtype=np.float32)
+
+            proj_low = float(np.dot(low_vec, direction_unit))
+            proj_high = float(np.dot(high_vec, direction_unit))
+
+            directions.append(direction_unit.astype(np.float32))
+            cal_low_arr.append(proj_low)
+            cal_high_arr.append(proj_high)
+
+    return (
+        np.stack(directions),
+        np.array(cal_low_arr, dtype=np.float32),
+        np.array(cal_high_arr, dtype=np.float32),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Per-word artifact computation
+# ---------------------------------------------------------------------------
+
+def compute_discriminative_face_similarity(
+    vectors: np.ndarray,
+    centroids: np.ndarray,
+) -> np.ndarray:
+    """For each word: cosine(word, centroid[f]) - mean over faces."""
+    print(f"[COMPUTE] Discriminative face similarity ({vectors.shape[0]} x 12) ...")
+    # vectors are already L2-normalized from BGE
+    raw_sim = vectors @ centroids.T  # (N, 12)
+    mean_sim = np.mean(raw_sim, axis=1, keepdims=True)
+    disc_sim = raw_sim - mean_sim
+    print(f"[OK] Face similarity shape: {disc_sim.shape}, "
+          f"range [{disc_sim.min():.4f}, {disc_sim.max():.4f}]")
+    return disc_sim.astype(np.float32)
+
+
+def compute_axis_projections(
+    vectors: np.ndarray,
+    directions: np.ndarray,
+    cal_low: np.ndarray,
+    cal_high: np.ndarray,
+) -> np.ndarray:
+    """For each word & axis: calibrated projection in [0, 1]."""
+    print(f"[COMPUTE] Axis projections ({vectors.shape[0]} x 24) ...")
+    raw_proj = vectors @ directions.T  # (N, 24)
+    cal_range = cal_high - cal_low
+    cal_range = np.where(np.abs(cal_range) < 1e-8, 1.0, cal_range)
+    normalized = (raw_proj - cal_low[np.newaxis, :]) / cal_range[np.newaxis, :]
+    clamped = np.clip(normalized, 0.0, 1.0)
+    print(f"[OK] Axis projections shape: {clamped.shape}")
+    return clamped.astype(np.float32)
+
+
+def compute_idf_weights(words: list[str]) -> np.ndarray:
+    """Compute IDF-like weights from wordfreq Zipf frequency.
+
+    Zipf frequency: log10(count_per_billion). Range roughly [0, 8].
+    Common words like "the" ~= 7.8; rare words ~= 2-3.
+
+    IDF = 1 - (zipf / 8), clamped to [0, 1]. Rarer = higher weight.
+    """
+    from wordfreq import zipf_frequency
+
+    print(f"[COMPUTE] IDF weights for {len(words)} words ...")
+    zipfs = np.array([zipf_frequency(w, "en") for w in words], dtype=np.float32)
+    # Clamp zipf to [0, 8] then invert
+    zipfs_clamped = np.clip(zipfs, 0.0, 8.0)
+    idf = 1.0 - (zipfs_clamped / 8.0)
+    # Words not in wordfreq get zipf=0 -> idf=1 (treat as rare/informative)
+    print(f"[OK] IDF range: [{idf.min():.4f}, {idf.max():.4f}], mean {idf.mean():.4f}")
+    return idf.astype(np.float32)
+
+
+# ---------------------------------------------------------------------------
+# Disambiguation table
+# ---------------------------------------------------------------------------
+
+def compute_disambiguation_table(
+    model,
+    centroids: np.ndarray,
+    directions: np.ndarray,
+    cal_low: np.ndarray,
+    cal_high: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray, dict]:
+    """Compute override face_sim and axis_proj for polysemous senses.
+
+    For each sense with seed_words, encode the seed words as a BGE phrase
+    (joined with spaces). Compute face_sim and axis_proj through the
+    standard pipeline.
+    """
+    print(f"\n[DISAMBIG] Computing disambiguation table ...")
+
+    embed_dim = centroids.shape[1]
+
+    # Collect sense texts to encode in one batch
+    sense_texts: list[str] = []
+    sense_keys: list[tuple[str, int]] = []  # (trigger, entry_index)
+    sense_is_suppress: list[bool] = []
+
+    for trigger, entries in DISAMBIGUATION_ENTRIES.items():
+        for entry_idx, entry in enumerate(entries):
+            override_type = entry.get("override_type", "redirect")
+            if override_type == "suppress":
+                sense_texts.append("")
+                sense_is_suppress.append(True)
             else:
-                high_proj = 0.5
+                seed_text = " ".join(entry["seed_words"])
+                sense_texts.append(seed_text)
+                sense_is_suppress.append(False)
+            sense_keys.append((trigger, entry_idx))
+
+    # Encode all non-suppress senses
+    non_suppress_texts = [t for t, supp in zip(sense_texts, sense_is_suppress) if not supp]
+    if non_suppress_texts:
+        non_suppress_vecs = encode(model, non_suppress_texts)
+    else:
+        non_suppress_vecs = np.zeros((0, embed_dim), dtype=np.float32)
+
+    # Reassemble in original order
+    sense_face_sims = []
+    sense_axis_projs = []
+    ns_idx = 0
+    disambig_meta: dict[str, list[dict]] = {}
+    sense_idx = 0
+
+    cal_range = cal_high - cal_low
+    cal_range = np.where(np.abs(cal_range) < 1e-8, 1.0, cal_range)
+
+    for (trigger, entry_idx), supp in zip(sense_keys, sense_is_suppress):
+        entry = DISAMBIGUATION_ENTRIES[trigger][entry_idx]
+        context_words = sorted(entry["context_words"])
+        threshold = 2
+
+        if supp:
+            sense_face_sims.append(np.zeros(12, dtype=np.float32))
+            sense_axis_projs.append(np.full(24, 0.5, dtype=np.float32))
+        else:
+            sense_vec = non_suppress_vecs[ns_idx]
+            ns_idx += 1
+            # face_sim: cosine(sense, centroid) - mean — vectors are unit-normed
+            raw_sim = sense_vec @ centroids.T
+            disc_sim = raw_sim - np.mean(raw_sim)
+            sense_face_sims.append(disc_sim.astype(np.float32))
+
+            # axis_proj: calibrated projection
+            raw_proj = sense_vec @ directions.T
+            normalized = (raw_proj - cal_low) / cal_range
+            clamped = np.clip(normalized, 0.0, 1.0)
+            sense_axis_projs.append(clamped.astype(np.float32))
+
+        meta_entry = {
+            "context_words": context_words,
+            "sense_idx": sense_idx,
+            "override_type": entry.get("override_type", "redirect"),
+            "threshold": threshold,
+        }
+        if "target_face" in entry:
+            meta_entry["target_face"] = entry["target_face"]
+
+        disambig_meta.setdefault(trigger, []).append(meta_entry)
+        sense_idx += 1
+
+    disambig_face_sim = (
+        np.stack(sense_face_sims).astype(np.float32)
+        if sense_face_sims
+        else np.zeros((0, 12), dtype=np.float32)
+    )
+    disambig_axis_proj = (
+        np.stack(sense_axis_projs).astype(np.float32)
+        if sense_axis_projs
+        else np.zeros((0, 24), dtype=np.float32)
+    )
+
+    print(f"[DISAMBIG] {len(DISAMBIGUATION_ENTRIES)} triggers, {sense_idx} senses, "
+          f"shapes {disambig_face_sim.shape} / {disambig_axis_proj.shape}")
+    return disambig_face_sim, disambig_axis_proj, disambig_meta
+
+
+# ---------------------------------------------------------------------------
+# Phrase embeddings
+# ---------------------------------------------------------------------------
+
+def compute_phrase_embeddings(
+    model,
+    centroids: np.ndarray,
+    directions: np.ndarray,
+    cal_low: np.ndarray,
+    cal_high: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, list[str], dict[str, str]]:
+    """Encode each curated phrase as a full sentence through BGE.
+
+    Returns:
+        phrase_face_sim: (N_phrases, 12)
+        phrase_axis_proj: (N_phrases, 24)
+        phrase_idf: (N_phrases,)
+        phrase_keys: canonical phrase strings
+        surface_to_canonical: surface -> canonical mapping
+    """
+    from wordfreq import zipf_frequency
+
+    print(f"\n[PHRASES] Computing phrase embeddings through BGE ...")
+
+    phrase_keys: list[str] = []
+    surface_to_canonical: dict[str, str] = {}
+    phrase_texts: list[str] = []
+
+    seen: set[str] = set()
+    for phrase in ALL_CURATED_PHRASES:
+        surface_words = phrase.lower().split()
+        canonical_words = []
+        for w in surface_words:
+            cleaned = "".join(c for c in w if c.isalpha())
+            if cleaned and cleaned not in PHRASE_STOP_WORDS:
+                canonical_words.append(cleaned)
+
+        if len(canonical_words) < 2:
+            continue
+
+        canonical = " ".join(canonical_words)
+        if canonical in seen:
+            continue
+        seen.add(canonical)
+
+        surface = " ".join(surface_words)
+        if surface != canonical:
+            surface_to_canonical[surface] = canonical
+
+        phrase_keys.append(canonical)
+        # Encode the full phrase as a sentence — BGE handles composition
+        phrase_texts.append(phrase)
+
+    if not phrase_keys:
+        empty = np.zeros((0, 12), dtype=np.float32)
+        return empty, np.zeros((0, 24), dtype=np.float32), np.zeros(0, dtype=np.float32), [], {}
+
+    phrase_vecs = encode(model, phrase_texts)  # (N, embed_dim)
+
+    # face_sim
+    raw_sim = phrase_vecs @ centroids.T
+    mean_sim = np.mean(raw_sim, axis=1, keepdims=True)
+    phrase_face_sim = (raw_sim - mean_sim).astype(np.float32)
+
+    # axis_proj
+    raw_proj = phrase_vecs @ directions.T
+    cal_range = cal_high - cal_low
+    cal_range = np.where(np.abs(cal_range) < 1e-8, 1.0, cal_range)
+    normalized = (raw_proj - cal_low[np.newaxis, :]) / cal_range[np.newaxis, :]
+    phrase_axis_proj = np.clip(normalized, 0.0, 1.0).astype(np.float32)
+
+    # IDF: max component IDF (phrases are rarer than any single word)
+    phrase_idfs = []
+    for canonical in phrase_keys:
+        idfs = []
+        for w in canonical.split():
+            zipf = zipf_frequency(w, "en")
+            zipf_clamped = max(0.0, min(8.0, zipf))
+            idfs.append(1.0 - zipf_clamped / 8.0)
+        phrase_idfs.append(max(idfs) if idfs else 0.9)
+    phrase_idf = np.array(phrase_idfs, dtype=np.float32)
+
+    print(f"[PHRASES] {len(phrase_keys)} phrases encoded, "
+          f"{len(surface_to_canonical)} surface mappings")
+    return phrase_face_sim, phrase_axis_proj, phrase_idf, phrase_keys, surface_to_canonical
+
+
+# ---------------------------------------------------------------------------
+# Phase-aware face weighting
+# ---------------------------------------------------------------------------
+
+PHASE_NAMES = ["comprehension", "evaluation", "application"]
+
+PHASE_FACES: dict[str, list[str]] = {
+    "comprehension": [f for f in ALL_FACES if FACE_PHASES[f] == "comprehension"],
+    "evaluation": [f for f in ALL_FACES if FACE_PHASES[f] == "evaluation"],
+    "application": [f for f in ALL_FACES if FACE_PHASES[f] == "application"],
+}
+
+
+def build_phase_centroids(centroids: np.ndarray) -> np.ndarray:
+    """Build phase centroid vectors by averaging face centroids per phase."""
+    print(f"\n[PHASE] Computing phase centroids ...")
+    face_index = {face: i for i, face in enumerate(ALL_FACES)}
+    phase_centroids = []
+    for phase_name in PHASE_NAMES:
+        faces_in_phase = PHASE_FACES[phase_name]
+        face_indices = [face_index[f] for f in faces_in_phase]
+        phase_vec = np.mean(centroids[face_indices], axis=0)
+        norm = np.linalg.norm(phase_vec)
+        if norm > 1e-9:
+            phase_vec = phase_vec / norm
+        phase_centroids.append(phase_vec)
+        print(f"  {phase_name:15s}: {len(faces_in_phase)} faces")
+    return np.stack(phase_centroids).astype(np.float32)
+
+
+def compute_word_phase_sim(vectors: np.ndarray, phase_centroids: np.ndarray) -> np.ndarray:
+    """Per-word cosine similarity to each phase centroid (vectors already unit-normed)."""
+    print(f"[PHASE] Computing word-phase similarity ({vectors.shape[0]} x 3) ...")
+    sim = vectors @ phase_centroids.T
+    return sim.astype(np.float32)
+
+
+# ---------------------------------------------------------------------------
+# Question position maps
+# ---------------------------------------------------------------------------
+
+def encode_all_questions(model) -> np.ndarray:
+    """Encode the 1728 construction questions as full sentences through BGE.
+
+    Returns: (1728, embedding_dim) — face-major ordering (face 0's 144
+    questions, then face 1's 144, etc.) matching ALL_FACES and
+    BASE_QUESTIONS key order.
+    """
+    question_positions = list(BASE_QUESTIONS.keys())
+    question_texts: list[str] = []
+    for face in ALL_FACES:
+        domain = DOMAIN_REPLACEMENTS[face]
+        for (x, y) in question_positions:
+            template = BASE_QUESTIONS[(x, y)]
+            question_texts.append(template.replace("{domain}", domain))
+    print(f"[QUESTIONS] Encoding {len(question_texts)} questions through BGE ...")
+    return encode(model, question_texts)
+
+
+def compute_question_position_maps(
+    vectors: np.ndarray,
+    q_vecs: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray, list[tuple[int, int]]]:
+    """For each word and each face, find best-matching question position.
+
+    Consumes pre-computed question vectors from encode_all_questions().
+    """
+    print(f"\n[QUESTIONS] Computing per-face question position maps ...")
+
+    question_positions = list(BASE_QUESTIONS.keys())
+    n_questions = len(question_positions)
+    n_words = vectors.shape[0]
+
+    word_question_x = np.zeros((n_words, 12), dtype=np.int8)
+    word_question_y = np.zeros((n_words, 12), dtype=np.int8)
+
+    for face_idx in range(12):
+        face_q_start = face_idx * n_questions
+        face_q_end = face_q_start + n_questions
+        face_q_vecs = q_vecs[face_q_start:face_q_end]
+
+        similarities = vectors @ face_q_vecs.T  # (N, 144)
+        best_idx = similarities.argmax(axis=1)
+        for i, idx in enumerate(best_idx):
+            pos = question_positions[idx]
+            word_question_x[i, face_idx] = pos[0]
+            word_question_y[i, face_idx] = pos[1]
+
+        print(f"  {ALL_FACES[face_idx]:15s}: best-match x=[{word_question_x[:, face_idx].min()},"
+              f" {word_question_x[:, face_idx].max()}], y=[{word_question_y[:, face_idx].min()},"
+              f" {word_question_y[:, face_idx].max()}]")
+
+    return word_question_x, word_question_y, question_positions
+
+
+# ---------------------------------------------------------------------------
+# Save / reports
+# ---------------------------------------------------------------------------
+
+def save_artifacts(
+    vocab: dict[str, int],
+    disc_face_sim: np.ndarray,
+    axis_proj: np.ndarray,
+    idf_weights: np.ndarray,
+    disambig_face_sim: np.ndarray,
+    disambig_axis_proj: np.ndarray,
+    disambig_meta: dict,
+    phrase_keys: list[str],
+    surface_to_canonical: dict[str, str],
+    phase_centroids: np.ndarray,
+    word_phase_sim: np.ndarray,
+    word_question_x: np.ndarray,
+    word_question_y: np.ndarray,
+    vector_source: str,
+) -> None:
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
+    npz_dict = {
+        "face_sim": disc_face_sim,
+        "axis_proj": axis_proj,
+        "idf": idf_weights,
+        "faces": np.array(ALL_FACES),
+        "disambig_face_sim": disambig_face_sim,
+        "disambig_axis_proj": disambig_axis_proj,
+        "phase_centroids": phase_centroids,
+        "word_phase_sim": word_phase_sim,
+        "word_question_x": word_question_x,
+        "word_question_y": word_question_y,
+    }
+    np.savez_compressed(str(NPZ_PATH), **npz_dict)
+    print(f"[SAVE] {NPZ_PATH} ({NPZ_PATH.stat().st_size / 1024:.1f} KB)")
+
+    vocab_data = {
+        "words": vocab,
+        "disambiguation": disambig_meta,
+        "phrases": phrase_keys,
+        "surface_to_canonical": surface_to_canonical,
+        "phase_names": PHASE_NAMES,
+        "vector_source": vector_source,
+    }
+    with open(str(VOCAB_PATH), "w", encoding="utf-8") as f:
+        json.dump(vocab_data, f)
+    print(f"[SAVE] {VOCAB_PATH} ({VOCAB_PATH.stat().st_size / 1024:.1f} KB)")
+
+
+def report_top_words(vocab: dict[str, int], disc_face_sim: np.ndarray, top_n: int = 10) -> None:
+    idx_to_word = {i: w for w, i in vocab.items()}
+    print(f"\n{'='*70}\nTop {top_n} discriminative words per face\n{'='*70}")
+    for col_idx, face in enumerate(ALL_FACES):
+        scores = disc_face_sim[:, col_idx]
+        top_indices = np.argsort(scores)[::-1][:top_n]
+        top_words = [(idx_to_word.get(int(i), "?"), float(scores[i])) for i in top_indices]
+        words_str = ", ".join(f"{w}({s:.3f})" for w, s in top_words)
+        print(f"\n{face}:\n  {words_str}")
+
+
+def report_pole_self_test(vocab: dict[str, int], axis_proj: np.ndarray) -> bool:
+    """Each pole's own words should project toward its side."""
+    print(f"\n{'='*70}\nPole self-test (low < 0.3, high > 0.7)\n{'='*70}")
+    all_pass = True
+    axis_idx = 0
+    for face in ALL_FACES:
+        defn = FACE_DEFINITIONS[face]
+        for low_key, high_key in [("x_axis_low", "x_axis_high"), ("y_axis_low", "y_axis_high")]:
+            low_words = _tokenize_text(defn[low_key])
+            high_words = _tokenize_text(defn[high_key])
+            for w in list(low_words):
+                if w in POLE_SYNONYMS:
+                    low_words.extend(POLE_SYNONYMS[w])
+            for w in list(high_words):
+                if w in POLE_SYNONYMS:
+                    high_words.extend(POLE_SYNONYMS[w])
+
+            low_indices = [vocab[w] for w in low_words if w in vocab]
+            high_indices = [vocab[w] for w in high_words if w in vocab]
+
+            low_proj = float(np.mean(axis_proj[low_indices, axis_idx])) if low_indices else 0.5
+            high_proj = float(np.mean(axis_proj[high_indices, axis_idx])) if high_indices else 0.5
 
             low_ok = low_proj < 0.3
             high_ok = high_proj > 0.7
-            status = "PASS" if (low_ok and high_ok) else "FAIL"
             if not (low_ok and high_ok):
                 all_pass = False
-
-            print(f"  {face:15s} {defn[low_key]:20s} -> {low_proj:.3f} {'OK' if low_ok else 'HIGH!'}"
-                  f"  |  {defn[high_key]:20s} -> {high_proj:.3f} {'OK' if high_ok else 'LOW!'}"
-                  f"  [{status}]")
-
+            status = "PASS" if (low_ok and high_ok) else "FAIL"
+            print(f"  {face:15s} {defn[low_key]:20s} -> {low_proj:.3f}"
+                  f"  |  {defn[high_key]:20s} -> {high_proj:.3f}  [{status}]")
             axis_idx += 1
-
-    print(f"\n{'='*70}")
-    print(f"Pole self-test: {'ALL PASS' if all_pass else 'SOME FAILURES'}")
-    print(f"{'='*70}")
+    print(f"\n{'='*70}\nPole self-test: {'ALL PASS' if all_pass else 'SOME FAILURES'}\n{'='*70}")
     return all_pass
 
 
@@ -1920,151 +1065,98 @@ def report_pole_self_test(
 
 def main() -> None:
     print("=" * 70)
-    print("Geometric Semantic Bridge Builder")
+    print("Geometric Semantic Bridge Builder — BGE edition")
     print("=" * 70)
 
-    # Step 0: Detect Model2Vec availability
-    use_model2vec = False
-    m2v_model = None
-
-    if M2V_MODEL_PATH.exists():
-        print(f"\n[MODEL2VEC] Found distilled model at {M2V_MODEL_PATH}")
-        print(f"[MODEL2VEC] Loading Model2Vec (sentence-transformer-quality vectors) ...")
-        try:
-            from model2vec import StaticModel
-            m2v_model = StaticModel.from_pretrained(str(M2V_MODEL_PATH))
-            use_model2vec = True
-            print(f"[MODEL2VEC] Loaded. Will use Model2Vec vectors instead of GloVe.")
-        except ImportError:
-            print(f"[MODEL2VEC] model2vec package not installed. Falling back to GloVe.")
-        except Exception as e:
-            print(f"[MODEL2VEC] Error loading model: {e}. Falling back to GloVe.")
-    else:
-        print(f"\n[GLOVE] Model2Vec not found at {M2V_MODEL_PATH}")
-        print(f"[GLOVE] Using GloVe 6B 100d vectors (default)")
-
-    # Step 1: Download and load GloVe (always needed for frequency ordering)
-    download_glove()
-
-    # Step 2: Load ALL GloVe vectors (vocabulary + vectors)
-    full_vocab, full_vectors = load_all_glove()
-
-    # Step 2b: If Model2Vec available, re-encode all vocabulary words
-    # through Model2Vec and PCA-compress to VECTOR_DIM. This replaces
-    # full_vectors entirely — all downstream code (centroids, axes,
-    # face_sim, axis_proj, disambiguation, phrases, expansion) operates
-    # on the same-shaped arrays with better-quality vectors.
-    if use_model2vec:
-        full_vectors = encode_vocab_with_model2vec(m2v_model, full_vocab)
-        vector_source = "Model2Vec (PCA 256d->100d)"
-    else:
-        vector_source = "GloVe 6B 100d"
+    # Step 1: Load BGE
+    model = load_bge()
+    vector_source = f"BGE (BAAI/bge-large-en-v1.5, native {BGE_DIM}d)"
     print(f"\n[VECTORS] Active vector source: {vector_source}")
 
-    # Step 3: [Alg 1] Counter-fitting (Mrksic SGD, antonym-only + VSP)
-    # Replaces the disabled Faruqui-style retrofitting. Uses antonym repulsion
-    # only (k2=0) with VSP to preserve neighborhood structure.
-    # counterfit_vectors(full_vocab, full_vectors)  # DISABLED — testing isolation
+    # Step 2: Build target vocab (frequent + all domain/pole/question/phrase words)
+    words = build_target_vocab()
+    vocab = {w: i for i, w in enumerate(words)}
 
-    # Step 4: Build face centroids from AUTHORED layers only (uses counter-fitted vectors)
-    print(f"\n[BUILD] Computing face centroids (authored layers only) ...")
-    centroids = build_face_centroids(full_vocab, full_vectors)
+    # Step 3: Encode vocabulary through BGE
+    print(f"\n[BGE] Encoding {len(words)} words ...")
+    vectors = encode(model, words)  # (N, 1024), unit-normalized
+    print(f"[BGE] Encoded vectors shape: {vectors.shape}")
 
-    # Step 5: Build axis direction vectors (uses counter-fitted vectors)
+    # Step 3b: Encode 1728 construction questions as full sentences.
+    # Needed early so face centroids can blend in per-face question centroids.
+    q_vecs = encode_all_questions(model)
+
+    # Step 4: Build face centroids — authored layers + FACE_VERNACULAR.
+    # Question-centroid blend is disabled: the 1728 questions share identical
+    # template structure (only {domain} differs), so per-face averages collapse
+    # toward a common mean rather than sharpening face distinctions.
+    print(f"\n[BUILD] Computing face centroids (authored + FACE_VERNACULAR) ...")
+    centroids = build_face_centroids(vocab, vectors, question_vecs=None)
+
+    # Step 5: Build axis direction vectors
     print(f"\n[BUILD] Computing 24 axis direction vectors ...")
-    directions, cal_low, cal_high = build_axis_directions(full_vocab, full_vectors)
+    directions, cal_low, cal_high = build_axis_directions(vocab, vectors)
 
-    # Step 6: Select runtime vocabulary
-    print(f"\n[BUILD] Selecting runtime vocabulary ...")
-    runtime_vocab, runtime_vectors = select_runtime_vocab(full_vocab, full_vectors)
-
-    # Step 7: Compute per-word artifacts
+    # Step 6: Per-word artifacts
     print(f"\n[BUILD] Computing per-word artifacts ...")
-    disc_face_sim = compute_discriminative_face_similarity(runtime_vectors, centroids)
-    axis_proj = compute_axis_projections(runtime_vectors, directions, cal_low, cal_high)
-    idf_weights = compute_idf_weights(len(runtime_vocab))
+    disc_face_sim = compute_discriminative_face_similarity(vectors, centroids)
+    axis_proj = compute_axis_projections(vectors, directions, cal_low, cal_high)
+    idf_weights = compute_idf_weights(words)
 
-    # Step 8: [Alg 2] Compute disambiguation table
+    # Step 7: Disambiguation table (encoded through BGE)
     disambig_face_sim, disambig_axis_proj, disambig_meta = compute_disambiguation_table(
-        full_vocab, full_vectors, centroids, directions, cal_low, cal_high, runtime_vocab,
+        model, centroids, directions, cal_low, cal_high,
     )
 
-    # Step 9: [Alg 3] Compute n-gram/phrase embeddings
-    phrase_face_sim, phrase_axis_proj, phrase_idf, phrase_vocab, phrase_keys, surface_to_canonical = (
-        compute_ngram_embeddings(
-            full_vocab, full_vectors, centroids, directions, cal_low, cal_high,
-            runtime_vocab, runtime_vectors, disc_face_sim, axis_proj, idf_weights,
-        )
+    # Step 8: Phrase embeddings (encoded through BGE)
+    phrase_face_sim, phrase_axis_proj, phrase_idf, phrase_keys, surface_to_canonical = (
+        compute_phrase_embeddings(model, centroids, directions, cal_low, cal_high)
     )
 
-    # Step 10: Extend runtime arrays with phrase rows
-    if len(phrase_keys) > 0:
-        base_size = len(runtime_vocab)
+    # Step 9: Extend per-word arrays with phrase rows
+    if phrase_keys:
+        base_size = len(vocab)
         disc_face_sim = np.concatenate([disc_face_sim, phrase_face_sim], axis=0)
         axis_proj = np.concatenate([axis_proj, phrase_axis_proj], axis=0)
         idf_weights = np.concatenate([idf_weights, phrase_idf], axis=0)
-        # Add phrase keys to runtime_vocab with offset indices
-        for canonical, local_idx in phrase_vocab.items():
-            runtime_vocab[canonical] = base_size + local_idx
+        for local_idx, canonical in enumerate(phrase_keys):
+            vocab[canonical] = base_size + local_idx
         print(f"[EXTEND] Appended {len(phrase_keys)} phrase rows, "
-              f"new array sizes: face_sim={disc_face_sim.shape}, "
-              f"axis_proj={axis_proj.shape}, idf={idf_weights.shape}")
+              f"new array sizes: face_sim={disc_face_sim.shape}")
 
-    # Step 11: [Technique F] Phase-aware face weighting
+    # Step 10: Phase centroids + word-phase similarity
     phase_centroids = build_phase_centroids(centroids)
-    word_phase_sim = compute_word_phase_sim(runtime_vectors, phase_centroids)
-    # Extend word_phase_sim to include phrase rows (use zeros for phrases)
-    if len(phrase_keys) > 0:
+    word_phase_sim = compute_word_phase_sim(vectors, phase_centroids)
+    if phrase_keys:
         phrase_phase_pad = np.zeros((len(phrase_keys), 3), dtype=np.float32)
         word_phase_sim = np.concatenate([word_phase_sim, phrase_phase_pad], axis=0)
-        print(f"[EXTEND] Phase sim extended for phrases: {word_phase_sim.shape}")
 
-    # Step 12: [Technique D] Per-face question position maps
-    word_question_x, word_question_y, question_positions = compute_question_position_maps(
-        full_vocab, full_vectors, runtime_vocab, runtime_vectors,
-    )
-    # Extend for phrase rows (default position (5, 5) = center for phrases)
-    if len(phrase_keys) > 0:
+    # Step 11: Question position maps — reuses q_vecs from Step 3b
+    word_question_x, word_question_y, _ = compute_question_position_maps(vectors, q_vecs)
+    if phrase_keys:
         phrase_qx_pad = np.full((len(phrase_keys), 12), 5, dtype=np.int8)
         phrase_qy_pad = np.full((len(phrase_keys), 12), 5, dtype=np.int8)
         word_question_x = np.concatenate([word_question_x, phrase_qx_pad], axis=0)
         word_question_y = np.concatenate([word_question_y, phrase_qy_pad], axis=0)
-        print(f"[EXTEND] Question maps extended for phrases: "
-              f"x={word_question_x.shape}, y={word_question_y.shape}")
 
-    # Step 13: Question-guided vocabulary expansion
-    (disc_face_sim, axis_proj, idf_weights, word_phase_sim,
-     word_question_x, word_question_y, runtime_vocab) = expand_vocab_by_question_proximity(
-        full_vocab, full_vectors, runtime_vocab, runtime_vectors,
-        centroids, directions, cal_low, cal_high,
-        idf_weights, disc_face_sim, axis_proj,
-        word_phase_sim, word_question_x, word_question_y,
-        phase_centroids, max_additions=5000,
-    )
-
-    # Step 14: Save artifacts
+    # Step 12: Save
     print(f"\n[SAVE] Saving artifacts ...")
     save_artifacts(
-        runtime_vocab, disc_face_sim, axis_proj, idf_weights,
-        disambig_face_sim=disambig_face_sim,
-        disambig_axis_proj=disambig_axis_proj,
-        disambig_meta=disambig_meta,
-        phrase_keys=phrase_keys,
-        surface_to_canonical=surface_to_canonical,
-        phase_centroids=phase_centroids,
-        word_phase_sim=word_phase_sim,
-        word_question_x=word_question_x,
-        word_question_y=word_question_y,
-        vector_source=vector_source,
+        vocab, disc_face_sim, axis_proj, idf_weights,
+        disambig_face_sim, disambig_axis_proj, disambig_meta,
+        phrase_keys, surface_to_canonical,
+        phase_centroids, word_phase_sim,
+        word_question_x, word_question_y,
+        vector_source,
     )
 
-    # Step 15: Reports
-    report_top_words(runtime_vocab, disc_face_sim)
-    pole_ok = report_pole_self_test(runtime_vocab, axis_proj)
+    # Step 13: Reports
+    report_top_words(vocab, disc_face_sim)
+    pole_ok = report_pole_self_test(vocab, axis_proj)
 
     print(f"\n{'='*70}")
     print(f"Vector source:        {vector_source}")
-    print(f"Vocabulary size:      {len(runtime_vocab)} (words + phrases)")
+    print(f"Vocabulary size:      {len(vocab)} (words + phrases)")
     print(f"Face similarity:      {disc_face_sim.shape}")
     print(f"Axis projections:     {axis_proj.shape}")
     print(f"IDF weights:          {idf_weights.shape}")

@@ -48,6 +48,7 @@ See `docs/adr/` for full Architecture Decision Records:
 | 010 | Construct epistemic questions as shipped canonical content (1728 constructs from 144 templates × 12 domains) |
 | 011 | Nexus-gem-spoke inter-face architecture with cube stratification |
 | 012 | Spoke as computable behavioral signature (4 properties + classification) |
+| 013 | BGE-large-en-v1.5 as sole embedding source at native 1024d |
 
 ## Dependencies
 
@@ -95,7 +96,8 @@ advanced-prompting-engine/
 │       ├── 009-grid-structured-schema-layer.md
 │       ├── 010-construct-as-canonical-content.md
 │       ├── 011-nexus-gem-spoke-architecture.md
-│       └── 012-spoke-behavioral-signature.md
+│       ├── 012-spoke-behavioral-signature.md
+│       └── 013-bge-embedding-source.md
 ├── src/
 │   └── advanced_prompting_engine/
 │       ├── __init__.py
@@ -153,7 +155,8 @@ advanced-prompting-engine/
 │   ├── test_tools/                            # MCP tool integration tests
 │   └── test_orchestrator/                     # Multi-pass orchestrator tests
 ├── scripts/
-│   ├── build_semantic_bridge.py               # Build script for GloVe-derived artifacts
+│   ├── build_semantic_bridge.py               # Build script (BGE-large-en-v1.5 at 1024d)
+│   ├── expand_pole_synonyms.py                # WordNet-based pole-synonym expansion proposals
 │   └── benchmark_8texts.py                    # Literary text benchmark (8 canonical texts, 20 assertions)
 ├── Documentation/
 │   └── Temporary/Execution/                   # Work effort triad (Roadmap, WorkEffort, Results)
@@ -180,7 +183,8 @@ advanced-prompting-engine/
 - Meaning hierarchy visible in output: corners → integration, edges → demarcation, midpoints → axial_balance, center → composition
 - Use `print()` during development for debugging, remove when stable
 - Contradiction detection lives in Graph Mutation Layer, not in individual tools
-- Stage 1 intent parser uses GeometricBridge (pre-computed GloVe artifacts), not TF-IDF, for face relevance and axis projection
+- Stage 1 intent parser uses GeometricBridge (pre-computed BGE-derived artifacts), not TF-IDF, for face relevance and axis projection
+- Semantic bridge build-time dependencies live under `[build]` extra: `sentence-transformers`, `torch`, `wordfreq`, `nltk`. Runtime stays numpy-only (ADR-005, ADR-013)
 - The Construct specification (`docs/CONSTRUCT-v2.md`) is the source of truth for what faces, points, spectrums, nexi, gems, spokes, and the central gem ARE — use engine-specific language only in engine code, not in the Construct spec
 
 ## Philosophical Geometry (v2)

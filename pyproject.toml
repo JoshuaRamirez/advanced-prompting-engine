@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "advanced-prompting-engine"
-version = "0.6.0"
+version = "0.7.0"
 description = "Universal prompt creation engine — MCP server with 12-axis philosophical manifold"
 readme = "README.md"
 license = "MIT"
@@ -41,6 +41,14 @@ Changelog = "https://github.com/JoshuaRamirez/advanced-prompting-engine/blob/mai
 dev = [
     "pytest>=7.0",
     "pytest-asyncio>=0.21",
+]
+build = [
+    # Build-time only — used by scripts/build_semantic_bridge.py to produce
+    # the shipped npz/json artifacts. Not installed for runtime consumers.
+    "sentence-transformers>=3.0",
+    "torch>=2.0",
+    "wordfreq>=3.0",
+    "nltk>=3.8",
 ]
 
 [project.scripts]

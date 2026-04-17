@@ -5,6 +5,34 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0] - 2026-04-16
+
+### Added
+- **BGE-large-en-v1.5 as sole embedding source** at native 1024d (ADR-013). Replaces GloVe + Model2Vec paths. Runtime remains numpy-only; BGE is a build-time dependency under a new `[build]` optional extra (`sentence-transformers`, `torch`, `wordfreq`, `nltk`).
+- `wordfreq` for frequency ordering and top-N vocabulary selection — no more GloVe dependency of any kind.
+- `FACE_VERNACULAR` dictionary — targeted object-level vocabulary for underperforming faces (ethics, axiology, methodology) only. Added at 4x weight in face centroid construction.
+- `scripts/expand_pole_synonyms.py` — WordNet-based pole-synonym expansion proposals for human review.
+- ADR-013: rationale for BGE as the sole build-time embedding source.
+
+### Changed
+- Build script rewritten (~2080 → ~770 lines). Deleted Model2Vec path, face-informed QR+PCA reduction, 400K→15K vocab trimming, OOV expansion, counter-fitting machinery. Single unified vocab.
+- Questions and phrases are now encoded as **full sentences** through BGE, not as IDF-weighted word-vector averages.
+- `face_relevance` uses **IDF² weighting** — rare face-specific vocabulary dominates the weighted average; common tokens no longer drown signal.
+- 20% per-face column centering applied at artifact load — corrects systematic bias where "specific" face centroids (ethics, methodology) accumulated negative bias from generic tokens.
+- Cube-pair contrast dampening **disabled**: the mechanism punished legitimate co-activations (ethics+axiology on moral rhetoric, epistemology+methodology on scientific texts). Re-enable only if evidence supports it.
+- `docs/specs/semantic-bridge-algorithms.md` updated for BGE pipeline.
+
+### Measurement
+- Benchmark: `scripts/benchmark_8texts.py` score improved from **13/20 → 17/20** (+31%).
+- Aesthetics moved from rank #10 to #1 on Aristotle's Poetics; methodology now hits top-6 on Newton; phenomenology-dominates-everything ceiling broken.
+
+### Removed
+- GloVe download/loading code paths.
+- Model2Vec integration and PCA reduction machinery.
+- `select_runtime_vocab` 400K→15K trimming (vocab is assembled directly from what's needed).
+- `expand_vocab_by_question_proximity` OOV expansion pass.
+- Counter-fitting SGD (retired pending evidence that contextual embeddings still benefit).
+
 ## [0.6.0] - 2026-04-13
 
 ### Added
@@ -157,6 +185,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Spectral embedding cache and TF-IDF cache with lifecycle management.
 - 12 Architecture Decision Records.
 
+[0.7.0]: https://github.com/JoshuaRamirez/advanced-prompting-engine/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/JoshuaRamirez/advanced-prompting-engine/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/JoshuaRamirez/advanced-prompting-engine/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/JoshuaRamirez/advanced-prompting-engine/compare/v0.3.0...v0.4.0
