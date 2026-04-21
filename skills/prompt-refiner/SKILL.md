@@ -212,9 +212,9 @@ For each critical gap, do a vocabulary scan. If the user's prompt contains dense
 | *owe, warrant, trust, duty, forbidden, culpable, virtue, moral, obligation, ought* | ethics | Ethics stuck at floor despite dense moral vocabulary | **Fixed in v0.8.0** (disambiguation entries route these to ethics when context is morally framed) |
 | *purpose, end, goal, aim, ultimate, destined* | teleology (when grounding, not evaluating) | Teleology under-activates when worth-framing dominates | **Fixed in v0.8.0** (disambiguation entries route purpose to teleology in goal-context) |
 | *form, shape, recognizable* | context-dependent (aesthetics when qualitative, semiotics when structural) | Aesthetics over-activates on structural descriptions | Pending (disambiguation needs a clean qualitative-vs-structural context split) |
-| *interpret, read as, means* | hermeneutics when receiving, semiotics when sending | Semiotics and hermeneutics move in lockstep | Pending (would require directional resonance — deferred to v4 per the roadmap) |
+| *interpret, read as, means* | hermeneutics when receiving, semiotics when sending | Semiotics and hermeneutics move in lockstep | Pending (needs a clean receiver/sender context split) |
 
-**Paired-face under-resonance** is a structural rather than lexical routing issue, so it lives outside the table above. Official cube pairs (ontology↔praxeology, epistemology↔methodology, etc.) are symmetric. If a prompt explicitly grounds one face in another (e.g., describes entities and then derives actions from them) but pairs still read as weak-resonance (~0.11), the symmetric metric cannot express the directional grounding. This is a known limit pending v4 (directional resonance), not a rewrite gap.
+**Paired-face under-resonance — fixed in v0.8.0 via directional resonance (ADR-014).** Cube pairs now carry a `directional_resonance` metric alongside the symmetric `resonance`. When the grounding face (e.g., ontology in `ontology→praxeology`) is densely activated and the grounded face is sparse but aligned — the "inherited plan" pattern — the directional metric credits the grounding-face coverage, so the prompt is no longer reported as weak-resonance. The symmetric metric is retained for "both together" cases. Consumers should read both from the `harmonization_pairs` output; each pair includes `grounding_face`, `grounded_face`, `resonance`, and `directional_resonance`.
 
 ### Step 2.7: Suggest interventions from the pattern library
 
@@ -245,6 +245,11 @@ The server's interpretation returns:
 - Summary sentence
 
 **This is the server's reading, not yours.** Present it to the user as the server's interpretation. Your own analysis of positions, harmonization pairs, and spokes is supplementary — label it as such. After presenting the server's interpretation, layer your priority-aware reading on top of it: "the server reports X as neglected; for this task type, X is **critical / acceptable / diffusion-risk**." The server treats all faces uniformly; you do not.
+
+**Also read two structural signals the server now emits (v0.8.0+):**
+
+- **`precedence_flags`** — list of detected incoherent-stance patterns. If a `foundation_missing` flag fires, an evaluative face (ethics/axiology/teleology) is dominant while ontology AND epistemology are near the floor. That usually means the prompt is moralizing or evaluating without grounding what it's evaluating. Mention this to the user — it's usually a legitimate gap, not a register choice.
+- **`control_type_composition`** — the structural/bias/mixed share of total activation. Report this as "your prompt is {structural_share:.0%} structural, {bias_share:.0%} bias, {mixed_share:.0%} mixed." Pair with the task-type priority: a task that rewards structural control (engineering, extraction) should show high structural_share; a task that rewards bias (creative, policy) should show high bias_share. A mismatch is a refinement direction even if every face is in the right priority tier.
 
 Also read the construction questions directly. Each one asks what your prompt assumes, demands, or neglects about that face:
 

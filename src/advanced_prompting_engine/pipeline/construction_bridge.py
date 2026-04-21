@@ -18,6 +18,11 @@ from advanced_prompting_engine.graph.schema import (
     GRID_SIZE,
     PipelineState,
 )
+from advanced_prompting_engine.math.control_type import (
+    annotate_coordinate,
+    compute_control_type_composition,
+)
+from advanced_prompting_engine.math.precedence import compute_precedence_flags
 
 # §6 meaning hierarchy: classification → meaning mechanism
 _MEANING_MECHANISMS: dict[str, str] = {
@@ -313,4 +318,22 @@ class ConstructionBridge:
             harmonization_pairs=harmonization_pairs,
             construction_questions=construction_questions,
         )
+
+        # Foundation-precedence flags: detect incoherent philosophical
+        # stances (evaluative face dominant while foundations absent, or
+        # evaluative triad cascade violations).
+        precedence_flags = compute_precedence_flags(state.coordinate or {})
+        guidance["precedence_flags"] = precedence_flags
+
+        # Control-type composition: structural vs bias share per prompt.
+        control_composition = compute_control_type_composition(state.coordinate or {})
+        guidance["control_type_composition"] = control_composition
+
         state.construction_basis["guidance"] = guidance
+        state.construction_basis["precedence_flags"] = precedence_flags
+        state.construction_basis["control_type_composition"] = control_composition
+
+        # Annotate coordinate with per-face control_type for direct access.
+        state.construction_basis["coordinate"] = annotate_coordinate(
+            state.construction_basis["coordinate"]
+        )

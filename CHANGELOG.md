@@ -7,33 +7,60 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.8.0] - 2026-04-20
 
-Two-layer APE architecture improvement: task-aware skill-side interpretation (Layer B) + engine-side vocabulary disambiguation (Layer A). Both layers of the proposal in `docs/cc_genui_20260420_200730_face_importance_ranking.html` shipped together.
+Full implementation of the five-tier roadmap from `docs/cc_genui_20260420_200730_face_importance_ranking.html`. Closes every **Fixed**-status row in the skill's collision table and adds foundation-precedence detection, directional resonance, and control-type composition reporting.
 
-### Added — Layer B (skill)
-- Prompt Refiner skill v0.6.1 — task-aware priority framework:
-  - **Step 2.5 (Classify task type)**: before interpreting, establish task type (engineering, analysis, policy, execution-prompt-inheriting-plan, creative, etc.) and load the corresponding face priority template.
-  - **Step 2.6 (Compute priority gaps)**: replace undifferentiated "neglected dimensions" with three lists: critical gaps (H priority, low activation), acceptable neglect (L priority, low activation), diffusion candidates (L priority, high activation). Working thresholds Low<0.2 / Mid 0.2-0.55 / High>0.55.
-  - **Step 2.6b (Routing-collision suspicion)**: detect when a face stays at floor despite dense face-specific vocabulary in an adjacent-dominant pattern. Status table tracks fixed vs pending collisions.
-  - **Step 2.7 (Pattern interventions)**: library of 12+ prompt-engineering patterns mapped to the face they primarily activate, with cost-ordered recommendations.
-  - **Task-Type Priority Reference** (11 task categories including new "Execution prompt (inheriting plan)" from field observations).
-  - **Pattern Intervention Reference** giving lightest-touch phrasing for each face gap.
-- Skill shipped bundled with the plugin (was user-profile only in prior versions).
+### Added — v1 · Layer B (skill: task-aware interpretation)
+- Prompt Refiner skill v0.6.1 bundled with the plugin (was user-profile only).
+- **Step 2.5 (Classify task type)** — establishes task type and loads a per-task face priority template (11 categories including "Execution prompt inheriting plan" from field observations).
+- **Step 2.6 (Compute priority gaps)** — replaces undifferentiated "neglected dimensions" with three lists: critical gaps (H priority, low activation), acceptable neglect (L priority, low activation), diffusion candidates (L priority, high activation). Working thresholds Low<0.2 / Mid 0.2-0.55 / High>0.55.
+- **Step 2.6b (Routing-collision suspicion)** — detects inhabitation-isn't-moving-the-needle cases. Status table tracks fixed vs pending collisions.
+- **Step 2.7 (Pattern interventions)** — library of 12+ prompt-engineering patterns mapped to primary face activation, cost-ordered.
+- **Task-Type Priority Reference** and **Pattern Intervention Reference** tables.
 
-### Added — Layer A (engine)
-- 10 new `DISAMBIGUATION_ENTRIES` routing duty-bearing vocabulary (duty, owe, moral, virtue, culpable, forbidden, warrant, obligation, ought) to ethics when morally-framed, and purpose to teleology when grounded in aim/goal/end context.
+### Added — v2 · Layer A (engine: vocabulary disambiguation)
+- 10 new `DISAMBIGUATION_ENTRIES` routing duty-bearing vocabulary (duty, owe, moral, virtue, culpable, forbidden, warrant, obligation, ought) to ethics when morally framed, and purpose to teleology when grounded in aim/goal/end context.
+- Semantic bridge artifact rebuilt. Disambiguation triggers: 13 → 23; senses: 13 → 25.
+
+### Added — v3 · Foundation-precedence flag
+- New `math/precedence.py` surfacing incoherent-stance patterns:
+  - `foundation_missing` — evaluative face (ethics/axiology/teleology) dominant while both ontology and epistemology are below the Low threshold.
+  - `triad_cascade` — within the classical triad (teleology → ethics → axiology), a downstream face dominates while an upstream face is at floor.
+- Flags surfaced in `construction_basis.precedence_flags` and `guidance.precedence_flags` for both compact and focused outputs.
+- 14 unit tests in `tests/test_math/test_precedence.py`.
+
+### Added — v4 · Directional resonance (ADR-014)
+- `CUBE_PAIR_DIRECTIONS` in `graph/schema.py` — grounding face → grounded face mapping for all 6 cube pairs (ontology→praxeology, epistemology→methodology, ethics→axiology, teleology→heuristics, phenomenology→aesthetics, semiotics→hermeneutics).
+- `directional_resonance` metric in `math/harmonization.py` — credits grounding face's coverage independent of grounded face density, resolving the field-observation "inherited plan" case where symmetric resonance under-reported legitimate grounding.
+- Symmetric `resonance` retained unchanged for backward compatibility.
+- `grounding_face` and `grounded_face` fields per harmonization pair.
+- 10 new tests across schema integrity and metric behavior, including the inherited-plan pattern verification.
+- `docs/adr/014-directional-resonance.md`.
+
+### Added — v5 · Control-type classification
+- `FACE_CONTROL_TYPE` in `graph/schema.py` — each of the 12 faces classified as structural / bias / mixed:
+  - **structural** (4): semiotics, methodology, ontology, praxeology.
+  - **bias** (5): ethics, axiology, aesthetics, hermeneutics, heuristics.
+  - **mixed** (3): epistemology, phenomenology, teleology.
+- New `math/control_type.py` computes per-prompt composition (structural_share / bias_share / mixed_share / dominant_control_type).
+- Per-face `control_type` annotation added to coordinate output.
+- Aggregate `control_type_composition` surfaced at top level and in guidance.
+- 15 unit tests in `tests/test_math/test_control_type.py`.
 
 ### Changed
-- Semantic bridge artifact rebuilt (`data/semantic_bridge.npz`, `data/semantic_vocab.json`). Disambiguation triggers: 13 → 23; senses: 13 → 25.
+- Compact output extended with `control_type_composition`, `precedence_flags`, per-face `control_type`, and directional harmonization fields.
+- Focused output includes `precedence_flags` and `control_type_composition` via guidance.
 - Step 3, 5, 6 of the skill augmented with priority-aware reading, overlay checks, and new termination conditions.
-- "Vocabulary routing collisions are real" limitation added to the skill, documenting the inhabitation-is-not-always-the-fix finding from the four-iteration field observation.
+- New "Vocabulary routing collisions are real" limitation in the skill.
 
 ### Measurement
 - 8-text literary benchmark: **17/20 → 18/20**. Marx Communist Manifesto 2/3 → 3/3 (ethics rank #8 → #5). MLK I Have a Dream gained axiology in top-6.
 - Field-observation validation (synthetic ethics-heavy prompt): **ethics 0.10 → 0.702, axiology 0.60 → 0.352**. The four-iteration routing collision is resolved on its specific class of prompts.
+- Integration test: engineering prompt reports `dominant_control_type: structural` with 0 precedence flags; ethics-heavy prompt reports `dominant_control_type: bias` with a `foundation_missing` flag.
+- **Test suite: 327 → 366 passing** (+39 new tests across precedence, directional resonance, and control type).
 
 ### Context
-- Layer A fixes "can the bridge see the activation at all?"; Layer B fixes "which gap should the user prioritize?". Both together close the gap the external ChatGPT review surfaced and the field observations documented.
-- Pending for future versions: foundation-precedence flag (v3 in the roadmap), directional resonance (v4), control-type classification output (v5). These address the remaining Pending rows in the skill's collision status table (semiotics↔hermeneutics lockstep, paired-face under-resonance).
+- v1+v2 close the routing-collision and task-awareness gaps the external (ChatGPT) review and four-iteration field observation surfaced. v3 adds the foundation-precedence check (Principle 3). v4 makes cube pairs directional (Principle 4, ADR-014). v5 adds the structural-vs-bias distinction (Section 4 of the report) as explicit output.
+- Remaining known limitations (documented in the skill's status table): semiotics↔hermeneutics vocabulary lockstep, aesthetics/semiotics "form/shape" ambiguity. Not addressed in 0.8.0; each needs its own disambiguation-entry pass with benchmark verification.
 
 ## [0.7.1] - 2026-04-17
 

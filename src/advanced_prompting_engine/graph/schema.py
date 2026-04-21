@@ -130,6 +130,27 @@ CUBE_PAIRS: list[tuple[str, str]] = [
     ("semiotics", "hermeneutics"),
 ]
 
+# Directional grounding per cube pair (ADR-014; principle 4 of the
+# face-importance-ranking report). Key = grounding face, value = grounded
+# face. The symmetric-pair resonance is kept for backward compat; the
+# directional metric sits alongside it.
+#
+#   ontology → praxeology       (being grounds doing)
+#   epistemology → methodology  (knowing grounds proceeding)
+#   ethics → axiology           (duty grounds worth, per classical triad
+#                                teleology → ethics → axiology)
+#   teleology → heuristics      (purpose grounds strategy)
+#   phenomenology → aesthetics  (experience grounds form)
+#   semiotics → hermeneutics    (encoding grounds decoding)
+CUBE_PAIR_DIRECTIONS: dict[str, str] = {
+    "ontology": "praxeology",
+    "epistemology": "methodology",
+    "ethics": "axiology",
+    "teleology": "heuristics",
+    "phenomenology": "aesthetics",
+    "semiotics": "hermeneutics",
+}
+
 # Sub-dimensions per face (CONSTRUCT-v2.md §7.3)
 FACE_DEFINITIONS: dict[str, dict[str, str]] = {
     "ontology": {
@@ -253,6 +274,30 @@ FACE_DEFINITIONS: dict[str, dict[str, str]] = {
         "construction_template": "What strategies does this prompt use when facing the unknown?",
     },
 }
+
+# Control-type classification per face (v5 of face-importance-ranking report).
+# Distinguishes faces whose inhabitation provides *structural control* over
+# model output (verifiable, compositional) from those that provide
+# *probabilistic bias* (distributional shift, not per-output-checkable).
+# Consumers can aggregate per-prompt to report structural vs bias share.
+FACE_CONTROL_TYPE: dict[str, str] = {
+    # Structural — explicit/format/procedural/entity commitments
+    "semiotics": "structural",
+    "methodology": "structural",
+    "ontology": "structural",
+    "praxeology": "structural",
+    # Bias — framing/value/style/interpretive/strategy shifts
+    "ethics": "bias",
+    "axiology": "bias",
+    "aesthetics": "bias",
+    "hermeneutics": "bias",
+    "heuristics": "bias",
+    # Mixed — can be inhabited either structurally or as bias depending on framing
+    "epistemology": "mixed",
+    "phenomenology": "mixed",
+    "teleology": "mixed",
+}
+
 
 # Phase assignment per face (CONSTRUCT-v2.md §4.3)
 # Comprehension faces are inward (theoretical), evaluation and application

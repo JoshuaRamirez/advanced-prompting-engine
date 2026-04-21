@@ -15,7 +15,11 @@ from __future__ import annotations
 
 import numpy as np
 
-from advanced_prompting_engine.graph.schema import CUBE_PAIRS, GRID_SIZE
+from advanced_prompting_engine.graph.schema import (
+    CUBE_PAIRS,
+    CUBE_PAIR_DIRECTIONS,
+    GRID_SIZE,
+)
 
 
 def compute_harmonization(
@@ -34,10 +38,31 @@ def compute_harmonization(
         constructs_a = active_constructs.get(face_a, [])
         constructs_b = active_constructs.get(face_b, [])
 
+        # Determine grounding direction for this pair (ADR-014).
+        # CUBE_PAIR_DIRECTIONS key is the grounding face regardless of
+        # the tuple order in CUBE_PAIRS.
+        if face_a in CUBE_PAIR_DIRECTIONS and CUBE_PAIR_DIRECTIONS[face_a] == face_b:
+            grounding_face, grounded_face = face_a, face_b
+            constructs_ground = constructs_a
+            constructs_grounded = constructs_b
+        elif face_b in CUBE_PAIR_DIRECTIONS and CUBE_PAIR_DIRECTIONS[face_b] == face_a:
+            grounding_face, grounded_face = face_b, face_a
+            constructs_ground = constructs_b
+            constructs_grounded = constructs_a
+        else:
+            # No directional mapping — fall back to symmetric only.
+            grounding_face = None
+            grounded_face = None
+            constructs_ground = []
+            constructs_grounded = []
+
         if not constructs_a or not constructs_b:
             results.append({
                 "pair": [face_a, face_b],
                 "resonance": 0.0,
+                "directional_resonance": 0.0,
+                "grounding_face": grounding_face,
+                "grounded_face": grounded_face,
                 "alignment": 0.0,
                 "coverage_a": 0.0,
                 "coverage_b": 0.0,
@@ -48,13 +73,34 @@ def compute_harmonization(
         coverage_a = _activation_coverage(constructs_a)
         coverage_b = _activation_coverage(constructs_b)
 
-        # Resonance = alignment * geometric mean of coverages
-        # Both faces must be activated AND aligned for high resonance
+        # Symmetric resonance: both faces must be activated AND aligned.
+        # Retained for backward compat and as the "both together" metric.
         resonance = alignment * np.sqrt(coverage_a * coverage_b)
+
+        # Directional resonance (ADR-014): measures whether the grounded
+        # face's activations correspond to the grounding face's positions,
+        # weighted by the grounding face's own coverage. High when the
+        # grounded stance is genuinely grounded; zero when grounded is
+        # activated without its grounding foundation. Unlike symmetric,
+        # this does NOT require the grounded face to be densely activated —
+        # it credits the pattern "grounding present, grounded inherited or
+        # implicit" that symmetric under-reports (field-observation case:
+        # inherited-plan execution prompts).
+        if grounding_face is not None and constructs_ground and constructs_grounded:
+            coverage_ground = _activation_coverage(constructs_ground)
+            alignment_g_to_g = _directional_alignment(
+                constructs_grounded, constructs_ground,
+            )
+            directional_resonance = float(alignment_g_to_g * coverage_ground)
+        else:
+            directional_resonance = 0.0
 
         results.append({
             "pair": [face_a, face_b],
             "resonance": float(resonance),
+            "directional_resonance": directional_resonance,
+            "grounding_face": grounding_face,
+            "grounded_face": grounded_face,
             "alignment": float(alignment),
             "coverage_a": float(coverage_a),
             "coverage_b": float(coverage_b),

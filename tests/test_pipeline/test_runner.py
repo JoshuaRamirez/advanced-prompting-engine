@@ -152,8 +152,10 @@ class TestCompactOutput:
         coord = {f: {"x": 0, "y": 0, "weight": 1.0} for f in ALL_FACES}
         full = full_pipeline.run(coord)
         compact = _compact(full)
-        expected = {"coordinate", "structural_profile", "tensions_summary",
-                    "harmonization", "spokes", "central_gem", "construction_questions"}
+        expected = {"coordinate", "control_type_composition",
+                    "structural_profile", "tensions_summary",
+                    "harmonization", "spokes", "central_gem",
+                    "precedence_flags", "construction_questions"}
         assert set(compact.keys()) == expected
 
     def test_compact_is_small(self, full_pipeline):

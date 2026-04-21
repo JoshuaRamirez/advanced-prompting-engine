@@ -46,9 +46,15 @@ def _compact(basis: dict) -> dict:
     """Filter construction basis to essential fields only (~2KB vs ~52KB)."""
     return {
         "coordinate": {
-            b: {"x": v["x"], "y": v["y"], "weight": v["weight"]}
+            b: {
+                "x": v["x"],
+                "y": v["y"],
+                "weight": v["weight"],
+                "control_type": v.get("control_type"),
+            }
             for b, v in basis.get("coordinate", {}).items()
         },
+        "control_type_composition": basis.get("control_type_composition"),
         "structural_profile": basis.get("structural_profile"),
         "tensions_summary": {
             "total": basis.get("tensions", {}).get("total_magnitude", 0),
@@ -56,7 +62,13 @@ def _compact(basis: dict) -> dict:
             "spectrum_count": len(basis.get("tensions", {}).get("spectrum", [])),
         },
         "harmonization": [
-            {"pair": h["pair"], "resonance": h["resonance"]}
+            {
+                "pair": h["pair"],
+                "resonance": h["resonance"],
+                "directional_resonance": h.get("directional_resonance", 0.0),
+                "grounding_face": h.get("grounding_face"),
+                "grounded_face": h.get("grounded_face"),
+            }
             for h in basis.get("harmonization_pairs", [])
         ],
         "spokes": {
@@ -64,6 +76,7 @@ def _compact(basis: dict) -> dict:
             for b, s in basis.get("spokes", {}).items()
         },
         "central_gem": basis.get("central_gem"),
+        "precedence_flags": basis.get("precedence_flags", []),
         "construction_questions": {
             b: {
                 "template": cq.get("template"),
