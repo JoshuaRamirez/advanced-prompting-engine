@@ -18,7 +18,7 @@ The engine does not generate prompts. It measures intent across 12 philosophical
   2. Pipeline (8 stages — single forward pass)
   3. Graph Query Layer + Graph Mutation Layer (structured graph access)
   4. TF-IDF Cache (lifecycle-managed, auto-invalidate on graph mutation — used by explore_space, not by Stage 1)
-  5. Semantic Bridge (GeometricBridge — pre-computed GloVe-derived face similarity + axis projections, used by Stage 1)
+  5. Semantic Bridge (GeometricBridge — pre-computed BGE-derived face similarity + axis projections + disambiguation overrides, used by Stage 1)
   6. NetworkX (topology, 1873 nodes, 2279 edges) + numpy (computation) + SQLite (persist, canonical/user tables)
 
 ## Key Documents
@@ -139,7 +139,7 @@ advanced-prompting-engine/
 │       │   ├── gem.py                         # Gem magnitude (potency-weighted + positional correspondence + tier modulation)
 │       │   ├── harmonization.py               # Paired face resonance (bidirectional positional alignment)
 │       │   └── optimization.py                # Pareto front computation
-│       ├── data/                               # Pre-computed semantic bridge artifacts (GloVe-derived)
+│       ├── data/                               # Pre-computed semantic bridge artifacts (BGE-derived)
 │       └── tools/
 │           ├── __init__.py
 │           ├── create_prompt_basis.py         # Primary tool — invokes pipeline
