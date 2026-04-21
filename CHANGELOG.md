@@ -5,42 +5,35 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.7.3] - 2026-04-20
+## [0.8.0] - 2026-04-20
 
-### Added
-- 10 new disambiguation entries in `DISAMBIGUATION_ENTRIES` routing duty-bearing vocabulary (duty, owe, moral, virtue, culpable, forbidden, warrant, obligation, ought) to ethics when morally-framed, and purpose to teleology when grounded in aim/goal/end context. Resolves the ethics→axiology routing collision documented in `docs/cc_genui_20260420_200730_face_importance_ranking.html`.
+Two-layer APE architecture improvement: task-aware skill-side interpretation (Layer B) + engine-side vocabulary disambiguation (Layer A). Both layers of the proposal in `docs/cc_genui_20260420_200730_face_importance_ranking.html` shipped together.
+
+### Added — Layer B (skill)
+- Prompt Refiner skill v0.6.1 — task-aware priority framework:
+  - **Step 2.5 (Classify task type)**: before interpreting, establish task type (engineering, analysis, policy, execution-prompt-inheriting-plan, creative, etc.) and load the corresponding face priority template.
+  - **Step 2.6 (Compute priority gaps)**: replace undifferentiated "neglected dimensions" with three lists: critical gaps (H priority, low activation), acceptable neglect (L priority, low activation), diffusion candidates (L priority, high activation). Working thresholds Low<0.2 / Mid 0.2-0.55 / High>0.55.
+  - **Step 2.6b (Routing-collision suspicion)**: detect when a face stays at floor despite dense face-specific vocabulary in an adjacent-dominant pattern. Status table tracks fixed vs pending collisions.
+  - **Step 2.7 (Pattern interventions)**: library of 12+ prompt-engineering patterns mapped to the face they primarily activate, with cost-ordered recommendations.
+  - **Task-Type Priority Reference** (11 task categories including new "Execution prompt (inheriting plan)" from field observations).
+  - **Pattern Intervention Reference** giving lightest-touch phrasing for each face gap.
+- Skill shipped bundled with the plugin (was user-profile only in prior versions).
+
+### Added — Layer A (engine)
+- 10 new `DISAMBIGUATION_ENTRIES` routing duty-bearing vocabulary (duty, owe, moral, virtue, culpable, forbidden, warrant, obligation, ought) to ethics when morally-framed, and purpose to teleology when grounded in aim/goal/end context.
 
 ### Changed
-- Semantic bridge artifact rebuilt (`data/semantic_bridge.npz`, `data/semantic_vocab.json`). Disambiguation triggers went from 13 to 23, senses from 13 to 25.
+- Semantic bridge artifact rebuilt (`data/semantic_bridge.npz`, `data/semantic_vocab.json`). Disambiguation triggers: 13 → 23; senses: 13 → 25.
+- Step 3, 5, 6 of the skill augmented with priority-aware reading, overlay checks, and new termination conditions.
+- "Vocabulary routing collisions are real" limitation added to the skill, documenting the inhabitation-is-not-always-the-fix finding from the four-iteration field observation.
 
 ### Measurement
-- 8-text literary benchmark improved from **17/20 → 18/20**. Marx Communist Manifesto expected{praxeology, ethics, axiology} now scores 3/3 (ethics moved from rank #8 into top-6 at #5). MLK I Have a Dream gained axiology in top-6 (#5). Remaining 2 misses: Hamlet ethics at #11 (was #12), MLK ethics at #7 (near-miss).
-- Field-observation validation: a synthetic prompt with dense ethics vocabulary ("moral duty, culpable, forbidden, virtue, warrant, obligation") now scores **ethics=0.702 (was 0.10), axiology=0.352 (was 0.60)** — the routing collision is resolved on the exact class of prompts that triggered the field observation.
+- 8-text literary benchmark: **17/20 → 18/20**. Marx Communist Manifesto 2/3 → 3/3 (ethics rank #8 → #5). MLK I Have a Dream gained axiology in top-6.
+- Field-observation validation (synthetic ethics-heavy prompt): **ethics 0.10 → 0.702, axiology 0.60 → 0.352**. The four-iteration routing collision is resolved on its specific class of prompts.
 
 ### Context
-- Implements Layer A (engine-side disambiguation) of the two-layer proposal in `docs/cc_genui_20260420_200730_face_importance_ranking.html`. Layer B (skill-side task awareness) shipped in v0.7.2.
-- The skill's Step 2.6b "routing-collision suspicion" check still retains value for collisions not yet fixed (semiotics↔hermeneutics lockstep; paired-face under-resonance on inherited-plan prompts). Those require principles 3–4 (foundation-precedence, directional resonance) deferred to v3/v4.
-
-## [0.7.2] - 2026-04-20
-
-### Added
-- Prompt Refiner skill v0.6.0 — task-aware priority framework (Layer B of the proposed APE architecture):
-  - **Step 2.5 (Classify task type)**: before interpreting, establish task type (engineering, analysis, policy, execution-prompt-inheriting-plan, creative, etc.) and load the corresponding face priority template.
-  - **Step 2.6 (Compute priority gaps)**: replace undifferentiated "neglected dimensions" with three lists: critical gaps (H priority, low activation), acceptable neglect (L priority, low activation), diffusion candidates (L priority, high activation).
-  - **Step 2.6b (Routing-collision suspicion)**: detect when a face stays at floor despite dense face-specific vocabulary in an adjacent-dominant pattern. Documents the known ethics→axiology, semiotics↔hermeneutics, teleology-split routing collisions observed in real refinement sessions. Recommends indirect activation via multi-face patterns instead of escalating direct inhabitation.
-  - **Step 2.7 (Pattern interventions)**: library of 12+ prompt-engineering patterns mapped to the face they primarily activate, with cost-ordered recommendations per gap face.
-  - **Task-Type Priority Reference** table covering 11 task categories including a new "Execution prompt (inheriting plan)" category from field observations.
-  - **Pattern Intervention Reference** table giving lightest-touch phrasing for each face gap.
-- New "Vocabulary routing collisions are real" limitation documenting the inhabitation-is-not-always-the-fix finding.
-
-### Changed
-- Step 3 (Interpret) augmented with priority-aware reading layered on top of the server's interpretation.
-- Step 5 (Measure Again) extended with priority-overlay checks: did each critical gap close; were diffusion candidates compressed; did routing-collision interventions actually activate via their indirect pattern.
-- Step 6 (Repeat) termination conditions include priority alignment and routing-collision resolution.
-
-### Context
-- Implements Layer B (skill-side) of the two-layer proposal in `docs/cc_genui_20260420_200730_face_importance_ranking.html`. Layer A (engine-side disambiguation entries and directional resonance) remains pending — Step 2.6b is the interim bridge, flagging collisions the skill cannot resolve.
-- Engine code unchanged — version bump reflects new shipped skill content only.
+- Layer A fixes "can the bridge see the activation at all?"; Layer B fixes "which gap should the user prioritize?". Both together close the gap the external ChatGPT review surfaced and the field observations documented.
+- Pending for future versions: foundation-precedence flag (v3 in the roadmap), directional resonance (v4), control-type classification output (v5). These address the remaining Pending rows in the skill's collision status table (semiotics↔hermeneutics lockstep, paired-face under-resonance).
 
 ## [0.7.1] - 2026-04-17
 
@@ -236,8 +229,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Spectral embedding cache and TF-IDF cache with lifecycle management.
 - 12 Architecture Decision Records.
 
-[0.7.3]: https://github.com/JoshuaRamirez/advanced-prompting-engine/compare/v0.7.2...v0.7.3
-[0.7.2]: https://github.com/JoshuaRamirez/advanced-prompting-engine/compare/v0.7.1...v0.7.2
+[0.8.0]: https://github.com/JoshuaRamirez/advanced-prompting-engine/compare/v0.7.0...v0.8.0
 [0.7.1]: https://github.com/JoshuaRamirez/advanced-prompting-engine/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/JoshuaRamirez/advanced-prompting-engine/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/JoshuaRamirez/advanced-prompting-engine/compare/v0.5.0...v0.6.0
