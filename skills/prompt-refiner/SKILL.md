@@ -213,9 +213,8 @@ For each critical gap, do a vocabulary scan. If the user's prompt contains dense
 | *purpose, end, goal, aim, ultimate, destined* | teleology (when grounding, not evaluating) | Teleology under-activates when worth-framing dominates | **Fixed in v0.7.3** (disambiguation entries route purpose to teleology in goal-context) |
 | *form, shape, recognizable* | context-dependent (aesthetics when qualitative, semiotics when structural) | Aesthetics over-activates on structural descriptions | Pending (disambiguation needs a clean qualitative-vs-structural context split) |
 | *interpret, read as, means* | hermeneutics when receiving, semiotics when sending | Semiotics and hermeneutics move in lockstep | Pending (would require directional resonance — deferred to v4 per the roadmap) |
-| *entities-and-actions on execution prompts* | ontology→praxeology (directional), but currently symmetric | Paired-face under-resonance (~0.11) even when prompt addresses both sides | Pending (requires directional resonance, v4) |
 
-**Paired-face under-resonance** is a related routing issue. Official cube pairs (ontology↔praxeology, epistemology↔methodology, etc.) are symmetric. If a prompt explicitly grounds one face in another (e.g., describes entities and then derives actions from them) but pairs still read as weak-resonance, the symmetric metric cannot express the directional grounding. This is a known limit, not a rewrite gap.
+**Paired-face under-resonance** is a structural rather than lexical routing issue, so it lives outside the table above. Official cube pairs (ontology↔praxeology, epistemology↔methodology, etc.) are symmetric. If a prompt explicitly grounds one face in another (e.g., describes entities and then derives actions from them) but pairs still read as weak-resonance (~0.11), the symmetric metric cannot express the directional grounding. This is a known limit pending v4 (directional resonance), not a rewrite gap.
 
 ### Step 2.7: Suggest interventions from the pattern library
 
