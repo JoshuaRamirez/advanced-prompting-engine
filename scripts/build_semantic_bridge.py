@@ -220,6 +220,87 @@ DISAMBIGUATION_ENTRIES: dict[str, list[dict]] = {
         {"context_words": {"meaning", "true", "nation", "dream", "equal", "created"},
          "target_face": "semiotics", "seed_words": ["creed", "declaration", "proclamation", "signify", "charter"]},
     ],
+    # --- Ethics routing corrections (v0.7.3) ---
+    # Field observations showed duty-bearing vocabulary systematically routing
+    # to axiology rather than ethics because axiology's abstract worth-cloud
+    # absorbs deontic terms. Context-gated redirects route to ethics when the
+    # surrounding prose is morally framed. Principle 1 (specificity wins):
+    # culpable/forbidden/virtue/duty/moral are more specific to ethics than
+    # to axiology, so ethics should claim them when context is ethical.
+    "duty": [
+        {"context_words": {"moral", "obligation", "ought", "owe", "warrant", "responsibility",
+                           "honor", "forbidden", "wrong", "ethical", "virtue", "right"},
+         "target_face": "ethics",
+         "seed_words": ["moral duty", "deontic obligation", "ethical responsibility",
+                        "right action", "binding commandment"]},
+    ],
+    "owe": [
+        {"context_words": {"duty", "moral", "obligation", "debt", "trust", "honor",
+                           "responsibility", "pledge", "ethical", "bound", "warrant"},
+         "target_face": "ethics",
+         "seed_words": ["moral obligation", "duty owed", "ethical debt",
+                        "responsibility bound", "honoring pledge"]},
+    ],
+    "moral": [
+        {"context_words": {"duty", "obligation", "ethical", "ought", "right", "wrong",
+                           "virtue", "vice", "responsibility", "forbidden", "owe", "honor"},
+         "target_face": "ethics",
+         "seed_words": ["moral duty", "ethical obligation", "right action",
+                        "deontic principle", "virtue"]},
+    ],
+    "virtue": [
+        {"context_words": {"moral", "ethical", "duty", "vice", "character", "honor",
+                           "integrity", "good", "evil", "ought", "righteous"},
+         "target_face": "ethics",
+         "seed_words": ["moral virtue", "ethical character", "virtuous conduct",
+                        "moral excellence", "righteous action"]},
+    ],
+    "culpable": [
+        {"context_words": {"moral", "guilt", "fault", "blame", "responsibility", "wrong",
+                           "accountable", "duty", "sin", "punishment", "ethical"},
+         "target_face": "ethics",
+         "seed_words": ["morally culpable", "blameworthy", "guilty wrongdoing",
+                        "moral fault", "ethical violation"]},
+    ],
+    "forbidden": [
+        {"context_words": {"moral", "wrong", "taboo", "unlawful", "prohibited",
+                           "commandment", "sin", "ethical", "virtue", "duty"},
+         "target_face": "ethics",
+         "seed_words": ["morally forbidden", "prohibited conduct", "ethical prohibition",
+                        "deontic taboo", "commandment forbids"]},
+    ],
+    "warrant": [
+        {"context_words": {"moral", "duty", "obligation", "ought", "right",
+                           "ethical", "responsibility", "trust", "owe"},
+         "target_face": "ethics",
+         "seed_words": ["moral warrant", "ethical justification", "right claim",
+                        "deontic grounds", "rightful duty"]},
+    ],
+    "obligation": [
+        {"context_words": {"duty", "moral", "owe", "ethical", "ought", "responsibility",
+                           "bound", "commandment", "pledge", "warrant", "honor"},
+         "target_face": "ethics",
+         "seed_words": ["moral obligation", "deontic duty", "ethical responsibility",
+                        "binding pledge", "owed duty"]},
+    ],
+    "ought": [
+        {"context_words": {"moral", "duty", "obligation", "ethical", "right", "wrong",
+                           "responsibility", "virtue", "good", "ought"},
+         "target_face": "ethics",
+         "seed_words": ["moral ought", "ethical imperative", "right action",
+                        "deontic principle", "binding moral"]},
+    ],
+    # --- Teleology routing correction (v0.7.3) ---
+    # Principle 2 (evaluative triad ordering): teleology grounds ethics grounds
+    # axiology. "Purpose" currently splits between teleology and axiology;
+    # when grounded in aim/goal/end/design context it should claim teleology.
+    "purpose": [
+        {"context_words": {"goal", "aim", "ultimate", "end", "intention", "design",
+                           "function", "role", "destined", "teleological", "meant"},
+         "target_face": "teleology",
+         "seed_words": ["ultimate purpose", "telic goal", "intentional end",
+                        "designed purpose", "destined aim"]},
+    ],
 }
 
 

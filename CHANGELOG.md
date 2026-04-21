@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.3] - 2026-04-20
+
+### Added
+- 10 new disambiguation entries in `DISAMBIGUATION_ENTRIES` routing duty-bearing vocabulary (duty, owe, moral, virtue, culpable, forbidden, warrant, obligation, ought) to ethics when morally-framed, and purpose to teleology when grounded in aim/goal/end context. Resolves the ethics→axiology routing collision documented in `docs/cc_genui_20260420_200730_face_importance_ranking.html`.
+
+### Changed
+- Semantic bridge artifact rebuilt (`data/semantic_bridge.npz`, `data/semantic_vocab.json`). Disambiguation triggers went from 13 to 23, senses from 13 to 25.
+
+### Measurement
+- 8-text literary benchmark improved from **17/20 → 18/20**. Marx Communist Manifesto expected{praxeology, ethics, axiology} now scores 3/3 (ethics moved from rank #8 into top-6 at #5). MLK I Have a Dream gained axiology in top-6 (#5). Remaining 2 misses: Hamlet ethics at #11 (was #12), MLK ethics at #7 (near-miss).
+- Field-observation validation: a synthetic prompt with dense ethics vocabulary ("moral duty, culpable, forbidden, virtue, warrant, obligation") now scores **ethics=0.702 (was 0.10), axiology=0.352 (was 0.60)** — the routing collision is resolved on the exact class of prompts that triggered the field observation.
+
+### Context
+- Implements Layer A (engine-side disambiguation) of the two-layer proposal in `docs/cc_genui_20260420_200730_face_importance_ranking.html`. Layer B (skill-side task awareness) shipped in v0.7.2.
+- The skill's Step 2.6b "routing-collision suspicion" check still retains value for collisions not yet fixed (semiotics↔hermeneutics lockstep; paired-face under-resonance on inherited-plan prompts). Those require principles 3–4 (foundation-precedence, directional resonance) deferred to v3/v4.
+
 ## [0.7.2] - 2026-04-20
 
 ### Added
@@ -220,6 +236,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Spectral embedding cache and TF-IDF cache with lifecycle management.
 - 12 Architecture Decision Records.
 
+[0.7.3]: https://github.com/JoshuaRamirez/advanced-prompting-engine/compare/v0.7.2...v0.7.3
 [0.7.2]: https://github.com/JoshuaRamirez/advanced-prompting-engine/compare/v0.7.1...v0.7.2
 [0.7.1]: https://github.com/JoshuaRamirez/advanced-prompting-engine/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/JoshuaRamirez/advanced-prompting-engine/compare/v0.6.0...v0.7.0

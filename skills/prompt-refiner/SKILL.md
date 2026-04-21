@@ -7,12 +7,12 @@ description: >
   of a prompt", "prompt engineering with APE", "measure this prompt",
   "what's missing from this prompt", or needs to iteratively improve a prompt
   using the Advanced Prompting Engine's 12-dimensional philosophical measurement.
-version: 0.6.0
+version: 0.6.1
 ---
 
 # Prompt Refiner
 
-Iteratively refine a prompt using the Advanced Prompting Engine (APE) MCP server v0.7.2. Takes raw intent, measures it across 12 philosophical faces via a BGE-large-en-v1.5 semantic bridge (1024d, full-sentence encoding), interprets deficiencies using the `interpret_basis` tool, rewrites to address gaps, and repeats until the prompt achieves dimensional coverage appropriate for its purpose.
+Iteratively refine a prompt using the Advanced Prompting Engine (APE) MCP server v0.7.3. Takes raw intent, measures it across 12 philosophical faces via a BGE-large-en-v1.5 semantic bridge (1024d, full-sentence encoding), interprets deficiencies using the `interpret_basis` tool, rewrites to address gaps, and repeats until the prompt achieves dimensional coverage appropriate for its purpose.
 
 ## The 12 Faces
 
@@ -197,22 +197,23 @@ A prompt where every critical gap is closed and all acceptable neglect is confir
 
 ### Step 2.6b: Check for routing-collision suspicion
 
-Before recommending intervention, check whether a low activation is plausibly a measurement artifact rather than an inhabitation gap. The BGE bridge has known vocabulary routing collisions — shared vocabulary tends to attribute to the more abstract of two competing faces. The most documented case: ethics-bearing vocabulary (*owe*, *warrant*, *trust*, *duty*, *culpable*, *forbidden*) often routes to axiology when both could claim it.
+Before recommending intervention, check whether a low activation is plausibly a measurement artifact rather than an inhabitation gap. The BGE bridge has historically had vocabulary routing collisions — shared vocabulary that tends to attribute to the more abstract of two competing faces. The ethics-into-axiology collision (duty, moral, virtue, owe, culpable, forbidden, etc.) and the purpose-into-axiology split are **fixed in v0.7.3** via disambiguation entries. Remaining known collisions are listed in the status table below.
 
-For each critical gap, do a vocabulary scan. If the user's prompt contains dense vocabulary that *should* activate the gapped face and the adjacent face is dominant, flag the gap as **likely routing collision**, not **inhabitation gap**. Recommend:
+For each critical gap, do a vocabulary scan. If the user's prompt contains dense vocabulary that *should* activate the gapped face and the adjacent face is dominant, and the case is listed as *Pending* in the status table, flag the gap as **likely routing collision**, not **inhabitation gap**. Recommend:
 
-1. Do not escalate inhabitation — adding more moral vocabulary when ethics is stuck at 0.10 and axiology at 0.60 will not move the needle. The four-iteration trap is real.
-2. Consider indirect activation via a pattern that carries the face through a different route (e.g., a constitutional-style rule list activates ethics via Semiotics+Ethics co-pattern, not by direct vocabulary weight).
-3. File the collision as feedback for the engine's disambiguation layer — the known-collision table below is the current frontier.
+1. Do not escalate inhabitation on the gapped face alone — the four-iteration trap (add more vocabulary, gap doesn't move) applies when the bridge cannot attribute the vocabulary at all.
+2. Consider indirect activation via a pattern that carries the face through a different route (e.g., a constitutional-style rule list activates ethics via Semiotics+Ethics co-pattern, not only by direct vocabulary weight).
+3. File the collision as feedback for the engine's disambiguation layer — the collision table below is maintained as cases are surfaced.
 
 **Known routing collisions** (update as new cases surface):
 
-| Shared vocabulary | Routes to | Should route to | Symptom |
+| Shared vocabulary | Should route to | Symptom | Status |
 |---|---|---|---|
-| *owe, warrant, trust, duty, forbidden, culpable* | axiology | ethics | Ethics stuck at floor despite dense moral vocabulary |
-| *form, shape, recognizable* | aesthetics | context-dependent (aesthetics when qualitative, semiotics when structural) | Aesthetics over-activates on structural descriptions |
-| *interpret, read as, means* | hermeneutics & semiotics (tied) | hermeneutics when receiving, semiotics when sending | Semiotics and hermeneutics move in lockstep |
-| *purpose, end, goal* | teleology + axiology (split) | teleology (grounding) | Teleology under-activates when worth-framing dominates |
+| *owe, warrant, trust, duty, forbidden, culpable, virtue, moral, obligation, ought* | ethics | Ethics stuck at floor despite dense moral vocabulary | **Fixed in v0.7.3** (disambiguation entries route these to ethics when context is morally framed) |
+| *purpose, end, goal, aim, ultimate, destined* | teleology (when grounding, not evaluating) | Teleology under-activates when worth-framing dominates | **Fixed in v0.7.3** (disambiguation entries route purpose to teleology in goal-context) |
+| *form, shape, recognizable* | context-dependent (aesthetics when qualitative, semiotics when structural) | Aesthetics over-activates on structural descriptions | Pending (disambiguation needs a clean qualitative-vs-structural context split) |
+| *interpret, read as, means* | hermeneutics when receiving, semiotics when sending | Semiotics and hermeneutics move in lockstep | Pending (would require directional resonance — deferred to v4 per the roadmap) |
+| *entities-and-actions on execution prompts* | ontology→praxeology (directional), but currently symmetric | Paired-face under-resonance (~0.11) even when prompt addresses both sides | Pending (requires directional resonance, v4) |
 
 **Paired-face under-resonance** is a related routing issue. Official cube pairs (ontology↔praxeology, epistemology↔methodology, etc.) are symmetric. If a prompt explicitly grounds one face in another (e.g., describes entities and then derives actions from them) but pairs still read as weak-resonance, the symmetric metric cannot express the directional grounding. This is a known limit, not a rewrite gap.
 
@@ -348,7 +349,7 @@ When a face gap is flagged as critical (not routing-collision), these are the pa
 
 ## Known Limitations of Text Refinement
 
-**Vocabulary routing collisions are real.** The BGE bridge systematically routes shared vocabulary to the more abstract of two competing faces. The documented case: duty-bearing vocabulary (*owe*, *warrant*, *trust*, *duty*, *culpable*, *forbidden*) routes to axiology rather than ethics. A four-iteration field test escalated ethics vocabulary from *owe* (v2) to *culpable, forbidden, virtue, lie, sabotage, moral duty* (v4) without moving ethics off 0.10, while axiology rose 0.58 → 0.60 absorbing every addition. **Inhabitation is not the universal fix.** When a face stays at floor despite dense face-specific vocabulary and an adjacent face is already dominant, suspect routing collision (Step 2.6b) and switch to indirect activation via a multi-face pattern (e.g., constitutional rule list activates ethics via its Semiotics+Ethics co-pattern, not via direct vocabulary weight). Do not iterate on inhabitation of vocabulary the bridge cannot attribute correctly. The known collision table is in Step 2.6b; file new observations as feedback.
+**Vocabulary routing collisions are real — but some are now fixed.** The BGE bridge historically routed shared vocabulary to the more abstract of two competing faces. The most documented case — duty-bearing vocabulary (*owe*, *warrant*, *trust*, *duty*, *culpable*, *forbidden*, *moral*, *virtue*, *obligation*, *ought*) routing to axiology rather than ethics — is **fixed in v0.7.3** via disambiguation entries. A synthetic ethics-heavy prompt that previously scored ethics=0.10 now scores ethics=0.702. The purpose-into-axiology split is also fixed. **But some collisions remain.** Semiotics and hermeneutics still move in lockstep (shared vocabulary territory); aesthetics still absorbs structural "form/shape" vocabulary; paired faces (ontology↔praxeology) still under-resonate on inherited-plan prompts because the pairing is symmetric rather than directional. The skill's Step 2.6b vocabulary-scan check and the collision status table remain useful for pending cases. When a face stays at floor despite dense face-specific vocabulary and the case is marked Pending, suspect routing collision and switch to indirect activation via a multi-face pattern.
 
 **Register competition is real.** A text has a primary register, and the BGE bridge measures it. You cannot stack all 12 faces at equal weight in a single text — attempting to do so dilutes all of them. The refinement goal is not maximum uniform activation; it is an activation profile that matches the prompt's actual purpose. If your task is a technical spec, ontology/methodology/semiotics dominating is correct. If it is a piece of moral argument, ethics/axiology dominating is correct. A flat distribution across 12 faces is almost always a sign the text has no register at all.
 
