@@ -1,6 +1,6 @@
 {
   "name": "advanced-prompting-engine",
-  "version": "0.7.0",
+  "version": "0.7.2",
   "description": "Universal prompt creation engine — MCP server with 12-axis philosophical manifold for principled prompt construction",
   "author": {
     "name": "Joshua Ramirez",

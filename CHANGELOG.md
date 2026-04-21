@@ -5,6 +5,41 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.2] - 2026-04-20
+
+### Added
+- Prompt Refiner skill v0.6.0 — task-aware priority framework (Layer B of the proposed APE architecture):
+  - **Step 2.5 (Classify task type)**: before interpreting, establish task type (engineering, analysis, policy, execution-prompt-inheriting-plan, creative, etc.) and load the corresponding face priority template.
+  - **Step 2.6 (Compute priority gaps)**: replace undifferentiated "neglected dimensions" with three lists: critical gaps (H priority, low activation), acceptable neglect (L priority, low activation), diffusion candidates (L priority, high activation).
+  - **Step 2.6b (Routing-collision suspicion)**: detect when a face stays at floor despite dense face-specific vocabulary in an adjacent-dominant pattern. Documents the known ethics→axiology, semiotics↔hermeneutics, teleology-split routing collisions observed in real refinement sessions. Recommends indirect activation via multi-face patterns instead of escalating direct inhabitation.
+  - **Step 2.7 (Pattern interventions)**: library of 12+ prompt-engineering patterns mapped to the face they primarily activate, with cost-ordered recommendations per gap face.
+  - **Task-Type Priority Reference** table covering 11 task categories including a new "Execution prompt (inheriting plan)" category from field observations.
+  - **Pattern Intervention Reference** table giving lightest-touch phrasing for each face gap.
+- New "Vocabulary routing collisions are real" limitation documenting the inhabitation-is-not-always-the-fix finding.
+
+### Changed
+- Step 3 (Interpret) augmented with priority-aware reading layered on top of the server's interpretation.
+- Step 5 (Measure Again) extended with priority-overlay checks: did each critical gap close; were diffusion candidates compressed; did routing-collision interventions actually activate via their indirect pattern.
+- Step 6 (Repeat) termination conditions include priority alignment and routing-collision resolution.
+
+### Context
+- Implements Layer B (skill-side) of the two-layer proposal in `docs/cc_genui_20260420_200730_face_importance_ranking.html`. Layer A (engine-side disambiguation entries and directional resonance) remains pending — Step 2.6b is the interim bridge, flagging collisions the skill cannot resolve.
+- Engine code unchanged — version bump reflects new shipped skill content only.
+
+## [0.7.1] - 2026-04-17
+
+### Added
+- `skills/prompt-refiner/SKILL.md` — shipped with the plugin so installing APE now installs the companion refinement skill. Previously lived only in the user profile.
+
+### Changed
+- Prompt Refiner skill (v0.5.0) updated from real-world usage observations:
+  - New "Register competition" limitation: a text has one primary register and attempting to equally activate all 12 faces dilutes all of them. Refinement targets the register the task requires, not uniform engagement.
+  - "Inhabit, don't name" reframed as the primary diagnostic for a face at ~0.10 — the floor is a signal that the text describes the dimension from outside rather than speaks from inside it, not a measurement ceiling.
+  - New "Coherence declines with breadth" limitation: the central gem's coherence score trades against the number of activated faces. A narrow focused register scores higher coherence than a wide mixed one. Decide the tradeoff before optimizing.
+  - Step 1 softened: "inhabit every dimension you know how to reach" replaced with register-aware guidance.
+  - Wholeness definition corrected: no longer implies uniform 12-face engagement.
+  - Step 6 adds two new plateau signals: register stabilization and coherence/breadth tradeoff resolution.
+
 ## [0.7.0] - 2026-04-16
 
 ### Added
@@ -185,6 +220,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Spectral embedding cache and TF-IDF cache with lifecycle management.
 - 12 Architecture Decision Records.
 
+[0.7.2]: https://github.com/JoshuaRamirez/advanced-prompting-engine/compare/v0.7.1...v0.7.2
+[0.7.1]: https://github.com/JoshuaRamirez/advanced-prompting-engine/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/JoshuaRamirez/advanced-prompting-engine/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/JoshuaRamirez/advanced-prompting-engine/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/JoshuaRamirez/advanced-prompting-engine/compare/v0.4.0...v0.5.0

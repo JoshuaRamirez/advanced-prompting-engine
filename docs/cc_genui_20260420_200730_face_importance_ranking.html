@@ -1,0 +1,671 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Task-Aware Face Importance Ranking + Vocabulary Routing — Prompt Refiner Architecture</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            padding: 20px;
+            background: #f0f0f0;
+        }
+        code {
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Courier New', monospace;
+        }
+        article {
+            max-width: 980px;
+            margin: 0 auto;
+            background: #fff;
+            padding: 40px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+        }
+        h1 { color: #2c3e50; margin-bottom: 8px; }
+        h2 { color: #2c3e50; border-bottom: 2px solid #3498db; padding-bottom: 6px; margin-top: 36px; }
+        h3 { color: #34495e; margin-top: 24px; }
+        h4 { color: #34495e; margin-top: 18px; }
+        .timestamp { color: #95a5a6; font-style: italic; font-size: 0.9em; }
+        .report-meta {
+            margin: 12px 0 16px 0;
+            padding: 10px 14px;
+            background: #f8f9fa;
+            border-radius: 4px;
+            font-size: 0.92em;
+            color: #555;
+            line-height: 1.7;
+        }
+        .report-meta code {
+            background: #eef1f3;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 0.88em;
+        }
+        .meta-label { font-weight: 600; color: #34495e; }
+        .executive-summary {
+            margin: 16px 0 24px 0;
+            padding: 14px 18px;
+            background: #e8f4f8;
+            border-left: 4px solid #3498db;
+            border-radius: 0 4px 4px 0;
+            font-size: 0.95em;
+            line-height: 1.65;
+            color: #2c3e50;
+        }
+        .executive-summary p { margin: 0 0 8px 0; }
+        .executive-summary p:last-child { margin-bottom: 0; }
+        .mermaid-diagram { margin: 20px 0; text-align: center; }
+        .mermaid-diagram svg { max-width: 100%; height: auto; overflow: visible; }
+        .mermaid-diagram svg * { overflow: visible; }
+        .mermaid-diagram figcaption { font-size: 0.88em; color: #7f8c8d; font-style: italic; margin-top: 8px; }
+        .error-section {
+            background: #fdf0ef;
+            border-left: 4px solid #e74c3c;
+            padding: 14px 18px;
+            border-radius: 0 4px 4px 0;
+            margin: 16px 0;
+        }
+        .error-section h3 { color: #e74c3c; margin-top: 0; }
+        .info-section {
+            background: #e8f4f8;
+            border-left: 4px solid #3498db;
+            padding: 14px 18px;
+            border-radius: 0 4px 4px 0;
+            margin: 16px 0;
+        }
+        .info-section h3 { color: #2c3e50; margin-top: 0; }
+        .success-section {
+            background: #eafaf1;
+            border-left: 4px solid #27ae60;
+            padding: 14px 18px;
+            border-radius: 0 4px 4px 0;
+            margin: 16px 0;
+        }
+        .success-section h3 { color: #27ae60; margin-top: 0; }
+        .warning-section {
+            background: #fef9e7;
+            border-left: 4px solid #f39c12;
+            padding: 14px 18px;
+            border-radius: 0 4px 4px 0;
+            margin: 16px 0;
+        }
+        .warning-section h3 { color: #f39c12; margin-top: 0; }
+        .obs {
+            padding: 10px 14px;
+            background: #f8f9fa;
+            border-left: 4px solid #3498db;
+            border-radius: 0 4px 4px 0;
+            margin: 10px 0;
+            font-size: 0.94em;
+            line-height: 1.6;
+        }
+        .obs strong { color: #2c3e50; }
+        .principle {
+            padding: 12px 16px;
+            border-radius: 4px;
+            border-left: 4px solid #27ae60;
+            background: #eafaf1;
+            margin: 12px 0;
+            font-size: 0.95em;
+            line-height: 1.6;
+        }
+        .principle .label {
+            font-size: 0.78em;
+            font-weight: 700;
+            color: #7f8c8d;
+            text-transform: uppercase;
+            letter-spacing: 0.4px;
+            margin-bottom: 4px;
+            display: block;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 16px 0;
+            font-size: 0.92em;
+        }
+        th, td {
+            padding: 9px 12px;
+            text-align: left;
+            border: 1px solid #dee2e6;
+            vertical-align: top;
+        }
+        th { background: #f8f9fa; color: #2c3e50; font-weight: 600; }
+        tr:nth-child(even) { background: #fafbfc; }
+        pre {
+            background: #f8f9fa;
+            border-left: 3px solid #007acc;
+            padding: 14px;
+            border-radius: 4px;
+            overflow-x: auto;
+            font-size: 0.88em;
+        }
+        code.inline {
+            background: #f5f5f5;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 0.9em;
+        }
+        ul { padding-left: 24px; }
+        li { margin-bottom: 6px; }
+        .tier-badge {
+            display: inline-block;
+            padding: 2px 10px;
+            border-radius: 12px;
+            font-size: 0.82em;
+            font-weight: 600;
+            margin-right: 6px;
+        }
+        .tier-1 { background: #e8f4f8; color: #2980b9; border: 1px solid #3498db; }
+        .tier-2 { background: #fef9e7; color: #d68910; border: 1px solid #f39c12; }
+        .tier-3 { background: #eafaf1; color: #1e8449; border: 1px solid #27ae60; }
+        .tier-proj { background: #f5f5f5; color: #7f8c8d; border: 1px solid #95a5a6; }
+        .layer-tag {
+            display: inline-block;
+            padding: 2px 10px;
+            border-radius: 4px;
+            font-size: 0.82em;
+            font-weight: 600;
+            margin-right: 6px;
+        }
+        .layer-engine { background: #f3e9f7; color: #7d3c98; border: 1px solid #9b59b6; }
+        .layer-skill { background: #e8f4f8; color: #2980b9; border: 1px solid #3498db; }
+        .priority-h { background: #eafaf1; color: #1e8449; font-weight: 600; }
+        .priority-m { background: #fef9e7; color: #d68910; font-weight: 600; }
+        .priority-l { background: #fdf0ef; color: #c0392b; font-weight: 600; }
+        .face-tag {
+            display: inline-block;
+            padding: 1px 8px;
+            border-radius: 10px;
+            font-size: 0.82em;
+            margin: 1px 2px;
+            background: #eef1f3;
+            color: #2c3e50;
+            border: 1px solid #ccd1d6;
+        }
+        .face-structural { background: #e8f4f8; color: #2980b9; border-color: #3498db; }
+        .face-bias { background: #fef9e7; color: #d68910; border-color: #f39c12; }
+        .face-mixed { background: #f3e9f7; color: #7d3c98; border-color: #9b59b6; }
+        footer {
+            margin-top: 40px;
+            padding-top: 20px;
+            border-top: 1px solid #dee2e6;
+            color: #7f8c8d;
+            font-size: 0.85em;
+        }
+    </style>
+</head>
+<body>
+    <article>
+        <header>
+            <h1>Task-Aware Face Importance Ranking + Vocabulary Routing</h1>
+            <div class="timestamp">Generated: 2026-04-20 20:07:30</div>
+            <div class="report-meta">
+                <span class="meta-label">Workspace:</span> <code>/Users/joshua/Developer/advanced-prompting-engine</code><br>
+                <span class="meta-label">Topic:</span> Architectural proposal addressing two distinct gaps in APE's measurement-to-recommendation chain: <em>vocabulary routing collisions</em> at the engine layer and <em>task-blind interpretation</em> at the skill layer<br>
+                <span class="meta-label">Status:</span> Working analysis — not committed to implementation
+            </div>
+            <div class="executive-summary">
+                <p>APE has <strong>two distinct architectural gaps</strong>, surfaced by two independent observations during real refinement work. First, an external review (ChatGPT) of an APE-refined prompt drew the categorical distinction between <em>structural control</em> (testable instructions) and <em>probabilistic bias</em> (moral/value framing). APE measures register engagement uniformly across both — silent on which is which, silent on which a given task needs. Second, a four-iteration field refinement showed that the BGE bridge itself routes shared vocabulary into the <em>more abstract</em> of two competing faces: ethics escalation from <em>owe</em> to <em>culpable, forbidden, virtue, lie, sabotage, moral duty</em> never moved ethics off 0.10 because axiology absorbed every duty-adjacent term. This is not an inhabitation failure — it is a routing collision the bridge cannot resolve with current vocabulary attribution.</p>
+                <p>The proposal addresses both: a <strong>Layer A (engine)</strong> intervention extending APE's existing disambiguation infrastructure to enforce four routing principles (specificity wins, evaluative triad ordering, foundation-before-evaluation, directional pairing) plus optional directional resonance; and a <strong>Layer B (skill)</strong> intervention that classifies the request, loads a per-task priority template, computes priority-weighted gaps, and recommends specific prompt-engineering patterns to close them. Layer A fixes <em>can the bridge see the activation at all?</em>; Layer B fixes <em>which gap should the user prioritize?</em>. Build both, but stage them: Layer B is reversible skill content; Layer A touches the build artifact and needs evidence per principle.</p>
+            </div>
+        </header>
+
+        <main>
+
+            <h2>1. The Triggering Inputs</h2>
+
+            <h3>1a. External review (ChatGPT) — the structural-vs-bias distinction</h3>
+
+            <div class="info-section">
+                <h3>What the reviewer said about an APE-refined prompt</h3>
+                <ul>
+                    <li>Moral framing ("be honest," "do not fabricate") demonstrably affects model behavior in some task types — primarily open-ended reasoning, ambiguous QA, hallucination-prone generation.</li>
+                    <li>The mechanism is not moral comprehension. It is activation of learned response patterns associated with cautious phrasing and longer reasoning chains.</li>
+                    <li>In deterministic engineering contexts (precise edits, required invariants, schema-bound output) the limiting factor is not whether the model "tries to be honest" but whether it has unambiguous, checkable constraints.</li>
+                    <li><strong>Moral framing is a probabilistic bias. Structural constraints are a structural control.</strong> Both can be present in the same prompt; the strongest prompts combine them; the issue is balance.</li>
+                </ul>
+            </div>
+
+            <h3>1b. Field observations — vocabulary routing collisions</h3>
+
+            <p>Independently, a four-iteration refinement session on an execution-prompt for an EOF generator produced a structurally different observation. APE's bridge appears to systematically misattribute shared vocabulary, and inhabitation does not fix it.</p>
+
+            <div class="obs"><strong>Ethics sank into axiology.</strong> Vocabulary escalated from <em>owe, trust, warrant</em> (v2) to <em>culpable, forbidden, virtue, lie, sabotage, moral duty</em> (v4). Ethics stayed at 0.10. Axiology climbed from 0.58 → 0.60. The BGE bridge appears to route duty-adjacent vocabulary into axiology rather than ethics when both could claim it.</div>
+
+            <div class="obs"><strong>Phenomenology activated cleanly when given distinctive vocabulary.</strong> "Three surfaces exist and are not the same surface" triggered phenomenology (0.50, new to dominant). When that paragraph shortened in v4, phenomenology dropped out of dominants. Surface/depth framing has a clear phenomenological signature.</div>
+
+            <div class="obs"><strong>Semiotics and hermeneutics moved in lockstep.</strong> Both rose 0.62/0.58 (v1) → 0.65/0.65 (v3). They share vocabulary territory and resist differentiation under the current bridge.</div>
+
+            <div class="obs"><strong>Officially-paired faces under-resonated.</strong> Ontology↔praxeology (the server's top resonance) stayed at 0.11 across all iterations despite the prompt explicitly describing entities AND ordering actions. Likely cause: execution prompts that <em>receive</em> a pre-designed plan read as ontology-heavy but praxeology-light, because the action-structure is inherited, not generated. The symmetric pairing has no way to express this directionality.</div>
+
+            <p>These four observations are not noise. They reveal a structural property of the bridge: shared vocabulary defaults to the more abstract of two competing faces, related faces that share idioms cannot be differentiated, and the symmetric pairing model cannot distinguish "this prompt grounds X in Y" from "this prompt does X and Y in parallel."</p>
+
+            <h2>2. Two Distinct Architectural Gaps</h2>
+
+            <p>The two triggering inputs surface two different problems. Neither subsumes the other.</p>
+
+            <table>
+                <thead>
+                    <tr><th>Gap</th><th>Layer</th><th>Symptom</th><th>Root cause</th></tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><strong>Vocabulary routing collisions</strong></td>
+                        <td><span class="layer-tag layer-engine">Engine</span></td>
+                        <td>Ethics stays at 0.10 despite dense moral vocabulary; semiotics and hermeneutics move in lockstep; paired-face resonance fails on inherited-structure prompts.</td>
+                        <td>BGE+IDF² routes shared vocabulary to the more abstract competing face; no directional resolution rule; no foundation/evaluation precedence; symmetric pairing cannot express grounding direction.</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Task-blind interpretation</strong></td>
+                        <td><span class="layer-tag layer-skill">Skill</span></td>
+                        <td>"Neglected dimensions" reported uniformly; user must judge unaided whether a gap is a problem; control-type composition (structural vs bias) is invisible.</td>
+                        <td>Skill treats all 12 faces as equal-weight; no per-task priority template; no link between face gaps and prompt-engineering patterns that could close them.</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <p>Layer A fixes <em>can the bridge see the activation at all?</em> Layer B fixes <em>which gap should the user prioritize, and how?</em> A prompt that gets correctly routed (Layer A) but is interpreted task-blind (Layer B problem) wastes the user's effort on the wrong gap. A prompt that is interpreted with task awareness (Layer B) but whose ethics activation is silently routed into axiology (Layer A problem) gets the wrong gap diagnosed in the first place.</p>
+
+            <h2>3. The Structural-Control vs Probabilistic-Bias Distinction</h2>
+
+            <p>This is not a new idea in the prompt engineering literature — it appears under several names: hard vs soft constraints; verifiable vs unverifiable instructions; scaffolding vs steering; decoder constraints vs prior shaping. The pattern is consistent: one category produces outputs that can be machine-checked against the instruction; the other produces distributional shifts whose effect is only measurable in aggregate behavior.</p>
+
+            <h3>Working two-axis taxonomy</h3>
+
+            <table>
+                <thead>
+                    <tr><th>Axis</th><th>Question</th><th>Examples (yes / no)</th></tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><strong>Verifiability</strong></td>
+                        <td>Can a checker confirm the instruction was followed in this single output?</td>
+                        <td>Schema match (yes), citation present (yes) / "Be respectful" (no), "Think carefully" (no)</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Compositionality</strong></td>
+                        <td>Does the instruction compose with other instructions deterministically?</td>
+                        <td>Output format (yes), step numbering (yes) / Persona (no), value framing (no)</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h2>4. Mapping APE's 12 Faces to the Distinction</h2>
+
+            <h3>Structural-control faces <span class="face-tag face-structural">structural</span></h3>
+
+            <table>
+                <thead><tr><th>Face</th><th>Why structural</th><th>Typical inhabitation</th></tr></thead>
+                <tbody>
+                    <tr><td><strong>Semiotics</strong></td><td>Explicit/syntactic axis directly addresses output form, encoding, format.</td><td>Output schema, code fence rules, JSON shape, citation format</td></tr>
+                    <tr><td><strong>Methodology</strong></td><td>Procedural deductive sequencing produces verifiable step ordering and traceable reasoning chains.</td><td>Chain of Thought scaffolds, explicit reasoning steps, deductive proof structure</td></tr>
+                    <tr><td><strong>Ontology</strong></td><td>Particular-entity axis defines what objects exist and their relations — testable schemas.</td><td>Entity definitions, type hierarchies, allowed/disallowed nouns</td></tr>
+                    <tr><td><strong>Praxeology</strong></td><td>Coordinated/proactive axis specifies action sequences and their preconditions.</td><td>Tool-call sequences, agentic plan templates, side-effect contracts</td></tr>
+                </tbody>
+            </table>
+
+            <h3>Probabilistic-bias faces <span class="face-tag face-bias">bias</span></h3>
+
+            <table>
+                <thead><tr><th>Face</th><th>Why bias</th><th>Typical inhabitation</th></tr></thead>
+                <tbody>
+                    <tr><td><strong>Ethics</strong></td><td>Deontological/consequential framing shifts response style toward hedging, disclaimers, refusal. Effect is distributional.</td><td>"Be honest," constitutional rules, harm avoidance</td></tr>
+                    <tr><td><strong>Axiology</strong></td><td>Value-criteria framing shifts what the model treats as important.</td><td>"Quality matters," "concise is better than verbose"</td></tr>
+                    <tr><td><strong>Aesthetics</strong></td><td>Form-recognition shifts produce style/voice changes — qualitative, not testable per output.</td><td>"Elegant code," "clear prose," tone direction</td></tr>
+                    <tr><td><strong>Hermeneutics</strong></td><td>Interpretive-framework framing shifts how the model reads ambiguous instructions.</td><td>Role prompts, audience framing, reader-response guidance</td></tr>
+                    <tr><td><strong>Heuristics</strong></td><td>Strategy preference (intuitive vs systematic) shifts search behavior under uncertainty.</td><td>"Think step by step," "explore alternatives," "simplest solution wins"</td></tr>
+                </tbody>
+            </table>
+
+            <h3>Mixed faces <span class="face-tag face-mixed">mixed</span></h3>
+
+            <table>
+                <thead><tr><th>Face</th><th>Why mixed</th></tr></thead>
+                <tbody>
+                    <tr><td><strong>Epistemology</strong></td><td>Citation requirements (verifiable), confidence-hedging requirements (testable presence), but stance framing (bias).</td></tr>
+                    <tr><td><strong>Phenomenology</strong></td><td>Persona definitions can be verifiable (named role) or bias (felt subjectivity).</td></tr>
+                    <tr><td><strong>Teleology</strong></td><td>Goal statements can be testable (output goal) or bias (philosophical purpose).</td></tr>
+                </tbody>
+            </table>
+
+            <div class="warning-section">
+                <h3>Implication for APE's coherence score</h3>
+                <p>A prompt that scores high coherence on APE could be entirely bias-side activations and still produce no testable invariants. Combined with Layer A routing collisions, the picture is worse: a high-coherence prompt could be mis-attributed entirely (the four-iteration session above had ethics-heavy v4 vocabulary scoring as axiology). APE's coherence is a register-focus metric; it is neither a correctness predictor nor a routing-correctness check.</p>
+            </div>
+
+            <h2>5. Four Routing Principles</h2>
+
+            <p>The four field observations imply four classical orderings the bridge currently does not enforce. These are the substantive content of Layer A.</p>
+
+            <div class="principle">
+                <span class="label">Principle 1 — Specificity wins</span>
+                When vocabulary activates two faces, the face with the more restrictive commitment claims it. <em>Culpable</em> is more specific to ethics than to axiology; ethics should win. <em>Systematic</em> is more specific to methodology than to heuristics; methodology should win. Currently the bridge defers to the more abstract face because abstract centroids encompass more of the vocabulary cloud.
+            </div>
+
+            <div class="principle">
+                <span class="label">Principle 2 — Evaluative faces are a triad with internal order</span>
+                Axiology (worth), Ethics (duty), and Teleology (purpose) share evaluative territory. The classical philosophical chain is <em>teleology grounds ethics grounds axiology</em> — what a thing is for shapes what is owed to it shapes what it is worth. When all three could claim shared vocabulary, rank by this chain so the grounding face activates first.
+            </div>
+
+            <div class="principle">
+                <span class="label">Principle 3 — Foundation faces are prior to evaluation faces</span>
+                Ontology and Epistemology are prior to axiology/ethics/teleology in almost every classical order (Kant, Aristotle, Husserl). A prompt cannot activate evaluative faces coherently without foundational commitments. If an evaluative face dominates while its foundation face is below threshold, the measurement should flag that as an incoherent stance, not a stylistic choice. This is a new failure mode the engine could surface.
+            </div>
+
+            <div class="principle">
+                <span class="label">Principle 4 — Paired faces need direction, not symmetry</span>
+                The six resonance pairs are currently symmetric (ontology↔praxeology, etc.). But being-grounds-doing, knowing-grounds-proceeding, encoding-grounds-interpreting are directional. A directional resonance model would let the grounding face activate first and the grounded face inherit energy — preventing the symmetric weak-resonance failure observed when the prompt addressed entities-then-actions but ontology↔praxeology stayed at 0.11.
+            </div>
+
+            <h2>6. Vocabulary Routing Collision Table</h2>
+
+            <p>From the field observations, draft of the corrections needed. This is the seed for new disambiguation entries in the engine's existing disambiguation infrastructure (<code class="inline">_disambig_face_sim</code>, <code class="inline">_disambig_meta</code>).</p>
+
+            <table>
+                <thead>
+                    <tr><th>Shared vocabulary</th><th>Currently routes to</th><th>Should route to</th><th>Why</th></tr>
+                </thead>
+                <tbody>
+                    <tr><td><code class="inline">owe</code>, <code class="inline">warrant</code>, <code class="inline">trust</code>, <code class="inline">duty</code>, <code class="inline">forbidden</code>, <code class="inline">culpable</code></td><td>axiology</td><td>ethics</td><td>Duty-bearing; addresses obligation before worth (Principle 1: specificity)</td></tr>
+                    <tr><td><code class="inline">valuable</code>, <code class="inline">worthy</code>, <code class="inline">justify</code></td><td>axiology</td><td>axiology (correct)</td><td>Worth-bearing; evaluative not deontic</td></tr>
+                    <tr><td><code class="inline">experience</code>, <code class="inline">feels</code>, <code class="inline">appears</code>, <code class="inline">surface</code>, <code class="inline">depth</code></td><td>phenomenology</td><td>phenomenology (correct)</td><td>Distinctive when surface/depth framed</td></tr>
+                    <tr><td><code class="inline">form</code>, <code class="inline">shape</code>, <code class="inline">recognizable</code></td><td>aesthetics</td><td>aesthetics (when qualitative) / semiotics (when structural)</td><td>Ambiguous; needs context-disambiguation rule</td></tr>
+                    <tr><td><code class="inline">systematic</code>, <code class="inline">analytic</code>, <code class="inline">deductive</code></td><td>methodology</td><td>methodology (correct)</td><td>Procedural, systematic</td></tr>
+                    <tr><td><code class="inline">rule of thumb</code>, <code class="inline">intuitive</code>, <code class="inline">pragmatic</code></td><td>heuristics</td><td>heuristics (correct)</td><td>Practical-strategy bearing</td></tr>
+                    <tr><td><code class="inline">interpret</code>, <code class="inline">read as</code>, <code class="inline">means</code></td><td>hermeneutics &amp; semiotics (tied)</td><td>hermeneutics (when receiving) / semiotics (when sending)</td><td>Needs directional split: receiver vs sender</td></tr>
+                    <tr><td><code class="inline">purpose</code>, <code class="inline">end</code>, <code class="inline">goal</code></td><td>teleology + axiology (split)</td><td>teleology (correct)</td><td>Purpose-bearing; grounds rather than evaluates (Principle 2)</td></tr>
+                </tbody>
+            </table>
+
+            <p>The engine already has the machinery: <code class="inline">_lookup_sense</code> in <code class="inline">math/semantic.py</code> already routes context-bearing tokens to override face-similarity rows when context-word thresholds are met. Adding entries that encode Principles 1–3 above is a build-time content change, not an architectural change. Principle 4 (directional resonance) is the one that requires actual engine modification.</p>
+
+            <h2>7. The Architectural Gap (Output Side)</h2>
+
+            <p>Beyond routing, APE's interpretation layer is also incomplete. It does not measure:</p>
+
+            <ol>
+                <li><strong>Control type composition.</strong> What fraction of activated weight is structural vs bias?</li>
+                <li><strong>Task fit.</strong> Whether the activated register matches what the task requires.</li>
+                <li><strong>Intervention effectiveness.</strong> Whether known prompt-engineering patterns appropriate to the task are present.</li>
+            </ol>
+
+            <p>The skill currently asks the user to make all three judgments unaided. That is workable for experienced users but provides no path to systematic improvement: the same neglected face is reported the same way regardless of whether the task is engineering or creative.</p>
+
+            <figure class="mermaid-diagram">
+                <svg id="my-svg" width="100%" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" class="flowchart" style="max-width: 868.43px; background-color: transparent;" viewBox="0 0 868.4296875 1115.828125" role="graphics-document document" aria-roledescription="flowchart-v2"><style>#my-svg{font-family:"trebuchet ms",verdana,arial,sans-serif;font-size:16px;fill:#333;}#my-svg .marker{fill:#333333;stroke:#333333;}#my-svg svg{font-family:"trebuchet ms",verdana,arial,sans-serif;font-size:16px;}#my-svg p{margin:0;}#my-svg .label{font-family:"trebuchet ms",verdana,arial,sans-serif;color:#333;}#my-svg .cluster-label text{fill:#333;}#my-svg .label text,#my-svg span{fill:#333;color:#333;}#my-svg .node rect{fill:#ECECFF;stroke:#9370DB;stroke-width:1px;}#my-svg .node .label{text-anchor:middle;}#my-svg .arrowheadPath{fill:#333333;}#my-svg .edgePath .path{stroke:#333333;stroke-width:2.0px;}#my-svg .flowchart-link{stroke:#333333;fill:none;}#my-svg .cluster rect{fill:#ffffde;stroke:#aaaa33;stroke-width:1px;}</style><g><marker id="my-svg_flowchart-v2-pointEnd" class="marker flowchart-v2" viewBox="0 0 10 10" refX="5" refY="5" markerUnits="userSpaceOnUse" markerWidth="8" markerHeight="8" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"/></marker></g><g class="root"><g class="nodes"><g class="root" transform="translate(0, 0)"><g class="clusters"><g class="cluster" transform="translate(0, 0)"><rect style="fill:#eafaf1;stroke:#27ae60" x="8" y="8" width="539.7578125" height="1099.828125"/><g class="cluster-label" transform="translate(226.36328125, 8)"><foreignObject width="103.03125" height="24"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="nodeLabel"><p>Proposed Flow</p></span></div></foreignObject></g></g></g><g class="edgePaths"><path d="M273.414,99.5L273.414,170.5" class="flowchart-link" marker-end="url(#my-svg_flowchart-v2-pointEnd)"/><path d="M228.492,308.406L145.273,424.328" class="flowchart-link" marker-end="url(#my-svg_flowchart-v2-pointEnd)"/><path d="M145.273,482.328L145.273,553.328" class="flowchart-link" marker-end="url(#my-svg_flowchart-v2-pointEnd)"/><path d="M318.336,308.406L401.555,553.328" class="flowchart-link" marker-end="url(#my-svg_flowchart-v2-pointEnd)"/><path d="M145.273,635.328L216.201,708.53" class="flowchart-link" marker-end="url(#my-svg_flowchart-v2-pointEnd)"/><path d="M401.555,635.328L330.627,708.53" class="flowchart-link" marker-end="url(#my-svg_flowchart-v2-pointEnd)"/><path d="M273.414,764.328L273.414,835.328" class="flowchart-link" marker-end="url(#my-svg_flowchart-v2-pointEnd)"/><path d="M273.414,917.328L273.414,988.328" class="flowchart-link" marker-end="url(#my-svg_flowchart-v2-pointEnd)"/></g><g class="nodes"><g class="node default" transform="translate(273.4140625, 72.5)"><rect class="basic label-container" x="-74.4375" y="-27" width="148.875" height="54"/><g class="label" transform="translate(-44.4375, -12)"><foreignObject width="88.875" height="24"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="nodeLabel"><p>User prompt</p></span></div></foreignObject></g></g><g class="node default" transform="translate(273.4140625, 263.9140625)"><polygon points="89.4140625,0 178.828125,-89.4140625 89.4140625,-178.828125 0,-89.4140625" class="label-container" transform="translate(-88.9140625, 89.4140625)" style="fill:#e8f4f8;stroke:#3498db"/><g class="label" transform="translate(-62.4140625, -12)"><foreignObject width="124.828125" height="24"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="nodeLabel"><p>Classify task type</p></span></div></foreignObject></g></g><g class="node default" transform="translate(145.2734375, 455.328125)"><rect class="basic label-container" style="fill:#f3e9f7;stroke:#9b59b6" x="-114.7109375" y="-39" width="229.421875" height="78"/><g class="label" transform="translate(-94.7109375, -24)"><foreignObject width="189.421875" height="48"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="nodeLabel"><p>APE measurement<br />(Layer A: corrected routing)</p></span></div></foreignObject></g></g><g class="node default" transform="translate(145.2734375, 596.328125)"><rect class="basic label-container" x="-95.078125" y="-39" width="190.15625" height="78"/><g class="label" transform="translate(-65.078125, -24)"><foreignObject width="130.15625" height="48"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="nodeLabel"><p>12-face activation<br />+ coherence</p></span></div></foreignObject></g></g><g class="node default" transform="translate(401.5546875, 596.328125)"><rect class="basic label-container" style="fill:#e8f4f8;stroke:#3498db" x="-111.203125" y="-39" width="222.40625" height="78"/><g class="label" transform="translate(-81.203125, -24)"><foreignObject width="162.40625" height="48"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="nodeLabel"><p>Load priority template<br />for task type</p></span></div></foreignObject></g></g><g class="node default" transform="translate(273.4140625, 737.328125)"><rect class="basic label-container" style="fill:#e8f4f8;stroke:#3498db" x="-109.46875" y="-27" width="218.9375" height="54"/><g class="label" transform="translate(-79.46875, -12)"><foreignObject width="158.9375" height="24"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="nodeLabel"><p>Compute priority gaps</p></span></div></foreignObject></g></g><g class="node default" transform="translate(273.4140625, 878.328125)"><rect class="basic label-container" style="fill:#e8f4f8;stroke:#3498db" x="-106.7421875" y="-39" width="213.484375" height="78"/><g class="label" transform="translate(-76.7421875, -24)"><foreignObject width="153.484375" height="48"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="nodeLabel"><p>Suggest interventions<br />from pattern library</p></span></div></foreignObject></g></g><g class="node default" transform="translate(273.4140625, 1031.328125)"><rect class="basic label-container" x="-96.0859375" y="-39" width="192.171875" height="78"/><g class="label" transform="translate(-66.0859375, -24)"><foreignObject width="132.171875" height="48"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="nodeLabel"><p>User rewrites with<br />ranked targets</p></span></div></foreignObject></g></g></g></g><g class="root" transform="translate(589.7578125, 203.4140625)"><g class="clusters"><g class="cluster" transform="translate(0, 0)"><rect style="fill:#fef9e7;stroke:#f39c12" x="8" y="8" width="262.671875" height="693"/><g class="cluster-label" transform="translate(92.8359375, 8)"><foreignObject width="93" height="24"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="nodeLabel"><p>Current Flow</p></span></div></foreignObject></g></g></g><g class="edgePaths"><path d="M139.336,99.5L139.336,170.5" class="flowchart-link" marker-end="url(#my-svg_flowchart-v2-pointEnd)"/><path d="M139.336,228.5L139.336,299.5" class="flowchart-link" marker-end="url(#my-svg_flowchart-v2-pointEnd)"/><path d="M139.336,381.5L139.336,452.5" class="flowchart-link" marker-end="url(#my-svg_flowchart-v2-pointEnd)"/><path d="M139.336,534.5L139.336,605.5" class="flowchart-link" marker-end="url(#my-svg_flowchart-v2-pointEnd)"/></g><g class="nodes"><g class="node default" transform="translate(139.3359375, 72.5)"><rect class="basic label-container" x="-74.4375" y="-27" width="148.875" height="54"/><g class="label" transform="translate(-44.4375, -12)"><foreignObject width="88.875" height="24"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="nodeLabel"><p>User prompt</p></span></div></foreignObject></g></g><g class="node default" transform="translate(139.3359375, 201.5)"><rect class="basic label-container" x="-94.7109375" y="-27" width="189.421875" height="54"/><g class="label" transform="translate(-64.7109375, -12)"><foreignObject width="129.421875" height="24"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="nodeLabel"><p>APE measurement</p></span></div></foreignObject></g></g><g class="node default" transform="translate(139.3359375, 342.5)"><rect class="basic label-container" x="-95.078125" y="-39" width="190.15625" height="78"/><g class="label" transform="translate(-65.078125, -24)"><foreignObject width="130.15625" height="48"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="nodeLabel"><p>12-face activation<br />+ coherence</p></span></div></foreignObject></g></g><g class="node default" transform="translate(139.3359375, 495.5)"><rect class="basic label-container" x="-96.3359375" y="-39" width="192.671875" height="78"/><g class="label" transform="translate(-66.3359375, -24)"><foreignObject width="132.671875" height="48"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="nodeLabel"><p>User judges<br />which gaps matter</p></span></div></foreignObject></g></g><g class="node default" transform="translate(139.3359375, 636.5)"><rect class="basic label-container" x="-77.8984375" y="-27" width="155.796875" height="54"/><g class="label" transform="translate(-47.8984375, -12)"><foreignObject width="95.796875" height="24"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="nodeLabel"><p>User rewrites</p></span></div></foreignObject></g></g></g></g></g></g></svg>
+                <figcaption>Current vs Proposed flow. Layer A (purple) lives inside APE measurement and corrects routing. Layer B (blue) sits between measurement and user rewrite, providing task-aware interpretation. The user-judges step is replaced by a priority-aware gap analysis.</figcaption>
+            </figure>
+
+            <h2>8. Task-Type Priority Framework (Layer B Content)</h2>
+
+            <p>A working taxonomy of task types and their face priorities. The priority values are first-draft hypotheses; rationale per row. A revision cycle would test these against actual measurements after Layer A routing fixes are in place.</p>
+
+            <p><strong>Priority scale:</strong> <span class="priority-h">H</span> high, <span class="priority-m">M</span> medium (default if unlisted), <span class="priority-l">L</span> low.</p>
+
+            <table>
+                <thead>
+                    <tr><th>Task type</th><th>High-priority faces</th><th>Low-priority faces</th><th>Rationale</th></tr>
+                </thead>
+                <tbody>
+                    <tr><td><strong>Engineering / code / tests</strong></td><td><span class="face-tag face-structural">Semiotics</span> <span class="face-tag face-structural">Methodology</span> <span class="face-tag face-structural">Ontology</span> <span class="face-tag face-structural">Praxeology</span></td><td><span class="face-tag face-bias">Aesthetics</span> <span class="face-tag face-bias">Heuristics</span></td><td>Output is testable artifact; methodology is deductive; entities are particular</td></tr>
+                    <tr><td><strong>Structured extraction / schema</strong></td><td><span class="face-tag face-structural">Semiotics</span> <span class="face-tag face-structural">Ontology</span> <span class="face-tag face-mixed">Epistemology</span></td><td><span class="face-tag face-mixed">Phenomenology</span> <span class="face-tag face-bias">Hermeneutics</span> <span class="face-tag face-bias">Aesthetics</span></td><td>Schema is the contract; ambiguity in interpretation kills accuracy</td></tr>
+                    <tr><td><strong>Analysis / research / reasoning</strong></td><td><span class="face-tag face-mixed">Epistemology</span> <span class="face-tag face-structural">Methodology</span> <span class="face-tag face-bias">Hermeneutics</span> <span class="face-tag face-structural">Ontology</span></td><td><span class="face-tag face-structural">Praxeology</span> <span class="face-tag face-bias">Aesthetics</span></td><td>Truth conditions and interpretive frame dominate</td></tr>
+                    <tr><td><strong>Agentic workflow</strong></td><td><span class="face-tag face-structural">Praxeology</span> <span class="face-tag face-mixed">Teleology</span> <span class="face-tag face-structural">Methodology</span> <span class="face-tag face-bias">Heuristics</span></td><td><span class="face-tag face-bias">Aesthetics</span> <span class="face-tag face-mixed">Phenomenology</span></td><td>Action chains and goal pursuit dominate</td></tr>
+                    <tr><td><strong>Execution prompt (inheriting plan)</strong></td><td><span class="face-tag face-structural">Semiotics</span> <span class="face-tag face-structural">Ontology</span> <span class="face-tag face-bias">Ethics</span></td><td><span class="face-tag face-mixed">Teleology</span> <span class="face-tag face-bias">Heuristics</span></td><td>New task type from field observation: praxeology is inherited, not generated, so it should not be high-priority for measurement; ethics matters for failure-mode prevention</td></tr>
+                    <tr><td><strong>Creative writing</strong></td><td><span class="face-tag face-bias">Aesthetics</span> <span class="face-tag face-mixed">Phenomenology</span> <span class="face-tag face-bias">Hermeneutics</span> <span class="face-tag face-bias">Heuristics</span></td><td><span class="face-tag face-structural">Methodology</span> <span class="face-tag face-structural">Semiotics</span></td><td>Form judgments and subjective stance matter</td></tr>
+                    <tr><td><strong>Policy / safety / moral reasoning</strong></td><td><span class="face-tag face-bias">Ethics</span> <span class="face-tag face-bias">Axiology</span> <span class="face-tag face-mixed">Teleology</span> <span class="face-tag face-structural">Semiotics</span></td><td><span class="face-tag face-bias">Heuristics</span> <span class="face-tag face-bias">Aesthetics</span></td><td>Moral framing AND explicit rule clarity required</td></tr>
+                    <tr><td><strong>Educational explanation</strong></td><td><span class="face-tag face-bias">Hermeneutics</span> <span class="face-tag face-mixed">Phenomenology</span> <span class="face-tag face-structural">Methodology</span> <span class="face-tag face-structural">Semiotics</span></td><td><span class="face-tag face-structural">Praxeology</span> <span class="face-tag face-bias">Heuristics</span></td><td>Audience framing + clear sequencing + explicit examples</td></tr>
+                    <tr><td><strong>Translation / paraphrase</strong></td><td><span class="face-tag face-structural">Semiotics</span> <span class="face-tag face-bias">Hermeneutics</span> <span class="face-tag face-bias">Aesthetics</span></td><td><span class="face-tag face-structural">Praxeology</span> <span class="face-tag face-mixed">Teleology</span> <span class="face-tag face-bias">Heuristics</span></td><td>Encoding/decoding are central</td></tr>
+                    <tr><td><strong>Summarization</strong></td><td><span class="face-tag face-structural">Semiotics</span> <span class="face-tag face-structural">Methodology</span> <span class="face-tag face-bias">Hermeneutics</span></td><td><span class="face-tag face-structural">Praxeology</span> <span class="face-tag face-bias">Heuristics</span></td><td>Decoding original + formal compression</td></tr>
+                    <tr><td><strong>Conversation / chat / persona</strong></td><td><span class="face-tag face-mixed">Phenomenology</span> <span class="face-tag face-bias">Hermeneutics</span> <span class="face-tag face-bias">Aesthetics</span> <span class="face-tag face-bias">Ethics</span></td><td><span class="face-tag face-structural">Methodology</span> <span class="face-tag face-structural">Semiotics</span></td><td>Subjective stance and reader-response dominate</td></tr>
+                </tbody>
+            </table>
+
+            <p>The "execution prompt (inheriting plan)" row is added directly from the field observation that ontology↔praxeology stays at 0.11 because the action-structure is inherited rather than generated. Without this row in the taxonomy, the skill would mis-prescribe praxeology activation interventions for prompts whose praxeology is intentionally implicit. Hybrid task types combine two templates element-wise: H beats M beats L.</p>
+
+            <h2>9. Prompt Pattern → Face Activation Library</h2>
+
+            <p>Known prompt-engineering patterns each implicitly activate specific faces. This mapping turns a face gap into a concrete intervention recommendation.</p>
+
+            <table>
+                <thead>
+                    <tr><th>Pattern</th><th>Primary activation</th><th>Secondary</th><th>Source / lineage</th></tr>
+                </thead>
+                <tbody>
+                    <tr><td>Chain of Thought (CoT)</td><td><span class="face-tag face-structural">Methodology</span></td><td><span class="face-tag face-mixed">Epistemology</span></td><td>Wei et al. 2022</td></tr>
+                    <tr><td>Self-consistency</td><td><span class="face-tag face-mixed">Epistemology</span></td><td><span class="face-tag face-structural">Methodology</span></td><td>Wang et al. 2022</td></tr>
+                    <tr><td>Tree of Thought (ToT)</td><td><span class="face-tag face-bias">Heuristics</span></td><td><span class="face-tag face-structural">Methodology</span></td><td>Yao et al. 2023</td></tr>
+                    <tr><td>ReAct</td><td><span class="face-tag face-structural">Praxeology</span></td><td><span class="face-tag face-structural">Methodology</span> <span class="face-tag face-mixed">Epistemology</span></td><td>Yao et al. 2023</td></tr>
+                    <tr><td>Plan-and-Execute</td><td><span class="face-tag face-mixed">Teleology</span></td><td><span class="face-tag face-structural">Methodology</span> <span class="face-tag face-structural">Praxeology</span></td><td>LangChain / AutoGPT lineage</td></tr>
+                    <tr><td>Few-shot examples</td><td><span class="face-tag face-structural">Semiotics</span></td><td><span class="face-tag face-structural">Ontology</span></td><td>GPT-3 paper</td></tr>
+                    <tr><td>Output schema / format spec</td><td><span class="face-tag face-structural">Semiotics</span></td><td><span class="face-tag face-structural">Ontology</span></td><td>Function calling, structured output</td></tr>
+                    <tr><td>Role / persona prompt</td><td><span class="face-tag face-mixed">Phenomenology</span></td><td><span class="face-tag face-bias">Hermeneutics</span></td><td>Folk practice; mixed evidence</td></tr>
+                    <tr><td>Constitutional AI / rule list</td><td><span class="face-tag face-bias">Ethics</span></td><td><span class="face-tag face-structural">Semiotics</span></td><td>Bai et al. 2022</td></tr>
+                    <tr><td>Grounding / citation requirement</td><td><span class="face-tag face-mixed">Epistemology</span></td><td><span class="face-tag face-structural">Semiotics</span></td><td>RAG literature</td></tr>
+                    <tr><td>Audience framing</td><td><span class="face-tag face-bias">Hermeneutics</span></td><td><span class="face-tag face-mixed">Phenomenology</span></td><td>Folk practice</td></tr>
+                    <tr><td>Surface/depth framing ("three surfaces exist...")</td><td><span class="face-tag face-mixed">Phenomenology</span></td><td><span class="face-tag face-structural">Ontology</span></td><td>Field observation: distinctive phenomenology activator</td></tr>
+                    <tr><td>Negative constraints ("do not...")</td><td><span class="face-tag face-bias">Ethics</span></td><td><span class="face-tag face-structural">Semiotics</span></td><td>Mixed evidence; can backfire via salience</td></tr>
+                    <tr><td>Step-back prompting</td><td><span class="face-tag face-bias">Hermeneutics</span></td><td><span class="face-tag face-bias">Heuristics</span> <span class="face-tag face-structural">Methodology</span></td><td>Zheng et al. 2023</td></tr>
+                    <tr><td>Self-critique / reflexion</td><td><span class="face-tag face-mixed">Epistemology</span></td><td><span class="face-tag face-structural">Methodology</span></td><td>Madaan et al. 2023, Shinn et al. 2023</td></tr>
+                    <tr><td>Reasoning trace structure</td><td><span class="face-tag face-structural">Semiotics</span></td><td><span class="face-tag face-structural">Methodology</span></td><td>Common practice</td></tr>
+                    <tr><td>Output length specification</td><td><span class="face-tag face-structural">Semiotics</span></td><td><span class="face-tag face-bias">Aesthetics</span></td><td>Universally effective</td></tr>
+                    <tr><td>Worked-example demonstration</td><td><span class="face-tag face-structural">Semiotics</span> <span class="face-tag face-structural">Ontology</span></td><td><span class="face-tag face-structural">Methodology</span></td><td>Stronger than few-shot for procedural tasks</td></tr>
+                    <tr><td>Failure-mode enumeration</td><td><span class="face-tag face-bias">Ethics</span> <span class="face-tag face-mixed">Epistemology</span></td><td>—</td><td>Effective when failure modes are concrete</td></tr>
+                </tbody>
+            </table>
+
+            <h2>10. Proposed Architecture — Two Layers</h2>
+
+            <h3><span class="layer-tag layer-engine">Layer A</span> Engine: corrected vocabulary routing + foundation/evaluation precedence</h3>
+
+            <p>Lives in the build-time semantic-bridge artifact and (for directional resonance) the engine's tension/gem/harmonization computation.</p>
+
+            <h4>A1. Disambiguation entries enforcing Principles 1–3</h4>
+
+            <p>Extend <code class="inline">scripts/build_semantic_bridge.py</code> and the resulting <code class="inline">_disambig_meta</code> entries to encode:</p>
+
+            <ul>
+                <li><strong>Specificity overrides</strong>: when a token has restrictive use in face A and broad use in face B, route to A. Seed list from the vocabulary routing collision table above.</li>
+                <li><strong>Evaluative-triad ordering</strong>: when a token is shared across teleology / ethics / axiology, attribute by the chain teleology &gt; ethics &gt; axiology unless context-words tip otherwise.</li>
+                <li><strong>Foundation-precedence flag</strong>: a new output field per measurement noting when an evaluative face is dominant while its foundation face is below threshold. The engine reports this; the skill consumes it as an "incoherent stance" warning.</li>
+            </ul>
+
+            <h4>A2. Directional resonance (Principle 4)</h4>
+
+            <p>Modify the harmonization and gem computations so each cube pair has a designated grounding direction (e.g., <em>ontology→praxeology</em>, <em>epistemology→methodology</em>, <em>semiotics→hermeneutics</em>). Resonance becomes a directed metric: high when the grounding face activates first and the grounded face inherits, low when both activate independently without grounding flow. This is a real engine change — bumps version to 0.8.0 minimum.</p>
+
+            <h4>A3. Optional: control-type classification</h4>
+
+            <p>Add a <code class="inline">control_type</code> field per face classifying activations as structural, bias, or mixed (per Section 4). Engine reports both raw activation and structural/bias share. Smaller change than A2 but conceptually tied to Layer B's task-priority framework.</p>
+
+            <h3><span class="layer-tag layer-skill">Layer B</span> Skill: task classification + priority gap analysis + intervention recommendation</h3>
+
+            <p>Lives entirely in <code class="inline">skills/prompt-refiner/SKILL.md</code>. No engine dependency.</p>
+
+            <h4>Step 2.5: Classify task type</h4>
+
+            <p>Inferred from the prompt or asked. Output: a task-type identifier, optionally a hybrid combination.</p>
+
+            <h4>Step 2.6: Compute priority gaps</h4>
+
+            <pre><code>for each face:
+    priority   = template[task_type][face]   # H = 1.0, M = 0.5, L = 0.0
+    activation = basis.coordinate[face].weight
+    gap        = priority - normalized(activation)
+    record (face, priority, activation, gap)
+
+sort by gap descending</code></pre>
+
+            <p>Output as three lists:</p>
+
+            <ul>
+                <li><span class="priority-h">Critical gaps</span> — priority H, activation low — must address</li>
+                <li><span class="priority-l">Acceptable neglect</span> — priority L, activation low — confirm not addressing is correct</li>
+                <li><span class="priority-m">Diffusion candidates</span> — priority L, activation high — candidates for compression</li>
+            </ul>
+
+            <h4>Step 2.6b: Routing-failure suspicion</h4>
+
+            <p>Before recommending intervention, check whether the gap is plausibly a Layer A routing collision. If the user has clearly inhabited a face's vocabulary (skill prompts the user to confirm) but the face stays at floor, flag the gap as <em>likely routing collision</em> rather than <em>inhabitation gap</em>. This would prevent the four-iteration trap where the user keeps escalating ethics vocabulary that gets routed to axiology.</p>
+
+            <h4>Step 2.7: Suggest interventions from pattern library</h4>
+
+            <p>For each critical gap (and not flagged as routing collision), look up patterns that primarily activate that face and recommend the lightest-touch one not already present.</p>
+
+            <div class="info-section">
+                <h3>Example output</h3>
+                <p><strong>Critical gap: Methodology</strong> (priority H, activation 0.12). Your task is engineering work. Consider: Chain of Thought scaffold, worked-example demonstration, or Plan-and-Execute structure. <strong>Lowest-cost intervention:</strong> add an explicit "Reasoning:" / "Result:" output template.</p>
+                <p><strong>Routing-collision suspected: Ethics</strong> (priority H, activation 0.10). Vocabulary scan finds <em>culpable, forbidden, virtue</em> in your prompt. Engine likely routing these to axiology (currently 0.60). Recommend: file a disambiguation request rather than rewriting; or add explicit ethical-framing structure (rule list, deontic verbs) that the engine's existing semiotic+ethics co-pattern can detect.</p>
+            </div>
+
+            <h4>Step 2.8: Re-measure with priority overlay</h4>
+
+            <p>After the user rewrites, re-measure and compare gaps against priorities. Plateau condition: critical gaps closed, acceptable neglect confirmed, diffusion candidates compressed, no foundation-precedence flag.</p>
+
+            <h2>11. Evidence Requirements</h2>
+
+            <p>The proposal rests on six empirical claims, each testable inside the project's existing benchmark infrastructure with modest extension.</p>
+
+            <div class="success-section">
+                <h3>Layer A claims</h3>
+                <ol>
+                    <li><strong>Specificity routing improves attribution.</strong> After adding disambiguation entries from the routing collision table, ethics-heavy prompts (v3 and v4 from the field observation session) should show ethics activation rising from ~0.10 toward the 0.40–0.50 band, with axiology dropping from 0.60 toward 0.30–0.40. <em>Test:</em> rerun the existing four-iteration prompts before and after disambiguation entries; confirm directional shift.</li>
+                    <li><strong>Foundation-precedence flag fires correctly.</strong> Prompts with high ethics/axiology and low ontology/epistemology should be flagged. <em>Test:</em> hand-craft 5 such prompts; verify flag fires; verify flag does not fire on balanced prompts.</li>
+                    <li><strong>Directional resonance recovers grounded prompts.</strong> The execution-prompt that scored 0.11 on ontology↔praxeology should score higher on the directional ontology→praxeology metric (energy flowing from grounded entities to inherited actions). <em>Test:</em> rerun the same prompt under directional resonance; verify the directional score is not symmetric.</li>
+                </ol>
+            </div>
+
+            <div class="success-section">
+                <h3>Layer B claims</h3>
+                <ol start="4">
+                    <li><strong>Face control-type classification is accurate.</strong> Faces called "structural" should produce verifiable outputs when activated. <em>Test:</em> hand-craft prompts that activate one face strongly; measure whether outputs admit machine-checkable invariants.</li>
+                    <li><strong>Task-type priority table is correct.</strong> Tasks classified as "engineering" should improve when high-priority faces are strengthened, not when low-priority faces are. <em>Test:</em> take a benchmark of engineering prompts; vary face activation; measure task success.</li>
+                    <li><strong>Pattern-to-face mapping is correct.</strong> Adding CoT to a prompt should shift methodology activation upward, not phenomenology. <em>Test:</em> measure face activation before and after applying each pattern.</li>
+                </ol>
+            </div>
+
+            <div class="warning-section">
+                <h3>Composite test from field observations</h3>
+                <p>Rerun v3 of the four-iteration prompt under both Layer A (corrected routing) and Layer B (priority-aware skill). Expected:</p>
+                <ul>
+                    <li>Ethics rises from 0.10 toward 0.40–0.50 (Layer A: dense moral vocabulary now correctly attributed)</li>
+                    <li>Axiology drops from 0.60 toward 0.30–0.40 (Layer A: was over-claiming)</li>
+                    <li>Coherence rises from 0.36 toward 0.50+ (faces now cross-pollinate correctly)</li>
+                    <li>Strongest resonance shifts from ontology↔praxeology (symmetric weak) to a directional pair (ethics→axiology, epistemology→hermeneutics) — Layer A directional resonance only</li>
+                    <li>Skill output flags ethics as a closed critical gap rather than an open one (Layer B)</li>
+                </ul>
+                <p>If none shift, the issue is BGE compression, not vocabulary routing — and the framework needs to operate at the face-weight normalization layer rather than the vocabulary attribution layer.</p>
+            </div>
+
+            <h2>12. Implementation Roadmap</h2>
+
+            <h3><span class="tier-badge tier-1">v1</span> Skill-only — quickest, cheapest, partial coverage</h3>
+
+            <ul>
+                <li>Layer B Steps 2.5 / 2.6 / 2.6b / 2.7 / 2.8 added to <code class="inline">skills/prompt-refiner/SKILL.md</code></li>
+                <li>Embed task-type priority table and pattern library in the skill</li>
+                <li>Routing-collision suspicion (Step 2.6b) is the only Layer A acknowledgment — it can flag suspected collisions but cannot fix them</li>
+                <li>Skill version 0.5.0 → 0.6.0; no engine bump</li>
+            </ul>
+
+            <p><strong>Limit:</strong> v1 cannot resolve ethics-into-axiology routing; it can only warn the user when the symptom appears.</p>
+
+            <h3><span class="tier-badge tier-2">v2</span> Layer A disambiguation entries (no engine modification)</h3>
+
+            <ul>
+                <li>Extend <code class="inline">scripts/build_semantic_bridge.py</code> with disambiguation entries enforcing Principles 1 and 2 (specificity, evaluative triad)</li>
+                <li>Rebuild semantic bridge artifact</li>
+                <li>Engine version 0.7.1 → 0.7.2 (build artifact change, not code change)</li>
+                <li>Run composite test from Section 11; iterate on the routing collision table</li>
+            </ul>
+
+            <p><strong>Cost:</strong> primarily empirical work to expand the disambiguation list. <strong>Risk:</strong> entries can over-correct; need test-driven additions.</p>
+
+            <h3><span class="tier-badge tier-2">v3</span> Foundation-precedence reporting (small engine change)</h3>
+
+            <ul>
+                <li>Add foundation/evaluation precedence flag computation in pipeline Stage 8 or orchestrator</li>
+                <li>New output field; backward-compatible</li>
+                <li>Skill consumes the flag in Step 2.6b</li>
+                <li>Engine version 0.7.2 → 0.8.0 (additive feature)</li>
+            </ul>
+
+            <h3><span class="tier-badge tier-3">v4</span> Directional resonance (real engine change)</h3>
+
+            <ul>
+                <li>Modify <code class="inline">math/harmonization.py</code> and <code class="inline">math/gem.py</code> to support directional cube pairs</li>
+                <li>Designate grounding direction for each of the 6 pairs</li>
+                <li>Add new ADR documenting the directional model</li>
+                <li>Engine version bump to 0.9.0 or 1.0.0</li>
+                <li>Only worth doing once v2/v3 evidence supports it</li>
+            </ul>
+
+            <h3><span class="tier-badge tier-3">v5</span> Control-type classification output</h3>
+
+            <ul>
+                <li>Engine reports per-face structural/bias/mixed share</li>
+                <li>Skill consumes for richer task-fit reasoning</li>
+                <li>Engine version 0.9.0 → 1.0.0 (new public output)</li>
+            </ul>
+
+            <div class="error-section">
+                <h3>Anti-pattern: "smart" task classification by an LLM call inside the engine</h3>
+                <p>Tempting but wrong. The engine should remain stateless and computationally cheap (numpy-only at runtime per ADR-005). Task classification belongs in the skill (where the LLM is already engaged with the user's prompt). Putting it in the engine couples the engine to a model dependency it currently does not have.</p>
+            </div>
+
+            <h2>13. Risks and Open Questions</h2>
+
+            <div class="warning-section">
+                <h3>Risks</h3>
+                <ol>
+                    <li><strong>Over-correcting routing.</strong> Aggressive specificity overrides could create new collisions where ethics now over-claims worth-bearing vocabulary. <em>Mitigation:</em> evidence-driven additions; rerun the four-iteration prompts after each batch.</li>
+                    <li><strong>Codifying contested theory.</strong> The pattern library cites results that are not all robust; the evaluative-triad ordering (teleology grounds ethics grounds axiology) is one philosophical lineage among several. <em>Mitigation:</em> source-cite each entry; treat the table and the principles as working hypotheses.</li>
+                    <li><strong>Task-type rigidity.</strong> Real prompts mix types. The new "execution prompt (inheriting plan)" category came directly from a real prompt; others will too. <em>Mitigation:</em> support hybrid types; let users override.</li>
+                    <li><strong>Skill complexity.</strong> The skill is already long. Adding 5 steps and 2 tables risks information overload. <em>Mitigation:</em> tight tabular presentation, progressive disclosure.</li>
+                    <li><strong>Anchoring effect.</strong> Once users see a priority ranking, they may defer to it and stop thinking. <em>Mitigation:</em> phrase priorities as defaults to be overridden.</li>
+                    <li><strong>Co-evolution with the engine.</strong> If the skill embeds priority data that should drive engine evolution, divergence becomes a maintenance burden. <em>Mitigation:</em> version-pin the skill to the engine version it was tested against.</li>
+                    <li><strong>Directional resonance breaks symmetric tests.</strong> v4 changes the harmonization output shape; existing tests in <code class="inline">tests/test_math/test_harmonization.py</code> assume symmetric scores. <em>Mitigation:</em> dual-output (symmetric and directional) during transition.</li>
+                </ol>
+            </div>
+
+            <h3>Open Questions</h3>
+
+            <ol>
+                <li><strong>Is the BGE compression itself the limit?</strong> If Layer A disambiguation does not move ethics, the bottleneck is the BGE embedding's inability to separate ethics-vocabulary from axiology-vocabulary at the centroid level. That would require revisiting the embedding source — out of scope for this proposal but worth flagging.</li>
+                <li><strong>Should the foundation/evaluation hierarchy be a separate measurement, not a flag?</strong> A "philosophical-stance coherence" score that explicitly penalizes evaluative-without-foundational activation would be richer than a binary flag.</li>
+                <li><strong>Can directional resonance be expressed without changing the cube-pair model?</strong> The current ADR-002 specifies symmetric pairing as part of the cube model. Directional resonance is consistent with the cube geometry (each pair has an inside/outside surface), so it may be a refinement rather than a contradiction.</li>
+                <li><strong>What's the right default when the user can't or won't classify?</strong> Probably: assume "general" with a flat priority profile and report uniformly (current behavior).</li>
+                <li><strong>How does the framework handle prompts that legitimately want a low-priority face?</strong> A creative prompt that wants strong methodology (sonnet structure) needs override capability. Expose priority overrides as first-class user input.</li>
+                <li><strong>Are the four routing principles compatible?</strong> Specificity (P1) and evaluative-triad (P2) could conflict on a token like <em>justify</em> — specificity says ethics if the prompt is deontic, but the triad says teleology grounds ethics. The composition rule needs to be defined: contextual specificity overrides triad ordering when both apply.</li>
+            </ol>
+
+            <h2>14. Recommendation</h2>
+
+            <div class="success-section">
+                <h3>Build v1 immediately; fund v2 with empirical evidence; defer v3–v5</h3>
+                <p><strong>v1 (skill-only)</strong> is reversible and cheap. It provides task-aware interpretation and routing-collision suspicion immediately. The pattern-library and priority-table content is the substantive work; the skill integration is mechanical.</p>
+                <p><strong>v2 (Layer A disambiguation entries)</strong> is the highest-leverage next move because it directly addresses the field observation that no amount of inhabitation moves ethics off 0.10. v2 should be funded by running the composite test from Section 11 and iterating on the routing collision table until ethics-heavy prompts attribute correctly. v2 is empirical work, not theoretical.</p>
+                <p><strong>v3–v5</strong> require evidence from v1 and v2 to justify. Foundation-precedence reporting (v3) is the smallest engine change; directional resonance (v4) is the largest and should be deferred until v3 demonstrates that the framework holds.</p>
+                <p>The most important conceptual move is acknowledging that APE has <em>two</em> independent gaps, not one. The external review surfaced the output-side gap (register vs control); the field observations surfaced the input-side gap (vocabulary routing). Both are real; both have separate fixes; neither subsumes the other. A unified recommendation that addressed only one would miss half the actual problem.</p>
+            </div>
+
+            <h2>15. Carryover from Prior Skill State</h2>
+
+            <ul>
+                <li>The skill already encodes "register competition is real" (added in 0.5.0). The proposal extends this: register-aware <em>and</em> task-aware refinement is the goal.</li>
+                <li>The skill already encodes "coherence declines with breadth." Layer B's priority framework operationalizes this: coherence rises when the focused register matches the task.</li>
+                <li>The skill's "inhabit, don't name" advice is now incomplete in light of the field observations. Even fully-inhabited ethics vocabulary can be misattributed by routing collision. The advice needs a corollary: "verify that inhabitation is being measured before iterating on more inhabitation." Step 2.6b operationalizes this corollary.</li>
+                <li>The engine already has disambiguation infrastructure (<code class="inline">_lookup_sense</code>, <code class="inline">_disambig_face_sim</code>, <code class="inline">_disambig_meta</code>). v2 leverages existing machinery rather than introducing new architecture.</li>
+            </ul>
+
+        </main>
+
+        <footer>
+            <p>Provenance: distilled from a multi-turn conversation in which (a) an external (ChatGPT) review of an APE-refined prompt surfaced the structural-vs-bias distinction; (b) the user proposed ranking philosophical elements per request using prompt theory; (c) the user surfaced a separate four-iteration field observation document showing systematic vocabulary routing collisions and proposed four ordering principles. This report consolidates both inputs into a single two-layer proposal: engine-side routing corrections and skill-side task-aware interpretation. No code or skill has been modified — this report is the prerequisite analysis.</p>
+        </footer>
+    </article>
+</body>
+</html>
