@@ -1,22 +1,32 @@
 """Stage 1 — Intent Parser: natural language -> partial coordinate.
 
-Authoritative source: CONSTRUCT-v2.md (8-stage forward pass, Stage 1).
-Geometry-integral parsing built from the Construct's own authored layers:
+Authoritative source: CONSTRUCT-v2.md (8-stage forward pass, Stage 1),
+ADR-013 (BGE local embedding), ADR-015 (Pluggable Cloud Vector Embeddings).
 
-  Phase 1: Face relevance via GeometricBridge discriminative face similarity
-           (IDF-weighted BGE cosine to authored-layer centroids minus mean)
-  Phase 2: Axis projection via GeometricBridge pre-computed direction vectors
-           (IDF-weighted dot product onto high_pole - low_pole direction)
-  Phase 3: Scalar-to-grid mapping via polarity convention (0.0 -> 0, 1.0 -> 11)
+Supports two execution paths:
+  1. Cloud Path (opt-in): Live high-dimensional vector embeddings (OpenAI 3072d,
+     Gemini 2048d) projected onto continuous face centroids and axis vectors.
+  2. Local Path (default): Pre-computed BGE 1024d GeometricBridge token/phrase lookup.
 """
 
 from __future__ import annotations
+
+import logging
+from typing import TYPE_CHECKING
+import numpy as np
 
 from advanced_prompting_engine.graph.schema import (
     ALL_FACES,
     GRID_SIZE,
     PipelineState,
 )
+
+if TYPE_CHECKING:
+    from advanced_prompting_engine.math.cloud_bridge import CloudSemanticBridge
+    from advanced_prompting_engine.math.semantic import GeometricBridge
+    from advanced_prompting_engine.providers.base import BaseEmbeddingProvider
+
+logger = logging.getLogger(__name__)
 
 # Minimum face relevance (discriminative) to consider a face actively matched.
 # Discriminative scores can be negative; only positive scores indicate above-average relevance.
@@ -60,18 +70,21 @@ _STOP_WORDS = frozenset({
 class IntentParser:
     """Stage 1: Map natural language intent to partial grid coordinates.
 
-    Uses the GeometricBridge to determine face relevance and axis positions
-    from pre-computed BGE-derived artifacts. No TF-IDF cache or query layer
-    needed — all geometry is baked into the bridge at build time.
-
-    Enhanced with greedy longest-match phrase detection: trigrams are checked
-    before bigrams before unigrams. Matched phrases consume their component
-    words (no double-counting).
+    Supports both cloud vector embeddings (OpenAI 3072d, Gemini 2048d) and
+    local GeometricBridge pre-computed artifacts.
     """
 
-    def __init__(self, geometric_bridge):
+    def __init__(
+        self,
+        geometric_bridge: GeometricBridge | None = None,
+        embedding_provider: BaseEmbeddingProvider | None = None,
+        cloud_bridge: CloudSemanticBridge | None = None,
+    ):
         self._bridge = geometric_bridge
-        # Pre-compute phrase lookup structures from the bridge
+        self._provider = embedding_provider
+        self._cloud_bridge = cloud_bridge
+
+        # Pre-compute phrase lookup structures from the local bridge
         self._phrase_vocab: set[str] = set()
         self._surface_to_canonical: dict[str, str] = {}
         self._max_phrase_len: int = 0
@@ -98,6 +111,88 @@ class IntentParser:
             state.partial_coordinate = {f: None for f in ALL_FACES}
             return
 
+        # Try cloud embedding path if active and available
+        if (
+            self._provider is not None
+            and self._provider.provider_name != "local"
+            and self._provider.is_available()
+            and self._cloud_bridge is not None
+            and self._cloud_bridge.is_loaded
+        ):
+            try:
+                intent_vec = self._provider.embed_text(intent)
+                if intent_vec is not None:
+                    self._execute_cloud(state, intent_vec)
+                    return
+                logger.debug("Cloud embedding returned None — falling back to local bridge")
+            except Exception as e:
+                logger.warning("Cloud embedding failed (%s) — falling back to local bridge", e)
+
+        # Default / Fallback: Local GeometricBridge path
+        self._execute_local(state, intent)
+
+    def _execute_cloud(self, state: PipelineState, intent_vec: np.ndarray):
+        """Execute Stage 1 using high-dimensional cloud vector projections."""
+        if self._cloud_bridge is None:
+            state.partial_coordinate = {f: None for f in ALL_FACES}
+            return
+
+        # Phase 1: Face relevance
+        face_scores = self._cloud_bridge.face_relevance(intent_vec)
+        raw_disc_scores = dict(face_scores)
+
+        # Phase-aware modulation
+        if self._cloud_bridge.has_phase_data:
+            phase_weights = self._cloud_bridge.phase_weighting(intent_vec)
+            for face in ALL_FACES:
+                face_scores[face] *= (0.7 + 0.3 * phase_weights.get(face, 0.5))
+
+        # Normalize face scores to weights in [0.1, 1.0]
+        score_values = list(face_scores.values())
+        min_score = min(score_values) if score_values else 0.0
+        max_score = max(score_values) if score_values else 0.0
+        score_range = max_score - min_score
+
+        face_weights: dict[str, float] = {}
+        for face in ALL_FACES:
+            raw_score = face_scores.get(face, 0.0)
+            if score_range > 1e-9:
+                normalized = (raw_score - min_score) / score_range
+            else:
+                normalized = 0.5
+            face_weights[face] = 0.1 + 0.9 * normalized
+
+        # Phase 2 & 3: Axis projection + scalar-to-grid
+        partial: dict[str, dict | None] = {}
+
+        for face in ALL_FACES:
+            x_scalar, x_conf = self._cloud_bridge.axis_projection(intent_vec, face, "x")
+            y_scalar, y_conf = self._cloud_bridge.axis_projection(intent_vec, face, "y")
+
+            avg_confidence = (x_conf + y_conf) / 2.0
+
+            disc_score = raw_disc_scores.get(face, 0.0)
+            if disc_score < RELEVANCE_THRESHOLD and avg_confidence < CONFIDENCE_THRESHOLD:
+                partial[face] = None
+                continue
+
+            ax_x = self._scalar_to_grid(x_scalar)
+            ax_y = self._scalar_to_grid(y_scalar)
+
+            weight = face_weights[face] * (0.7 + 0.3 * avg_confidence)
+            weight = max(0.1, min(1.0, weight))
+
+            partial[face] = {
+                "x": ax_x,
+                "y": ax_y,
+                "weight": weight,
+                "confidence": avg_confidence,
+            }
+
+        state.partial_coordinate = partial
+
+    def _execute_local(self, state: PipelineState, intent: str):
+        """Execute Stage 1 using local GeometricBridge pre-computed artifacts."""
         tokens = self._tokenize(intent)
 
         # Graceful degradation: if bridge not loaded, all faces get None
@@ -107,16 +202,12 @@ class IntentParser:
 
         # --- Phase 1: Face relevance ---
         face_scores = self._bridge.face_relevance(tokens)
-
-        # Capture raw discriminative scores before phase modulation mutates them.
-        # Phase 2/3 needs the original discriminative scores for relevance checks.
         raw_disc_scores = dict(face_scores)
 
         # Technique F: Phase-aware modulation of face scores
         if self._bridge.has_phase_data:
             phase_weights = self._bridge.phase_weighting(tokens)
             for face in ALL_FACES:
-                # Phase provides a 30% modulation, not a replacement
                 face_scores[face] *= (0.7 + 0.3 * phase_weights.get(face, 0.5))
 
         # Normalize face scores to weights in [0.1, 1.0]
@@ -143,9 +234,6 @@ class IntentParser:
 
             avg_confidence = (x_conf + y_conf) / 2.0
 
-            # If discriminative relevance is below threshold AND confidence is
-            # very low, let coordinate resolver fill this face.
-            # Use raw (pre-phase-mutation) discriminative scores for this check.
             disc_score = raw_disc_scores.get(face, 0.0)
             if disc_score < RELEVANCE_THRESHOLD and avg_confidence < CONFIDENCE_THRESHOLD:
                 partial[face] = None
@@ -159,8 +247,6 @@ class IntentParser:
                 q_pos = self._bridge.question_position(tokens, face)
                 if q_pos is not None:
                     qx, qy = q_pos
-                    # Question match gets higher weight (0.6) — carries
-                    # position-specific vocabulary from 1728 construction questions
                     x = max(0, min(11, round(0.4 * ax_x + 0.6 * qx)))
                     y = max(0, min(11, round(0.4 * ax_y + 0.6 * qy)))
                 else:
@@ -168,7 +254,6 @@ class IntentParser:
             else:
                 x, y = ax_x, ax_y
 
-            # Weight combines face relevance (Phase 1) with axis confidence (Phase 2)
             weight = face_weights[face] * (0.7 + 0.3 * avg_confidence)
             weight = max(0.1, min(1.0, weight))
 
@@ -182,19 +267,7 @@ class IntentParser:
         state.partial_coordinate = partial
 
     def _tokenize(self, text: str) -> list[str]:
-        """Tokenize with greedy longest-match phrase detection.
-
-        Processing order:
-          1. Lowercase, strip punctuation, split into raw words
-          2. Forward scan with greedy longest-match: for each position, try
-             trigrams then bigrams (both canonical and surface forms). Matched
-             phrases consume their component words.
-          3. Unmatched words pass through standard stop-word filtering.
-
-        Phrases are emitted as their canonical form (stop words already removed
-        at build time). Component words of matched phrases are NOT emitted
-        individually — no double-counting.
-        """
+        """Tokenize with greedy longest-match phrase detection."""
         cleaned = text.lower()
         for ch in "?.,;:!'\"()[]{}—-–/":
             cleaned = cleaned.replace(ch, " ")
@@ -203,7 +276,6 @@ class IntentParser:
         if not self._phrase_vocab or not raw_words:
             return [w for w in raw_words if w not in _STOP_WORDS and len(w) > 1]
 
-        # Phase stop words used during build for canonical forms
         phrase_stop_words = {"and", "of", "the", "or", "a", "an", "in", "on", "to", "for"}
 
         tokens: list[str] = []
@@ -212,14 +284,12 @@ class IntentParser:
 
         while i < n:
             matched = False
-            # Try longest phrases first (up to max_phrase_len words)
             max_len = min(self._max_phrase_len, n - i)
 
             for length in range(max_len, 1, -1):
                 window = raw_words[i:i + length]
                 surface = " ".join(window)
 
-                # Check surface form -> canonical mapping
                 canonical = self._surface_to_canonical.get(surface)
                 if canonical and canonical in self._phrase_vocab:
                     tokens.append(canonical)
@@ -227,7 +297,6 @@ class IntentParser:
                     matched = True
                     break
 
-                # Check canonical form directly (stop words removed from window)
                 canonical_words = [
                     w for w in window if w not in phrase_stop_words
                 ]
@@ -248,12 +317,7 @@ class IntentParser:
         return tokens
 
     def _scalar_to_grid(self, scalar: float) -> int:
-        """Map a [0, 1] scalar to grid position 0–11 via polarity convention.
-
-        0.0 (low pole) -> 0
-        1.0 (high pole) -> 11
-        Linear mapping with clamping.
-        """
+        """Map a [0, 1] scalar to grid position 0–11 via polarity convention."""
         max_coord = GRID_SIZE - 1
         pos = round(scalar * max_coord)
         return max(0, min(max_coord, pos))
