@@ -34,6 +34,35 @@ Add to your `.mcp.json`:
 }
 ```
 
+### Cloud Embedding Configuration (Optional)
+
+By default, the engine runs completely offline with pre-computed BGE 1024d embeddings. To enable high-dimensional live cloud embeddings (e.g. OpenAI `text-embedding-3-large` @ 3072d or Google Gemini `text-embedding-005` @ 2048d), set environment variables in your shell or inside `.mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "advanced-prompting-engine": {
+      "command": "uvx",
+      "args": ["advanced-prompting-engine"],
+      "env": {
+        "APE_EMBEDDING_PROVIDER": "openai",
+        "OPENAI_API_KEY": "${OPENAI_API_KEY}"
+      }
+    }
+  }
+}
+```
+
+| Environment Variable | Options / Default | Description |
+|---|---|---|
+| `APE_EMBEDDING_PROVIDER` | `local` (default), `openai`, `gemini` | Embedding provider to use for Stage 1 intent parsing |
+| `APE_OPENAI_API_KEY` or `OPENAI_API_KEY` | `sk-...` | OpenAI API Key (required if provider is `openai`) |
+| `APE_OPENAI_MODEL` | `text-embedding-3-large` (default) | OpenAI embedding model |
+| `APE_GEMINI_API_KEY` or `GEMINI_API_KEY` | `AIza...` | Google Gemini API Key (required if provider is `gemini`) |
+| `APE_GEMINI_MODEL` | `text-embedding-005` (default) | Google Gemini embedding model |
+| `APE_EMBEDDING_TIMEOUT` | `5.0` (default) | API timeout in seconds before falling back to local BGE |
+
+
 ## What It Does
 
 The engine positions your intent in a 12-dimensional philosophical manifold:
@@ -167,3 +196,18 @@ See [SECURITY.md](SECURITY.md) for vulnerability reporting instructions.
 ## License
 
 MIT
+
+## How this plugin runs its MCP server (shared background service)
+
+Claude Code normally starts a private copy of a plugin's MCP server for every open session. This
+plugin instead runs **one shared copy per machine**: its MCP entry launches `shared_mcp.py connect`,
+which on first use creates a small Python environment under `~/.local/state/shared-mcp/`, registers a
+login-time background service (launchd on macOS, `systemd --user` on Linux, a detached process
+elsewhere) that runs the server once and serves it to every session over HTTP on `127.0.0.1` only,
+and then connects. Later sessions just connect. The first run prints a one-line notice.
+
+If a background service cannot be set up (no network, no service manager, an unusual OS), the
+original server runs directly as before — never a broken plugin. To opt out permanently set
+`SHARED_MCP_DISABLE=1` in your environment; to remove the service run
+`python3 <plugin>/shared_mcp.py stop --name advanced-prompting-engine`. State, logs and the service definition live under
+`~/.local/state/shared-mcp/advanced-prompting-engine/`. The kit is the single file `shared_mcp.py` vendored into this plugin; source, tests and design notes: https://github.com/JoshuaRamirez/shared-mcp

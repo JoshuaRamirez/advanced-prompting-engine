@@ -1,12 +1,14 @@
 """Pipeline Runner — orchestrates all 8 stages in sequence.
 
-Authoritative source: CONSTRUCT-v2.md (8-stage forward pass).
+Authoritative source: CONSTRUCT-v2.md (8-stage forward pass),
+ADR-015 (Pluggable Cloud Vector Embeddings).
 Ensures caches are valid before pipeline run.
 """
 
 from __future__ import annotations
 
 from advanced_prompting_engine.graph.schema import PipelineState
+from advanced_prompting_engine.math.cloud_bridge import CloudSemanticBridge
 from advanced_prompting_engine.math.semantic import GeometricBridge
 from advanced_prompting_engine.pipeline.construction_bridge import ConstructionBridge
 from advanced_prompting_engine.pipeline.construct_resolver import ConstructResolver
@@ -16,23 +18,57 @@ from advanced_prompting_engine.pipeline.nexus_gem_analyzer import NexusGemAnalyz
 from advanced_prompting_engine.pipeline.position_computer import PositionComputer
 from advanced_prompting_engine.pipeline.spoke_analyzer import SpokeAnalyzer
 from advanced_prompting_engine.pipeline.tension_analyzer import TensionAnalyzer
+from advanced_prompting_engine.providers.base import BaseEmbeddingProvider
+from advanced_prompting_engine.providers.factory import get_embedding_provider
 
 
 class PipelineRunner:
     """Runs the 8-stage pipeline: intent -> construction basis."""
 
-    def __init__(self, graph, query_layer, embedding_cache, tfidf_cache, centrality_cache=None):
+    def __init__(
+        self,
+        graph,
+        query_layer,
+        embedding_cache,
+        tfidf_cache,
+        centrality_cache=None,
+        embedding_provider: BaseEmbeddingProvider | None = None,
+        cloud_bridge: CloudSemanticBridge | None = None,
+    ):
         self._graph = graph
         self._embedding_cache = embedding_cache
         self._tfidf_cache = tfidf_cache
         self._centrality_cache = centrality_cache
 
-        # Initialize geometric bridge (degrades gracefully if artifacts missing)
+        # Initialize local geometric bridge (degrades gracefully if artifacts missing)
         geometric_bridge = GeometricBridge()
         geometric_bridge.load()
 
+        # Initialize embedding provider
+        if embedding_provider is None:
+            self._embedding_provider = get_embedding_provider()
+        else:
+            self._embedding_provider = embedding_provider
+
+        # Initialize cloud bridge if provider is not local
+        if cloud_bridge is None:
+            if self._embedding_provider.provider_name != "local":
+                self._cloud_bridge = CloudSemanticBridge()
+                self._cloud_bridge.load(
+                    provider=self._embedding_provider.provider_name,
+                    dimensions=self._embedding_provider.dimensions,
+                )
+            else:
+                self._cloud_bridge = None
+        else:
+            self._cloud_bridge = cloud_bridge
+
         self._stages = [
-            IntentParser(geometric_bridge),                     # Stage 1
+            IntentParser(
+                geometric_bridge=geometric_bridge,
+                embedding_provider=self._embedding_provider,
+                cloud_bridge=self._cloud_bridge,
+            ),                                                  # Stage 1
             CoordinateResolver(),                               # Stage 2
             PositionComputer(),                                 # Stage 3
             ConstructResolver(query_layer),                     # Stage 4
