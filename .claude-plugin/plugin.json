@@ -1,12 +1,19 @@
 {
   "name": "advanced-prompting-engine",
-  "version": "0.8.0",
-  "description": "Universal prompt creation engine — MCP server with 12-axis philosophical manifold for principled prompt construction",
+  "version": "0.9.0",
+  "description": "Universal prompt creation engine \u2014 MCP server with 12-axis philosophical manifold for principled prompt construction",
   "author": {
     "name": "Joshua Ramirez",
     "url": "https://github.com/JoshuaRamirez"
   },
   "repository": "https://github.com/JoshuaRamirez/advanced-prompting-engine",
   "license": "MIT",
-  "keywords": ["mcp", "prompt-engineering", "philosophical-manifold", "construct", "12-face", "geometry-integral"]
+  "keywords": [
+    "mcp",
+    "prompt-engineering",
+    "philosophical-manifold",
+    "construct",
+    "12-face",
+    "geometry-integral"
+  ]
 }

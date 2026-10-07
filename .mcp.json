@@ -2,7 +2,16 @@
   "mcpServers": {
     "advanced-prompting-engine": {
       "command": "python3",
-      "args": ["-m", "advanced_prompting_engine"]
+      "args": [
+        "${CLAUDE_PLUGIN_ROOT}/shared_mcp.py",
+        "connect",
+        "--name",
+        "advanced-prompting-engine",
+        "--",
+        "python3",
+        "-m",
+        "advanced_prompting_engine"
+      ]
     }
   }
 }
