@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.0] - 2026-08-27
+
+### Added
+- **Pluggable Cloud Vector Embeddings (ADR-015)**:
+  - Opt-in support for live high-dimensional continuous cloud vector models:
+    - **OpenAI**: `text-embedding-3-large` (3072d) and `text-embedding-3-small` (1536d).
+    - **Google Gemini**: `text-embedding-005` (2048d) and `text-embedding-004` (768d).
+  - Standard library HTTP clients (`urllib.request`) maintaining pure ADR-005 runtime compliance (zero new package dependencies).
+  - `src/advanced_prompting_engine/providers/` subsystem (`base.py`, `config.py`, `openai.py`, `gemini.py`, `local.py`, `factory.py`).
+  - `src/advanced_prompting_engine/math/cloud_bridge.py`: High-dimensional continuous projection engine for 12 face centroids, 24 axis projections, and 3 phase anchors.
+  - `src/advanced_prompting_engine/data/cloud_anchors_openai_3072.npz` and `cloud_anchors_gemini_2048.npz`.
+  - `scripts/build_cloud_anchors.py`: Generator for cloud anchor matrices.
+  - Zero-exception graceful fallback to offline local BGE `GeometricBridge` on missing keys or network timeouts.
+  - 31 new unit and integration tests across providers, cloud bridge math, and pipeline integration.
+
 ## [0.8.0] - 2026-04-20
 
 Full implementation of the five-tier roadmap from `docs/cc_genui_20260420_200730_face_importance_ranking.html`. Closes every **Fixed**-status row in the skill's collision table and adds foundation-precedence detection, directional resonance, and control-type composition reporting.

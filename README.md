@@ -34,6 +34,35 @@ Add to your `.mcp.json`:
 }
 ```
 
+### Cloud Embedding Configuration (Optional)
+
+By default, the engine runs completely offline with pre-computed BGE 1024d embeddings. To enable high-dimensional live cloud embeddings (e.g. OpenAI `text-embedding-3-large` @ 3072d or Google Gemini `text-embedding-005` @ 2048d), set environment variables in your shell or inside `.mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "advanced-prompting-engine": {
+      "command": "uvx",
+      "args": ["advanced-prompting-engine"],
+      "env": {
+        "APE_EMBEDDING_PROVIDER": "openai",
+        "OPENAI_API_KEY": "${OPENAI_API_KEY}"
+      }
+    }
+  }
+}
+```
+
+| Environment Variable | Options / Default | Description |
+|---|---|---|
+| `APE_EMBEDDING_PROVIDER` | `local` (default), `openai`, `gemini` | Embedding provider to use for Stage 1 intent parsing |
+| `APE_OPENAI_API_KEY` or `OPENAI_API_KEY` | `sk-...` | OpenAI API Key (required if provider is `openai`) |
+| `APE_OPENAI_MODEL` | `text-embedding-3-large` (default) | OpenAI embedding model |
+| `APE_GEMINI_API_KEY` or `GEMINI_API_KEY` | `AIza...` | Google Gemini API Key (required if provider is `gemini`) |
+| `APE_GEMINI_MODEL` | `text-embedding-005` (default) | Google Gemini embedding model |
+| `APE_EMBEDDING_TIMEOUT` | `5.0` (default) | API timeout in seconds before falling back to local BGE |
+
+
 ## What It Does
 
 The engine positions your intent in a 12-dimensional philosophical manifold:

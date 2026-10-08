@@ -67,3 +67,6 @@ Desktop.ini
 
 # Jupyter
 .ipynb_checkpoints/
+
+# GenUI Outputs
+claude-genui-output/

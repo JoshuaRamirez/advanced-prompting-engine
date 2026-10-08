@@ -49,6 +49,8 @@ See `docs/adr/` for full Architecture Decision Records:
 | 011 | Nexus-gem-spoke inter-face architecture with cube stratification |
 | 012 | Spoke as computable behavioral signature (4 properties + classification) |
 | 013 | BGE-large-en-v1.5 as sole embedding source at native 1024d |
+| 014 | Directional resonance for cube pairs |
+| 015 | Pluggable cloud vector embeddings (OpenAI 3072d, Gemini 2048d) |
 
 ## Dependencies
 
